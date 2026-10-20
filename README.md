@@ -1,4 +1,4 @@
-.# NSM — Powered by AxiomFX (`AFX`)
+.# # NSM — Powered by AxiomFX (`AFX`)
 
 **NSM (New State Multiplayer)** is a standalone, self-hosted GTA V multiplayer platform and full client/server/web ecosystem powered by the **AxiomFX (`AFX`)** runtime.
 
