@@ -8,7 +8,13 @@ and servers. Single file, Python 3.8+ standard library only.
 Serves (all on one port, default 80):
 
   Server browser (UI bundle, after patch_ui_urls.ps1):
-    GET  /api/servers/streamRedir/            full list as a stream of
+    GET  /api/servers/streamRedir/            302 redirect to the stream
+                                              endpoint (the client resolves
+                                              this via the nui:gsclient
+                                              "gsclient:url" RPC, which
+                                              does NOT follow redirects and
+                                              returns the Location header)
+    GET  /api/servers/stream/                 full list as a stream of
                                               [4-byte LE length][protobuf master.Server]
     GET  /api/servers/single/<ip:port>        single server as JSON {EndPoint, Data}
     GET  /api/servers/icon/<ep>/<v>.png       server icon (404 -> default icon)
@@ -44,6 +50,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 HEARTBEAT_TTL = 300.0
 GAMENAME = "gta5"
 MAX_HEARTBEAT_BYTES = 1024 * 1024
+
+# Absolute base URL advertised to clients. Empty = derive from the request
+# (Host header + scheme), which is correct for a single-host deployment.
+PUBLIC_BASE = ""
 
 # ---------------------------------------------------------------------------
 # protobuf encoding (schema extracted from the cfx-ui worker bundle:
@@ -273,6 +283,26 @@ class Handler(BaseHTTPRequestHandler):
             return ff.split(",")[0].strip()
         return self.client_address[0]
 
+    def _public_base(self):
+        """Absolute base URL of this service, used for the streamRedir redirect."""
+        if PUBLIC_BASE:
+            return PUBLIC_BASE.rstrip("/")
+
+        host = self.headers.get("Host") or ("%s:%d" % self.server.server_address)
+        scheme = self.headers.get("X-Forwarded-Proto") or "http"
+        return "%s://%s" % (scheme, host)
+
+    def _redirect(self, location):
+        body = b""
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", "0")
+        self._cors()
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
     def log_message(self, fmt, *args):
         print("[%s] %s %s" % (time.strftime("%Y-%m-%d %H:%M:%S"),
                               self.command, fmt % args), flush=True)
@@ -286,14 +316,23 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0].rstrip("?")
-        # strip duplicate trailing slashes but keep the streamRedir/ form
-        if path.endswith("/") and not path.endswith("streamRedir/"):
+        # strip duplicate trailing slashes, but keep the canonical
+        # streamRedir/ and stream/ forms
+        if path.endswith("/") and not path.endswith("streamRedir/") and not path.endswith("/stream/"):
             path = path.rstrip("/") or "/"
 
         if path in ("/", "/health"):
             self._send(200, "NSM masterlist service\n", "text/plain")
 
         elif path == "/api/servers/streamRedir/":
+            # The client resolves this endpoint through the nui:gsclient
+            # "gsclient:url" RPC, which issues the request with
+            # followLocation = false and returns the Location header. If we
+            # answer with 200 instead, the RPC hands the UI an empty string
+            # and the server browser can never load a server list.
+            self._redirect("%s/api/servers/stream/" % self._public_base())
+
+        elif path == "/api/servers/stream/":
             entries = REGISTRY.entries()
             # fill connectEndPoints now that we know the EndPoints
             fixed = [(ep, dict(d, connectEndPoints=[ep])) for ep, d in entries]
@@ -382,7 +421,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=80)
     ap.add_argument("--bind", default="0.0.0.0")
+    ap.add_argument("--public-base", default="",
+                    help="absolute base URL advertised to clients "
+                         "(default: derived from the request Host header)")
     args = ap.parse_args()
+
+    global PUBLIC_BASE
+    PUBLIC_BASE = args.public_base.rstrip("/")
 
     srv = ThreadingHTTPServer((args.bind, args.port), Handler)
     srv.daemon_threads = True

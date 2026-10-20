@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /opt/nsm-masterlist/masterlist.py --port 80
+ExecStart=/usr/bin/python3 /opt/nsm-masterlist/masterlist.py --port 80 --public-base http://194.104.146.133
 Restart=always
 RestartSec=3
 # port 80 needs privileges

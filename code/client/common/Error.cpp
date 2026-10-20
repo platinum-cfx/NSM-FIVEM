@@ -16,6 +16,8 @@
 #include <ICoreGameInit.h>
 #endif
 
+#include <EntitlementError.h>
+
 #include <fnv.h>
 
 #if !defined(IS_FXSERVER)
@@ -270,6 +272,28 @@ inline ErrorData* GetErrorData()
 extern "C" ErrorData* GetErrorData();
 #endif
 
+// NSM: report an entitlement error that must not terminate the process.
+//
+// The check still runs and the error is still reported (log + the error pickup
+// file the crash reporter uses), but the process stays alive so that the start
+// up transition can continue. See EntitlementError.h for why, and for which
+// errors this applies.
+static void ReportRecoverableEntitlementError(const char* buffer)
+{
+	trace("NSM: recoverable entitlement error (continuing): %s\n", buffer);
+
+#if !defined(COMPILING_CONSOLE) && !defined(IS_FXSERVER)
+	auto errorPickup = FormatErrorPickup(buffer, g_thisError);
+	FILE* f = _wfopen(MakeRelativeCitPath(L"data\\cache\\error-pickup").c_str(), L"wb");
+
+	if (f)
+	{
+		fprintf(f, "%s", errorPickup.c_str());
+		fclose(f);
+	}
+#endif
+}
+
 static int GlobalErrorHandler(int eType, const char* buffer, bool noReport = false)
 {
 	auto errorData = GetErrorData();
@@ -345,6 +369,25 @@ static int GlobalErrorHandler(int eType, const char* buffer, bool noReport = fal
 	{
 		inFatalError = true;
 		lastFatalError = buffer;
+
+		// NSM: the Rockstar entitlement service could not be consulted. This
+		// is the expected answer for an NSM account (there is no Cfx
+		// entitlement record for it), and it must not terminate the ROS
+		// helper or the game process - if it does, the game never gets its
+		// Rockstar session and the server browser never appears. The
+		// ownership verdict itself ("... does not own a valid license ...")
+		// is *not* handled here and stays fatal.
+		if (IsEntitlementServiceContactError(buffer) && !IsEntitlementOwnershipError(buffer))
+		{
+			ReportRecoverableEntitlementError(buffer);
+
+			inFatalError = false;
+			inError = false;
+
+			// returning 0 keeps the caller alive: the FatalError macro only
+			// crashes the process when this returns a negative value
+			return 0;
+		}
 
 		return noReport ? SysErrorNoReport(buffer) : SysError(buffer);
 	}

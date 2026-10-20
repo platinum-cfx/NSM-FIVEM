@@ -6,7 +6,7 @@
 			"titleId": "gta5",
 			"rosTitleId": 11,
 			"friendlyName": "Grand Theft Auto V",
-			"installFolderRegKey": "Rockstar Games\\Grand Theft Auto Vee",
+			"installFolderRegKey": "Rockstar Games\\Grand Theft Auto V",
 			"installFolderRegValueName": "InstallFolder",
 			"principalFileName": "GTA5.exe",
 			"appdataFolderName": "GTA V",

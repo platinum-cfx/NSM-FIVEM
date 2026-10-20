@@ -1,0 +1,108 @@
+name: NSM client build
+
+# Same recipe as "P2 stock build" (product=fivem), but triggered by a push so
+# that it also runs for branches whose token has no "Actions: write" permission
+# (workflow_dispatch is blocked for such tokens).
+on:
+  push:
+    branches:
+      - 'arena/**'
+      - 'main'
+    paths:
+      - 'code/**'
+      - 'data/**'
+      - 'ext/**'
+      - '.github/workflows/client-build.yml'
+  workflow_dispatch:
+    inputs:
+      product:
+        description: 'Product to build (fivem = NSM client)'
+        required: true
+        default: 'fivem'
+        type: choice
+        options:
+          - fivem
+
+concurrency:
+  group: nsm-client-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-client:
+    name: Build NSM client (windows)
+    runs-on: windows-2022
+    timeout-minutes: 350
+    env:
+      CI: 'true'
+      CFX_DRY_RUN: 'true'
+      CFX_PRODUCT_NAME: ${{ inputs.product || 'fivem' }}
+      CI_COMMIT_REF_NAME: ${{ github.ref_name }}
+      CI_COMMIT_SHA: ${{ github.sha }}
+      CI_PROJECT_DIR: ${{ github.workspace }}
+    steps:
+      - name: Enable git symlinks
+        run: git config --global core.symlinks true
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          # submodules are cloned by the Cfx CI script itself (shallow, tag-aware)
+
+      - name: Materialize repo symlinks as junctions
+        shell: pwsh
+        run: |
+          $links = git ls-files -s | Where-Object { $_ -match '^120000' }
+          foreach ($l in $links) {
+            $parts = $l -split '\s+'
+            $path = ($parts[3] -replace '^"', '' -replace '"$', '')
+            $target = (git cat-file -p $parts[1]).Trim()
+            $linkDir = Split-Path $path -Parent
+            $absTarget = Resolve-Path (Join-Path $linkDir $target) -ErrorAction SilentlyContinue
+            if ($absTarget) {
+              $item = Get-Item $path -Force -ErrorAction SilentlyContinue
+              if (-not $item.LinkType) {
+                Remove-Item $path -Force
+                New-Item -ItemType Junction -Path $path -Target $absTarget.Path | Out-Null
+                Write-Host "junction: $path -> $($absTarget.Path)"
+              }
+            } else { Write-Host "WARN: symlink target missing for $path ($target)" }
+          }
+
+      - name: Install MSYS2 (pacman needed by prebuild)
+        run: choco install -y msys2 --params "/InstallDir:C:\msys64"
+
+      - name: Python setuptools for every Python (node-gyp needs distutils)
+        shell: pwsh
+        run: |
+          $pythons = @()
+          $cmd = Get-Command python -ErrorAction SilentlyContinue
+          if ($cmd) { $pythons += $cmd.Source }
+          $pythons += (& py -0p 2>$null | ForEach-Object { ($_ -split '\s+')[-1] } | Where-Object { $_ -like '*python.exe' })
+          $pythons | Select-Object -Unique | ForEach-Object {
+            Write-Host "setuptools -> $_"
+            & $_ -m pip install --quiet setuptools
+            if ($LASTEXITCODE -ne 0) { Write-Host "WARN: setuptools install failed for $_" }
+          }
+
+      - name: Ensure yarn (system resources build)
+        run: npm install -g yarn
+
+      - name: Build (upstream Cfx CI script)
+        shell: pwsh
+        run: |
+          Set-Location code/tools/ci
+          Write-Host '=== running build_client.ps1 ==='
+          & .\build_client.ps1
+          if ($LASTEXITCODE -ne 0) { throw "build_client.ps1 failed with $LASTEXITCODE" }
+
+      - name: Upload binaries and caches (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nsm-client-${{ github.sha }}
+          path: |
+            .build-cache/bin/
+            caches/
+          retention-days: 14
+          if-no-files-found: warn

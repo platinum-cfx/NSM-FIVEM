@@ -974,8 +974,10 @@ static InitFunction initFunction([] ()
 				auto rhl = std::make_shared<HttpHeaderList>();
 				options.responseHeaders = rhl;
 				options.followLocation = false;
+				auto responseCode = std::make_shared<int>(0);
+				options.responseCode = responseCode;
 
-				Instance<HttpClient>::Get()->DoGetRequest(c->url, options, [rhl, c](bool success, const char* data, size_t length)
+				Instance<HttpClient>::Get()->DoGetRequest(c->url, options, [rhl, responseCode, c](bool success, const char* data, size_t length)
 				{
 					if (c->functionName == "dynamic")
 					{
@@ -994,6 +996,10 @@ static InitFunction initFunction([] ()
 						return;
 					}
 
+					// keep the resolved URL around: it is the answer when the
+					// resource is served directly instead of being redirected
+					std::string resolvedUrl = c->url;
+
 					auto cb = std::move(c->cb);
 					delete c;
 
@@ -1008,6 +1014,17 @@ static InitFunction initFunction([] ()
 							cb(it->second);
 						}
 
+						return;
+					}
+
+					// NSM: the NSM masterlist may serve the resource directly
+					// instead of redirecting to it. The UI needs a URL it can
+					// fetch, so hand back the URL we just resolved rather than
+					// an empty string (which left the server browser without a
+					// server list).
+					if (success && responseCode && *responseCode >= 200 && *responseCode < 300)
+					{
+						cb(resolvedUrl);
 						return;
 					}
 

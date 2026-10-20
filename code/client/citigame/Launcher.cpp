@@ -36,7 +36,14 @@ bool LauncherInterface::PreLoadGame(void* cefSandbox)
 	{
 		const auto& map = ComponentLoader::GetInstance()->GetKnownComponents();
 
-		if (map.find("adhesive") == map.end())
+		// NSM: the closed-source Cfx "adhesive" component is not part of the
+		// open build; it is replaced by the open-source "sticky" component
+		// (see data/client/components.json). Both spawn the game as a separate
+		// process and set CfxState::gamePid to that process' PID, so the
+		// gamePid must not be overwritten for either of them - the game
+		// process identifies itself through that PID
+		// (CfxState::IsGameProcess()).
+		if (map.find("adhesive") == map.end() && map.find("sticky") == map.end())
 		{
 			initState->gamePid = initState->initialGamePid;
 		}

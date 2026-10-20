@@ -217,6 +217,14 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	// CORB is not handled by CEF CefAddCrossOriginWhitelistEntry, disable CORS entirely
 	command_line->AppendSwitch("disable-web-security");
 
+	// NSM: the client UI (cfx-ui, served from the nui: scheme) talks to the
+	// NSM services, which are plain HTTP on the NSM host. The nui: scheme is
+	// registered as CEF_SCHEME_OPTION_SECURE, so Chromium would otherwise
+	// block those requests as active mixed content and the server browser
+	// would silently never receive a server list. The NUI is a local, trusted
+	// origin and CORS is already disabled above, so allow insecure content.
+	command_line->AppendSwitch("allow-running-insecure-content");
+
 	// disable accelerated video decoding, something in M91 upgrade broke this (instant hang when playing Twitter video)
 	command_line->AppendSwitch("disable-accelerated-video-decode");
 	command_line->AppendSwitch("disable-accelerated-video-encode");

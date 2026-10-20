@@ -9,6 +9,7 @@
 #include <CfxSubProcess.h>
 #include <HostSharedData.h>
 #include <ReverseGameData.h>
+#include <UUIState.h>
 
 #include <CefOverlay.h>
 
@@ -22,6 +23,23 @@ using nlohmann::json;
 
 static HANDLE g_gp;
 static std::function<void()> doNext;
+
+// The game process owns the "Analyzing game data" / "Validating Rockstar
+// Entitlements" progress window: it opens it from PostLoadGame and closes it
+// from PreResumeGame. If the game process dies (or stalls) before it gets
+// there, that window stays on screen forever and hides the server browser.
+// Close it from the launcher so the player gets the browser (and a retry)
+// back instead of an endless loading screen.
+static void CloseStaleUpdaterUI(const char* reason)
+{
+	static HostSharedData<UpdaterUIState> uuiState("CfxUUIState");
+
+	if (!uuiState->finalized)
+	{
+		trace("NSM launcher: closing updater UI (finalized=0, reason=%s)\n", reason);
+		uuiState->Close();
+	}
+}
 
 namespace citizen
 {
@@ -88,6 +106,8 @@ public:
 			static HostSharedData<ReverseGameData> rgd("CfxReverseGameData");
 
 			TerminateProcess(g_gp, 0);
+
+			CloseStaleUpdaterUI("game disconnected");
 
 			nui::SetMainUI(true);
 			nui::CreateFrame("mpMenu", uiUrlVar.GetValue());
@@ -266,6 +286,12 @@ void GameImpl::RunMod(const std::string& modId, const std::string& args)
 
 			WaitForSingleObject(processInfo.hProcess, INFINITE);
 			CloseHandle(processInfo.hProcess);
+
+			// The game process is gone. If it never reached PreResumeGame it
+			// never closed the "Analyzing game data" / "Validating Rockstar
+			// Entitlements" window - close it now, otherwise it covers the
+			// server browser and the user is stuck on a loading screen.
+			CloseStaleUpdaterUI("game process exited");
 
 			static ConVar<std::string> uiUrlVar("ui_url", ConVar_UserPref, "https://nui-game-internal/ui/app/index.html");
 

@@ -1,0 +1,93 @@
+name: NSM masterlist tests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'tools/masterlist/**'
+      - '.github/workflows/masterlist-tests.yml'
+  pull_request:
+    paths:
+      - 'tools/masterlist/**'
+      - '.github/workflows/masterlist-tests.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: masterlist-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  masterlist-tests:
+    name: Masterlist service and UI patcher tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Masterlist service tests
+        run: python3 tools/masterlist/tests/test_masterlist.py
+
+      - name: UI bundle patcher tests
+        run: python3 tools/masterlist/tests/test_ui_bundle_patch.py
+
+      - name: Legitimacy entitlement endpoint tests
+        run: python3 tools/legitimacy/tests/test_entitlement_patch.py
+
+      - name: Legitimacy entitlement error classification tests
+        run: python3 tools/legitimacy/tests/test_entitlement_error_class.py
+
+      - name: NSM entitlement service tests
+        run: python3 tools/legitimacy/tests/test_entitlement_service.py
+
+  masterlist-go:
+    name: Go masterlist build and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Vet
+        working-directory: tools/masterlist
+        run: go vet ./...
+
+      - name: Test
+        working-directory: tools/masterlist
+        run: go test -v ./...
+
+      - name: Build Linux binary
+        working-directory: tools/masterlist
+        run: go build -trimpath -ldflags "-s -w" -o NSM-Masterlist ./...
+
+      - name: Build Windows binary
+        working-directory: tools/masterlist
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: go build -trimpath -ldflags "-s -w" -o NSM-Masterlist.exe ./...
+
+      - name: Upload masterlist binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: nsm-masterlist-binaries
+          path: |
+            tools/masterlist/NSM-Masterlist
+            tools/masterlist/NSM-Masterlist.exe
+          retention-days: 14
+          if-no-files-found: error

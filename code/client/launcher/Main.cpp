@@ -7,6 +7,7 @@
 
 #include "StdInc.h"
 #include "CitizenGame.h"
+#include "EntitlementService.h"
 
 // *NASTY* include path
 #include <../citicore/LaunchMode.h>
@@ -594,6 +595,16 @@ int RealMain()
 
 	DoPreLaunchTasks();
 
+	// NSM: the Rockstar entitlement check asks NSM's own local entitlement
+	// service (the Cfx endpoint is not patched into the component any more).
+	// The master process hosts it, the ROS helper and the game process are
+	// the clients. It has to be up before the helper processes start, they
+	// run the check as their first step.
+	if (initState->IsMasterProcess())
+	{
+		nsm::StartEntitlementService();
+	}
+
 	// make sure the game path exists
 	if (auto gamePathExit = EnsureGamePath(); gamePathExit)
 	{
@@ -872,7 +883,47 @@ int RealMain()
 					return (uuiState->waitForExpiration && firstLoop) ? expired() : true;
 				};
 
+				// NSM: the game process opens this window ("Analyzing game
+				// data" / "Validating Rockstar Entitlements") and closes it
+				// from PreResumeGame. If the game process dies first, the
+				// window would stay up forever and hide the server browser.
+				auto gameProcessExited = []()
+				{
+					auto initState = CfxState::Get();
+
+					if (!initState->gamePid)
+					{
+						return false;
+					}
+
+					HANDLE hProcess = OpenProcess(SYNCHRONIZE, FALSE, initState->gamePid);
+
+					if (!hProcess)
+					{
+						// the process does not exist (any more)
+						return true;
+					}
+
+					DWORD waitResult = WaitForSingleObject(hProcess, 0);
+					CloseHandle(hProcess);
+
+					return waitResult == WAIT_OBJECT_0;
+				};
+
 				bool wasCustom = false;
+
+				// NSM: periodic trace of the updater UI state, so a stuck
+				// startup can be diagnosed from the log instead of guessed at.
+				DWORD lastUuiTrace = GetTickCount();
+
+				// NSM: how long a single startup stage may take before we give
+				// up on it and give the player the server browser back. The
+				// Rockstar entitlement check normally completes in seconds;
+				// five minutes without any progress means it cannot complete.
+				const DWORD uuiStallTimeout = 5 * 60 * 1000;
+
+				std::string lastUuiState;
+				DWORD lastUuiStateChange = GetTickCount();
 
 				while (shouldBeOpen())
 				{
@@ -885,6 +936,15 @@ int RealMain()
 					// bail out if wait failed, or if the handle is signaled
 					if (res == WAIT_OBJECT_0 || res == WAIT_FAILED)
 					{
+						break;
+					}
+
+					// NSM: never leave the player on an endless loading screen -
+					// if the game process is gone, hand the screen back.
+					if (!uuiState->finalized && gameProcessExited())
+					{
+						trace("NSM startup: game process exited while the updater UI was open - closing it\n");
+						uuiState->Close();
 						break;
 					}
 
@@ -902,6 +962,43 @@ int RealMain()
 					else
 					{
 						UI_UpdateProgress(uuiState->progress);
+					}
+
+					// NSM: periodic trace of the updater UI state - tells us
+					// exactly which startup stage the launcher is waiting for.
+					// If the stage does not advance for a long time the
+					// operation has genuinely failed (e.g. the Rockstar
+					// entitlement check cannot complete), so hand the screen
+					// back to the player instead of loading forever.
+					{
+						DWORD now = GetTickCount();
+
+						if (!uuiState->finalized)
+						{
+							if (now - lastUuiTrace >= 30000)
+							{
+								trace("NSM startup: updater UI still open elapsedMs=%lu progress=%.1f title='%s' subtitle='%s' gamePid=%d\n",
+									now - lastUuiTrace, uuiState->progress, uuiState->title, uuiState->subtitle,
+									CfxState::Get()->gamePid);
+								lastUuiTrace = now;
+							}
+
+							// did the reported stage change at all?
+							std::string stateKey = fmt::sprintf("%s|%s|%.1f", uuiState->title, uuiState->subtitle, uuiState->progress);
+
+							if (stateKey != lastUuiState)
+							{
+								lastUuiState = stateKey;
+								lastUuiStateChange = now;
+							}
+							else if (now - lastUuiStateChange >= uuiStallTimeout)
+							{
+								trace("NSM startup: updater UI stalled for %lu ms in stage '%s' - closing it so the server browser is reachable again\n",
+									now - lastUuiStateChange, uuiState->subtitle);
+								uuiState->Close();
+								break;
+							}
+						}
 					}
 
 					if (shouldBeCustom())
