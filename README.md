@@ -116,6 +116,9 @@ NSM is engineered so existing FiveM servers, frameworks, scripts, and custom ass
   - Bypasses external `cfxTicket2` and `sv_lan` restrictions in `AxiomFX-server-impl.dll` so players can connect over the internet or LAN without Cfx Nucleus tokens.
   - Sends live heartbeats directly to `http://147.189.174.173/api/serverlist/ingress` out of the box — **no `sv_master1` URL needed in `server.cfg`**.
   - Ships with all standard `cfx-server-data` resources (`basic-gamemode`, `chat`, `spawnmanager`, `mapmanager`, `sessionmanager`, `hardcap`, `baseevents`, `yarn`, `webpack`, etc.).
+- **Custom Server Logo in the Server List (`load_server_icon`)**:
+  - Drop a **96x96 PNG** (exact size, e.g. `server-icon.png`) next to `server.cfg` and add `load_server_icon server-icon.png` to `server.cfg` (or run it live in the `afx>` console).
+  - The logo is broadcast in every heartbeat and displayed automatically in the `NSM.exe` server browser and on `https://nsmultiplayer.com/servers` — servers without a logo keep the generated letter avatar.
 
 ---
 

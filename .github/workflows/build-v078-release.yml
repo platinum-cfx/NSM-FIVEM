@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - arena/b9db485b-nsm-fivem
+      - arena/9edad32f-nsm-fivem
   workflow_dispatch:
 
 permissions:

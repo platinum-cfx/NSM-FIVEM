@@ -11,6 +11,9 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -127,6 +130,124 @@ func TestHeartbeatStreamAndExpiry(t *testing.T) {
 		t.Fatal("stale record not pruned")
 	}
 }
+func makePNG(t *testing.T, w, h int, tint uint8) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{uint8(x * 255 / w), uint8(y * 255 / h), tint, 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func withIcon(body, iconB64 string) string {
+	return strings.Replace(body, `"resources":["chat"]`, `"resources":["chat"],"icon":"`+iconB64+`"`, 1)
+}
+
+func TestServerIconLoadAndServe(t *testing.T) {
+	h := setupTest(t)
+	ep := "127.0.0.1:30120"
+	single := func() int64 {
+		t.Helper()
+		w := request(h, "GET", "/api/servers/single/"+ep, "")
+		var server struct {
+			EndPoint string
+			Data     ServerData
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &server) != nil {
+			t.Fatalf("single: %d %s", w.Code, w.Body.String())
+		}
+		return server.Data.IconVersion
+	}
+	iconURL := func(ver int64) string {
+		return "/api/servers/icon/" + ep + "/" + fmt.Sprintf("%d", ver) + ".png"
+	}
+
+	// 1. Non-96x96 PNGs and garbage are rejected but never break the heartbeat.
+	if w := request(h, "POST", "/api/serverlist/ingress", withIcon(validHeartbeat, base64.StdEncoding.EncodeToString(makePNG(t, 100, 100, 1)))); w.Code != 200 {
+		t.Fatalf("heartbeat with 100x100 icon: %d %s", w.Code, w.Body.String())
+	}
+	if v := single(); v != 0 {
+		t.Fatalf("expected no iconVersion for 100x100 icon, got %d", v)
+	}
+	if w := request(h, "POST", "/api/serverlist/ingress", withIcon(validHeartbeat, "!!!not-base64!!!")); w.Code != 200 {
+		t.Fatalf("heartbeat with invalid icon must stay up: %d %s", w.Code, w.Body.String())
+	}
+
+	// 2. A 96x96 PNG is accepted and served at the icon URL.
+	pngA := makePNG(t, 96, 96, 10)
+	b64A := base64.StdEncoding.EncodeToString(pngA)
+	if w := request(h, "POST", "/api/serverlist/ingress", withIcon(validHeartbeat, b64A)); w.Code != 200 {
+		t.Fatalf("heartbeat with icon: %d %s", w.Code, w.Body.String())
+	}
+	verA := single()
+	if verA == 0 {
+		t.Fatal("expected iconVersion for 96x96 icon")
+	}
+	wIcon := request(h, "GET", iconURL(verA), "")
+	if wIcon.Code != 200 || wIcon.Header().Get("Content-Type") != "image/png" || !bytes.Equal(wIcon.Body.Bytes(), pngA) {
+		t.Fatalf("icon GET: %d %s", wIcon.Code, wIcon.Body.String())
+	}
+
+	// 3. Wrong or missing versions 404 (contract: client falls back to avatar).
+	if w := request(h, "GET", iconURL(0), ""); w.Code != 404 {
+		t.Fatalf("version 0 icon: %d", w.Code)
+	}
+	if w := request(h, "GET", iconURL(verA+1), ""); w.Code != 404 {
+		t.Fatalf("stale version icon: %d", w.Code)
+	}
+	if w := request(h, "GET", "/api/servers/icon/203.0.113.9:30120/1.png", ""); w.Code != 404 {
+		t.Fatalf("unknown endpoint icon: %d", w.Code)
+	}
+
+	// 4. Replacing the logo bumps the version and orphans the old URL.
+	pngB := makePNG(t, 96, 96, 200)
+	if w := request(h, "POST", "/api/serverlist/ingress", withIcon(validHeartbeat, base64.StdEncoding.EncodeToString(pngB))); w.Code != 200 {
+		t.Fatalf("heartbeat with new icon: %d %s", w.Code, w.Body.String())
+	}
+	verB := single()
+	if verB == 0 || verB == verA {
+		t.Fatalf("icon version should change: %d -> %d", verA, verB)
+	}
+	if w := request(h, "GET", iconURL(verB), ""); w.Code != 200 || !bytes.Equal(w.Body.Bytes(), pngB) {
+		t.Fatalf("new icon GET: %d", w.Code)
+	}
+	if w := request(h, "GET", iconURL(verA), ""); w.Code != 404 {
+		t.Fatalf("old icon URL should 404 after replacement: %d", w.Code)
+	}
+
+	// 5. A heartbeat without icon clears the logo (load_server_icon removed).
+	if w := request(h, "POST", "/api/serverlist/ingress", validHeartbeat); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	if v := single(); v != 0 {
+		t.Fatalf("iconVersion should clear, got %d", v)
+	}
+	if w := request(h, "GET", iconURL(verB), ""); w.Code != 404 {
+		t.Fatalf("cleared icon should 404: %d", w.Code)
+	}
+
+	// 6. Icons expire with their server entry after the heartbeat TTL.
+	if w := request(h, "POST", "/api/serverlist/ingress", withIcon(validHeartbeat, b64A)); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	verC := single()
+	if verC == 0 {
+		t.Fatal("expected iconVersion")
+	}
+	reg.mu.Lock()
+	reg.servers[ep].last = time.Now().Add(-heartbeatTTL - time.Second)
+	reg.mu.Unlock()
+	if w := request(h, "GET", iconURL(verC), ""); w.Code != 404 {
+		t.Fatalf("icon for expired server should 404: %d", w.Code)
+	}
+}
+
 func TestMalformedHeartbeats(t *testing.T) {
 	h := setupTest(t)
 	for _, body := range []string{`{}`, `null`, `[]`, `{`, `{} {}`, `{"port":-1}`, `{"port":65536}`, `{"ipOverride":"8.8.8.8"}`, `{"fallbackData":{"info":[]}}`, `{"fallbackData":{"dynamic":{"clients":-1}}}`, `{"fallbackData":{"dynamic":{"clients":1.5}}}`, `{"fallbackData":{"dynamic":{"clients":2147483648}}}`, `{"fallbackData":{"info":{"resources":[42]}}}`, `{"fallbackData":{"info":{"vars":[]}}}`, `{"fallbackData":{"players":{}}}`} {

@@ -44,6 +44,9 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -247,13 +250,22 @@ type entry struct {
 	ownerID int64
 }
 
+// iconRecord holds one server's list logo: a 96x96 PNG that arrived in the
+// heartbeat as info.icon (base64), plus a content-derived version used in
+// /api/servers/icon/<endpoint>/<version>.png URLs (FiveM-compatible).
+type iconRecord struct {
+	png     []byte
+	version int64
+}
+
 type registry struct {
 	mu      sync.RWMutex
 	servers map[string]*entry
+	icons   map[string]iconRecord
 }
 
 func newRegistry() *registry {
-	return &registry{servers: map[string]*entry{}}
+	return &registry{servers: map[string]*entry{}, icons: map[string]iconRecord{}}
 }
 
 func (r *registry) upsert(endPoint string, data ServerData) {
@@ -286,6 +298,7 @@ func (r *registry) evictByKey(keyID string) int {
 	for ep, e := range r.servers {
 		if e.keyID == keyID {
 			delete(r.servers, ep)
+			delete(r.icons, ep)
 			evicted++
 		}
 	}
@@ -310,6 +323,12 @@ func (r *registry) live() map[string]*entry {
 	for ep, e := range r.servers {
 		if time.Since(e.last) > heartbeatTTL || (e.keyID != "" && !isServerKeyActive(e.keyID)) {
 			delete(r.servers, ep)
+			delete(r.icons, ep)
+		}
+	}
+	for ep := range r.icons {
+		if _, ok := r.servers[ep]; !ok {
+			delete(r.icons, ep)
 		}
 	}
 	out := make(map[string]*entry, len(r.servers))
@@ -320,6 +339,76 @@ func (r *registry) live() map[string]*entry {
 }
 
 var reg = newRegistry()
+
+// ---------------------------------------------------------------------------
+// server list icons (load_server_icon -> heartbeat info.icon -> icon URL)
+// ---------------------------------------------------------------------------
+
+const maxServerIconBytes = 512 << 10
+
+var pngSignature = []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}
+
+// validServerIconPNG mirrors the server runtime's load_server_icon rules
+// (InfoHttpHandler.cpp): the file must be a PNG of exactly 96x96 pixels.
+func validServerIconPNG(raw []byte) bool {
+	if len(raw) < 24 || len(raw) > maxServerIconBytes || !bytes.Equal(raw[:8], pngSignature) {
+		return false
+	}
+	if string(raw[12:16]) != "IHDR" {
+		return false
+	}
+	return binary.BigEndian.Uint32(raw[16:20]) == 96 && binary.BigEndian.Uint32(raw[20:24]) == 96
+}
+
+// serverIconVersion derives a positive 31-bit icon version from the icon
+// content so /api/servers/icon/<ep>/<ver>.png URLs change when the logo does.
+func serverIconVersion(png []byte) int64 {
+	sum := sha256.Sum256(png)
+	v := int64(binary.BigEndian.Uint32(sum[:4]) & 0x7fffffff)
+	if v == 0 {
+		v = 1
+	}
+	return v
+}
+
+// setIcon stores the base64 96x96 PNG icon carried in a heartbeat (info.icon)
+// and returns the effective icon version to publish on the server entry.
+// An empty value clears the icon; an invalid value keeps the previous one.
+func (r *registry) setIcon(endPoint, iconB64 string) int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if strings.TrimSpace(iconB64) == "" {
+		delete(r.icons, endPoint)
+		return 0
+	}
+	raw, err := base64.StdEncoding.DecodeString(iconB64)
+	if err != nil || !validServerIconPNG(raw) {
+		if rec, ok := r.icons[endPoint]; ok {
+			return rec.version
+		}
+		return 0
+	}
+	ver := serverIconVersion(raw)
+	r.icons[endPoint] = iconRecord{png: raw, version: ver}
+	return ver
+}
+
+// getIcon returns the icon for endPoint when wantVer matches the current
+// icon version and the server entry is still live; stale URLs return false
+// so clients fall back to the generated letter avatar.
+func (r *registry) getIcon(endPoint string, wantVer int64) ([]byte, bool) {
+	r.mu.RLock()
+	rec, ok := r.icons[endPoint]
+	e := r.servers[endPoint]
+	r.mu.RUnlock()
+	if !ok || rec.version != wantVer {
+		return nil, false
+	}
+	if e == nil || time.Since(e.last) > heartbeatTTL || (e.keyID != "" && !isServerKeyActive(e.keyID)) {
+		return nil, false
+	}
+	return rec.png, true
+}
 
 // ---------------------------------------------------------------------------
 // owner mods (upvotes / fake players) + feed, persisted to state.json
@@ -480,7 +569,7 @@ func asStringMap(v interface{}) map[string]string {
 	return out
 }
 
-func serverDataFromHeartbeat(hb *heartbeat) ServerData {
+func serverDataFromHeartbeat(hb *heartbeat) (ServerData, string) {
 	info := unwrapData(hb.FallbackData.Info, "info")
 	dyn := unwrapData(hb.FallbackData.Dynamic, "dynamic")
 
@@ -546,7 +635,7 @@ func serverDataFromHeartbeat(hb *heartbeat) ServerData {
 		EnhancedHostSupport: info["enhancedHostSupport"] == true || asInt(info["enhancedHostSupport"], 0) != 0,
 		UpvotePower:         0,
 		BurstPower:          0,
-	}
+	}, strings.TrimSpace(asString(info["icon"]))
 }
 
 // ---------------------------------------------------------------------------
@@ -766,7 +855,26 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	case strings.HasPrefix(path, "/api/servers/icon/"):
 		w.Header().Set("Content-Type", "image/png")
-		w.WriteHeader(http.StatusNotFound)
+		rest := strings.TrimPrefix(path, "/api/servers/icon/")
+		slash := strings.LastIndex(rest, "/")
+		if slash <= 0 {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		ver, err := strconv.ParseInt(strings.TrimSuffix(rest[slash+1:], ".png"), 10, 64)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		icon, ok := reg.getIcon(rest[:slash], ver)
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		w.Header().Set("Content-Length", strconv.Itoa(len(icon)))
+		w.WriteHeader(http.StatusOK)
+		w.Write(icon)
 
 	case path == "/api/ticket/pubkey":
 		if ticketPublicKey == "" {
@@ -888,7 +996,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			keyID = keyRec.ID
 			ownerID = keyRec.UserID
 		}
-		data := serverDataFromHeartbeat(hb)
+		data, iconB64 := serverDataFromHeartbeat(hb)
+		if iconVer := reg.setIcon(endPoint, iconB64); iconVer != 0 {
+			data.IconVersion = iconVer
+		}
 		if !reg.upsertWithOwner(endPoint, data, keyID, ownerID) {
 			sendJSON(w, http.StatusForbidden, map[string]string{"lastError": "endpoint_owned_by_another_account"})
 			return
