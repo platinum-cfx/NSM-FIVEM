@@ -1024,12 +1024,12 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Keep join codes (shareable /join/<code> links that hide the IP)
-		// pointed at this server's live endpoint.
+		// pointed at this server's live endpoint. Every listed server gets
+		// its own unique code; a key's code additionally follows its server.
 		if keyID != "" {
 			bindJoinCodeEndpoint(keyID, endPoint)
-		} else {
-			joinCodeForEndpoint(endPoint)
 		}
+		joinCodeForEndpoint(endPoint)
 		log.Printf("[heartbeat] %s clients=%d", endPoint, data.Clients)
 		sendJSON(w, 200, map[string]interface{}{})
 

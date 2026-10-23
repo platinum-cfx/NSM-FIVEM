@@ -2047,4 +2047,39 @@ func TestJoinCodes(t *testing.T) {
 	if wLeg.Code != 200 || wLeg.Header().Get("X-CitizenFX-Url") != "http://127.0.0.1:30120/" {
 		t.Fatalf("legacy /join/{ep} broke: %d hdr=%q", wLeg.Code, wLeg.Header().Get("X-CitizenFX-Url"))
 	}
+
+	// 8. Per-server uniqueness like cfx.re: even ONE key running several
+	//    servers gives every server its own distinct code resolving to its
+	//    own endpoint.
+	wIssueU := requestAuth(h, "POST", "/api/keymaster/issue",
+		`{"label":"Multi Server","ttlSeconds":3600}`, map[string]string{"X-NSM-Session": sess})
+	var issueU struct {
+		ServerKey string `json:"serverKey"`
+	}
+	json.Unmarshal(wIssueU.Body.Bytes(), &issueU)
+	for _, port := range []string{"30131", "30132"} {
+		hbU := strings.Replace(validHeartbeat, `"port":30120`, `"port":`+port, 1)
+		if w := requestAuth(h, "POST", "/api/serverlist/ingress", hbU, map[string]string{"X-NSM-Server-Key": issueU.ServerKey}); w.Code != 200 {
+			t.Fatalf("multi-server heartbeat on %s: %d %s", port, w.Code, w.Body.String())
+		}
+	}
+	wList2 := request(h, "GET", "/servers", "")
+	pairs := regexp.MustCompile(`data-ep="(127\.0\.0\.1:3013[12])"\s+data-join-code="([a-z0-9]+)"`).FindAllStringSubmatch(wList2.Body.String(), -1)
+	if len(pairs) != 2 {
+		t.Fatalf("expected both multi-server rows to carry join codes, got %d: %s", len(pairs), wList2.Body.String()[:min(200, len(wList2.Body.String()))])
+	}
+	seen := map[string]string{}
+	for _, p := range pairs {
+		if !isJoinCode(p[2]) {
+			t.Fatalf("row %s has invalid join code %q", p[1], p[2])
+		}
+		if other, dup := seen[p[2]]; dup {
+			t.Fatalf("servers %s and %s share join code %q — every server needs its own", other, p[1], p[2])
+		}
+		seen[p[2]] = p[1]
+		w := request(h, "GET", "/join/"+p[2], "")
+		if w.Code != 200 || w.Header().Get("X-CitizenFX-Url") != "http://"+p[1]+"/" {
+			t.Fatalf("join code %s must resolve to %s, got %d hdr=%q", p[2], p[1], w.Code, w.Header().Get("X-CitizenFX-Url"))
+		}
+	}
 }

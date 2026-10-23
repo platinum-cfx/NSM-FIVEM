@@ -133,48 +133,25 @@ func bindJoinCodeEndpoint(keyID, endpoint string) {
 	saveAccountsLocked()
 }
 
-// ensureJoinCodeForEndpointLocked returns the join code to DISPLAY for a
-// server endpoint, assigning an auto code only when explicitly asked
-// (heartbeat time). Display paths use joinCodeForEndpointLookup so a GET
-// never mutates state.
+// ensureJoinCodeForEndpointLocked returns the SERVER's own join code, minting
+// one on first sight. Every listed server gets exactly one endpoint-owned
+// code — different servers always get different codes (like cfx.re).
 func ensureJoinCodeForEndpointLocked(ep string) string {
 	ensureJoinCodesLocked()
-	// A key-owned code for this endpoint wins (that's the "per key" code).
-	bestCode := ""
-	bestCreated := int64(-1)
 	for code, t := range acc.JoinCodes {
-		if t.Endpoint != ep {
-			continue
+		if t.Endpoint == ep && t.KeyID == "" {
+			return code
 		}
-		if t.KeyID != "" {
-			active := false
-			for i := range acc.ServerKeys {
-				rec := &acc.ServerKeys[i]
-				if rec.ID == t.KeyID && !rec.Revoked && keyClock().Unix() < rec.ExpiresAt {
-					active = true
-					break
-				}
-			}
-			if !active {
-				continue
-			}
-			if t.CreatedAt > bestCreated {
-				bestCode, bestCreated = code, t.CreatedAt
-			}
-		} else if bestCode == "" && bestCreated < 0 {
-			bestCode, bestCreated = code, t.CreatedAt
-		}
-	}
-	if bestCode != "" {
-		return bestCode
 	}
 	code := generateJoinCodeLocked()
 	acc.JoinCodes[code] = JoinTarget{Endpoint: ep, CreatedAt: time.Now().Unix()}
 	return code
 }
 
-// joinCodeForEndpointLookup returns the display join code for an endpoint
-// without creating one (safe for GET paths).
+// joinCodeForEndpointLookup returns the join code to DISPLAY for a server
+// endpoint without creating one (safe for GET paths). A key-owned code bound
+// to this endpoint wins (that's the code its owner sees in Keymaster);
+// otherwise the server's own endpoint code is shown.
 func joinCodeForEndpointLookup(ep string) string {
 	if ep == "" {
 		return ""
@@ -187,6 +164,7 @@ func joinCodeForEndpointLookup(ep string) string {
 	ensureJoinCodesLocked()
 	bestCode := ""
 	bestCreated := int64(-1)
+	fallback := ""
 	for code, t := range acc.JoinCodes {
 		if t.Endpoint != ep {
 			continue
@@ -206,11 +184,14 @@ func joinCodeForEndpointLookup(ep string) string {
 			if t.CreatedAt > bestCreated {
 				bestCode, bestCreated = code, t.CreatedAt
 			}
-		} else if bestCode == "" && bestCreated < 0 {
-			bestCode, bestCreated = code, t.CreatedAt
+		} else {
+			fallback = code
 		}
 	}
-	return bestCode
+	if bestCode != "" {
+		return bestCode
+	}
+	return fallback
 }
 
 // joinCodeForEndpoint assigns-if-missing (heartbeat time).
