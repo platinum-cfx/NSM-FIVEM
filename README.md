@@ -136,6 +136,10 @@ NSM is engineered so existing FiveM servers, frameworks, scripts, and custom ass
   - Generate, manage, and toggle NSM server license keys (`nsmk_...`) tied to user accounts.
 - **AFX Community Forum (`/forum`), Custom Profiles (`/u/{username}`) & Support (`/support`)**:
   - Full Discourse-style forum with categories, staff-only `announcements` topic creation, real-time view counters, two-way friend requests & DMs, custom AFX profile themes, animated avatar decorations, 18 hard-to-earn badges, email verification, 2FA, Staff Moderation Panel, and Zendesk-style Support Tickets with strict per-user privacy (`MyTickets` vs staff-only `AllTickets`).
+- **Account Security & Keymaster Hardening**:
+  - Registration now **requires a real email address** and sends a genuine 6-digit verification code through SMTP (configure `NSM_SMTP_HOST` / `NSM_SMTP_PORT` / `NSM_SMTP_USER` / `NSM_SMTP_PASS` / `NSM_MAIL_FROM` in the server environment; credentials never live in files), plus optional **Sign in with Google** (`NSM_GOOGLE_CLIENT_ID` / `NSM_GOOGLE_CLIENT_SECRET`).
+  - Server keys are **visible only to the account that issued them** (not even other staff can browse them in Keymaster), profile notifications/DMs are strictly private, and support tickets require a signed-in account — closed tickets leave the working queues and are archived in a **Closed Ticket Log**.
+  - Keymaster shows your **10 free upvotes** with a 1–10 slider to boost your own server's listing, and advertises the **free 2048 player slots** included with every key.
 
 ---
 

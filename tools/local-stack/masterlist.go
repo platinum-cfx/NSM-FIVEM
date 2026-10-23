@@ -496,6 +496,9 @@ func applyMods(ep string, d *ServerData) {
 	if uc := int64(upvoteCount(ep)); uc > 0 {
 		d.UpvotePower += uc
 	}
+	if alloc := int64(allocationBoost(ep)); alloc > 0 {
+		d.UpvotePower += alloc
+	}
 	// Local-first: never fabricate players or counts from persisted admin state.
 }
 

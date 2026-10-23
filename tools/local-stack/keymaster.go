@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"regexp"
@@ -309,7 +310,9 @@ func listServerKeysForUser(actor *User) []map[string]interface{} {
 	}
 	out := []map[string]interface{}{}
 	for _, k := range acc.ServerKeys {
-		if k.UserID == actor.ID || roleAtLeast(actor.Role, "admin") {
+		// PRIVACY: a key is visible ONLY to the account that issued it —
+		// never to other members (and not even to staff browsing Keymaster).
+		if k.UserID == actor.ID {
 			out = append(out, k.PublicView())
 		}
 	}
@@ -364,6 +367,25 @@ func serveKeymasterPage(w http.ResponseWriter, r *http.Request, extra map[string
 	}
 	if u != nil {
 		data["Keys"] = listServerKeysForUser(u)
+		data["UpvoteBalance"] = u.UpvoteAllowance()
+		upEp := ""
+		accMu.Lock()
+		if t := userByID(u.ID); t != nil {
+			data["UpvoteAllocated"] = t.UpvoteAllocation
+		}
+		for _, k := range acc.ServerKeys {
+			if k.UserID == u.ID && !k.Revoked {
+				if k.BoundEndpoint != "" {
+					upEp = k.BoundEndpoint
+					break
+				}
+				if k.LastEndpoint != "" {
+					upEp = k.LastEndpoint
+				}
+			}
+		}
+		accMu.Unlock()
+		data["UpvoteServerEp"] = upEp
 	}
 	for k, v := range extra {
 		data[k] = v
@@ -407,6 +429,31 @@ func keymasterRevokeForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/keymaster", http.StatusSeeOther)
+}
+
+func keymasterUpvotesForm(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		http.Redirect(w, r, "/login?next=/keymaster", http.StatusSeeOther)
+		return
+	}
+	_ = r.ParseForm()
+	n, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("upvotes")))
+	if n < 0 {
+		n = 0
+	}
+	if n > 10 {
+		n = 10
+	}
+	accMu.Lock()
+	if t := userByID(u.ID); t != nil {
+		t.UpvoteAllocation = n
+	}
+	saveAccountsLocked()
+	accMu.Unlock()
+	serveKeymasterPage(w, r, map[string]interface{}{
+		"Msg": fmt.Sprintf("Saved — %d of your free upvotes now boost your server's listing.", n),
+	})
 }
 
 func apiKeymasterList(w http.ResponseWriter, r *http.Request) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
@@ -15,12 +16,14 @@ import (
 	"image/color"
 	"image/png"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -1384,3 +1387,542 @@ func TestUpvotesFeaturedAndJoinLinks(t *testing.T) {
 
 
 
+
+// ---------------------------------------------------------------------------
+// Keymaster key privacy, upvote allocation, support rules, email & Google auth
+// ---------------------------------------------------------------------------
+
+func sessionFor(t *testing.T, h http.Handler, username string) string {
+	t.Helper()
+	return registerTestUser(t, h, username)
+}
+
+func makeStaffSession(t *testing.T, username, role string) string {
+	t.Helper()
+	accMu.Lock()
+	defer accMu.Unlock()
+	var id int64
+	for i := range acc.Users {
+		if strings.EqualFold(acc.Users[i].Username, username) {
+			acc.Users[i].Role = role
+			id = acc.Users[i].ID
+		}
+	}
+	if id == 0 {
+		t.Fatalf("user %s not found", username)
+	}
+	sess := "test-sess-" + username + "-" + role
+	acc.Sessions[sess] = Session{UserID: id, Expires: time.Now().Add(time.Hour).Unix()}
+	return sess
+}
+
+func TestKeymasterKeysArePrivateToOwner(t *testing.T) {
+	h := setupTest(t)
+	sessA := sessionFor(t, h, "key_owner_a")
+	sessB := sessionFor(t, h, "key_snooper_b")
+
+	// A issues a key with a recognizable label.
+	form := url.Values{"label": {"A-SECRET-KEY-LABEL"}, "boundEndpoint": {"127.0.0.1:30120"}, "days": {"90"}}
+	req := httptest.NewRequest("POST", "/keymaster/create", strings.NewReader(form.Encode()))
+	req.RemoteAddr = "127.0.0.1:12345"
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("X-NSM-Session", sessA)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "A-SECRET-KEY-LABEL") {
+		t.Fatalf("owner could not issue key: %d", w.Code)
+	}
+
+	// B must not see A's key on the page or in the JSON API.
+	wB := requestAuth(h, "GET", "/keymaster", "", map[string]string{"X-NSM-Session": sessB})
+	if strings.Contains(wB.Body.String(), "A-SECRET-KEY-LABEL") {
+		t.Fatal("another user's server key is visible on /keymaster")
+	}
+	wBJ := requestAuth(h, "GET", "/api/keymaster/keys", "", map[string]string{"X-NSM-Session": sessB})
+	if strings.Contains(wBJ.Body.String(), "A-SECRET-KEY-LABEL") {
+		t.Fatal("another user's server key is visible in /api/keymaster/keys")
+	}
+
+	// Even an admin must not see other people's keys in Keymaster.
+	makeStaffSession(t, "key_snooper_b", "admin")
+	wAdm := requestAuth(h, "GET", "/keymaster", "", map[string]string{"X-NSM-Session": sessB})
+	if strings.Contains(wAdm.Body.String(), "A-SECRET-KEY-LABEL") {
+		t.Fatal("admin sees another user's keys in Keymaster — keys must be owner-only")
+	}
+
+	// The owner still sees their own.
+	wA := requestAuth(h, "GET", "/keymaster", "", map[string]string{"X-NSM-Session": sessA})
+	if !strings.Contains(wA.Body.String(), "A-SECRET-KEY-LABEL") {
+		t.Fatal("owner cannot see their own key on /keymaster")
+	}
+}
+
+func TestRegisterRequiresEmailAndReportsMailTruthfully(t *testing.T) {
+	h := setupTest(t)
+
+	// 1. No email -> rejected, no account created.
+	wNoMail := requestAuth(h, "POST", "/api/auth/register",
+		`{"Username":"no_email_user","Password":"Password123!"}`, nil)
+	if wNoMail.Code != 200 || !strings.Contains(wNoMail.Body.String(), "email") {
+		t.Fatalf("registration without email must fail with an email message: %d %s", wNoMail.Code, wNoMail.Body.String())
+	}
+	accMu.Lock()
+	created := findUser("no_email_user") != nil
+	accMu.Unlock()
+	if created {
+		t.Fatal("account was created without an email address")
+	}
+
+	// 2. Fake local emails are rejected too.
+	wFake := requestAuth(h, "POST", "/api/auth/register",
+		`{"Username":"fake_email_user","Password":"Password123!","Email":"fake_email_user@users.nsm.local"}`, nil)
+	if wFake.Code != 200 && wFake.Code != 400 {
+		t.Fatalf("unexpected status for fake email: %d", wFake.Code)
+	}
+	accMu.Lock()
+	created = findUser("fake_email_user") != nil
+	accMu.Unlock()
+	if created {
+		t.Fatal("account was created with a @users.nsm.local placeholder email")
+	}
+
+	// 3. With SMTP configured, the real verification code is delivered.
+	msgs := startSMTPCapture(t)
+	host, port, _ := net.SplitHostPort(smtpCaptureAddr(t))
+	t.Setenv("NSM_SMTP_HOST", host)
+	t.Setenv("NSM_SMTP_PORT", port)
+	t.Setenv("NSM_SMTP_USER", "support@nsmultiplayer.com")
+	t.Setenv("NSM_SMTP_PASS", "test-app-password")
+	wOK := requestAuth(h, "POST", "/api/auth/register",
+		`{"Username":"real_email_user","Password":"Password123!","Email":"real_email_user@example.com"}`, nil)
+	if wOK.Code != 200 {
+		t.Fatalf("registration with valid email failed: %d %s", wOK.Code, wOK.Body.String())
+	}
+	accMu.Lock()
+	u := findUser("real_email_user")
+	code := ""
+	if u != nil {
+		code = u.EmailVerifyCode
+	}
+	accMu.Unlock()
+	if code == "" {
+		t.Fatal("no verification code generated")
+	}
+	if msgs.count() != 1 || !strings.Contains(msgs.body(0), code) || !strings.Contains(msgs.body(0), "real_email_user@example.com") {
+		t.Fatalf("verification email was not delivered to the capture SMTP server: %v", msgs.all())
+	}
+	if !strings.Contains(wOK.Body.String(), "verificationRequired") {
+		t.Fatalf("register JSON must report verificationRequired: %s", wOK.Body.String())
+	}
+
+	// 4. Without SMTP configured the page must say the code was NOT emailed.
+	t.Setenv("NSM_SMTP_HOST", "")
+	reqNoSMTP := httptest.NewRequest("POST", "/register", strings.NewReader("username=no_smtp_user&password=Password123!&email=no_smtp_user@example.com"))
+	reqNoSMTP.RemoteAddr = "127.0.0.1:12345"
+	reqNoSMTP.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	wNoSMTP := httptest.NewRecorder()
+	h.ServeHTTP(wNoSMTP, reqNoSMTP)
+	if wNoSMTP.Code != 303 {
+		t.Fatalf("register form: %d %s", wNoSMTP.Code, wNoSMTP.Body.String())
+	}
+	loc := wNoSMTP.Header().Get("Location")
+	locDec, _ := url.QueryUnescape(loc)
+	if !strings.HasPrefix(loc, "/verify-email") || !strings.Contains(locDec, "could not be emailed") {
+		t.Fatalf("unconfigured SMTP must be reported honestly, got Location=%s", loc)
+	}
+}
+
+func TestSupportTicketsRequireLoginAndClosedTicketsGoToLog(t *testing.T) {
+	h := setupTest(t)
+	postForm := func(sess, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", path, strings.NewReader(body))
+		req.RemoteAddr = "127.0.0.1:12345"
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if sess != "" {
+			req.Header.Set("X-NSM-Session", sess)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+
+	// 1. Guests cannot open tickets.
+	supForm := url.Values{"subject": {"Guest attempt"}, "description": {"Should be rejected."}}
+	req := httptest.NewRequest("POST", "/support/requests", strings.NewReader(supForm.Encode()))
+	req.RemoteAddr = "127.0.0.1:12345"
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	wGuest := httptest.NewRecorder()
+	h.ServeHTTP(wGuest, req)
+	if wGuest.Code != 303 || !strings.HasPrefix(wGuest.Header().Get("Location"), "/login") {
+		t.Fatalf("guest ticket creation must redirect to login: %d %s", wGuest.Code, wGuest.Header().Get("Location"))
+	}
+
+	// 2. A signed-in user opens a ticket.
+	sess := sessionFor(t, h, "ticket_user")
+	tf := url.Values{
+		"email":       {"ticket_user@example.com"},
+		"category":    {"Bug Report"},
+		"subject":     {"SECRET-TICKET-SUBJECT-XYZ"},
+		"description": {"TICKET-BODY-PRIVATE-DETAILS"},
+	}
+	wT := postForm(sess, "/support/requests", tf.Encode())
+	if wT.Code != 303 || !strings.HasPrefix(wT.Header().Get("Location"), "/support/requests/") {
+		t.Fatalf("signed-in ticket creation failed: %d %s", wT.Code, wT.Header().Get("Location"))
+	}
+	ticketURL := wT.Header().Get("Location")
+	ticketID := strings.TrimPrefix(ticketURL, "/support/requests/")
+
+	// 3. Staff closes it -> it leaves the working lists and lands in the log.
+	staffSess := makeStaffSession(t, "ticket_user", "staff") // staff view of the queue
+	wClose := postForm(staffSess, "/support/requests/"+ticketID+"/status", "status=Closed")
+	if wClose.Code != 303 {
+		t.Fatalf("close failed: %d %s", wClose.Code, wClose.Body.String())
+	}
+	wSup := requestAuth(h, "GET", "/support", "", map[string]string{"X-NSM-Session": sess})
+	html := wSup.Body.String()
+	logAt := strings.Index(html, `id="closed-log"`)
+	if logAt < 0 {
+		t.Fatal("closed ticket log section missing")
+	}
+	if strings.Contains(html[:logAt], "SECRET-TICKET-SUBJECT-XYZ") {
+		t.Fatal("closed ticket still visible in the active staff/support lists")
+	}
+	rest := html[logAt:]
+	if !strings.Contains(rest, "SECRET-TICKET-SUBJECT-XYZ") || !strings.Contains(rest, "TICKET-BODY-PRIVATE-DETAILS") || !strings.Contains(rest, "ticket_user") {
+		t.Fatal("closed ticket log must record what the ticket was about")
+	}
+}
+
+func TestProfileNotificationsAndMessagesArePrivate(t *testing.T) {
+	h := setupTest(t)
+	sessA := sessionFor(t, h, "private_alice")
+	sessB := sessionFor(t, h, "private_bob")
+
+	accMu.Lock()
+	alice := findUser("private_alice")
+	if alice == nil {
+		accMu.Unlock()
+		t.Fatal("alice missing")
+	}
+	aliceID := alice.ID
+	addUserNotificationLocked(alice, "message", "SECRET-NOTIF-TITLE-ALICE", "SECRET-NOTIF-BODY-ALICE", "/account")
+	acc.DirectMessages = append(acc.DirectMessages, DirectMessage{
+		ID: 9001, FromUserID: aliceID, FromUser: "private_alice", ToUserID: aliceID, ToUser: "private_alice",
+		Body: "SECRET-DM-BODY-ALICE", CreatedAt: time.Now().Unix(),
+	})
+	accMu.Unlock()
+
+	// Owner sees their own inbox/notification feed.
+	wOwn := requestAuth(h, "GET", "/u/private_alice?tab=notifications", "", map[string]string{"X-NSM-Session": sessA})
+	if !strings.Contains(wOwn.Body.String(), "SECRET-NOTIF-BODY-ALICE") {
+		t.Fatal("owner should see their own notifications")
+	}
+
+	// Another signed-in user must not (any tab).
+	wB := requestAuth(h, "GET", "/u/private_alice?tab=notifications", "", map[string]string{"X-NSM-Session": sessB})
+	bodyB := wB.Body.String()
+	if strings.Contains(bodyB, "SECRET-NOTIF") || strings.Contains(bodyB, "SECRET-DM-BODY-ALICE") {
+		t.Fatal("another user can see this profile's private notifications/messages")
+	}
+
+	// Guests must not either.
+	wG := request(h, "GET", "/u/private_alice?tab=notifications", "")
+	if strings.Contains(wG.Body.String(), "SECRET-NOTIF") || strings.Contains(wG.Body.String(), "SECRET-DM-BODY-ALICE") {
+		t.Fatal("guest can see private notifications/messages")
+	}
+
+	// The messages tab of someone else's profile shows the VIEWER's inbox only.
+	wB2 := requestAuth(h, "GET", "/u/private_alice?tab=messages", "", map[string]string{"X-NSM-Session": sessB})
+	if strings.Contains(wB2.Body.String(), "SECRET-DM-BODY-ALICE") {
+		t.Fatal("messages tab leaks the profile owner's DMs")
+	}
+}
+
+func TestKeymasterUpvoteAllocationAndFreeTen(t *testing.T) {
+	h := setupTest(t)
+	sess := sessionFor(t, h, "upvote_owner")
+
+	// Every account starts with 10 free upvotes.
+	w := requestAuth(h, "GET", "/keymaster", "", map[string]string{"X-NSM-Session": sess})
+	if !strings.Contains(w.Body.String(), "10 free upvotes") || !strings.Contains(w.Body.String(), "2048") {
+		t.Fatal("keymaster must advertise the 10 free upvotes and free 2048 player slots")
+	}
+
+	// Issue a bound key so the allocation knows the owner's server endpoint.
+	form := url.Values{"label": {"Upvote Server"}, "boundEndpoint": {"127.0.0.1:30120"}, "days": {"90"}}
+	reqK := httptest.NewRequest("POST", "/keymaster/create", strings.NewReader(form.Encode()))
+	reqK.RemoteAddr = "127.0.0.1:12345"
+	reqK.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqK.Header.Set("X-NSM-Session", sess)
+	wK := httptest.NewRecorder()
+	h.ServeHTTP(wK, reqK)
+	if wK.Code != 200 {
+		t.Fatalf("key issue failed: %d", wK.Code)
+	}
+
+	// Slider: 7 upvotes on the server.
+	postForm := func(sess, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", path, strings.NewReader(body))
+		req.RemoteAddr = "127.0.0.1:12345"
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if sess != "" {
+			req.Header.Set("X-NSM-Session", sess)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+	if w := postForm(sess, "/keymaster/upvotes", "upvotes=7"); w.Code != 200 {
+		t.Fatalf("upvote allocation failed: %d", w.Code)
+	}
+	if w := request(h, "POST", "/api/serverlist/ingress", validHeartbeat); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	checkPower := func(want int64) {
+		t.Helper()
+		w1 := request(h, "GET", "/api/servers/single/127.0.0.1:30120", "")
+		var server struct {
+			Data ServerData
+		}
+		if json.Unmarshal(w1.Body.Bytes(), &server) != nil {
+			t.Fatal(w1.Body.String())
+		}
+		if server.Data.UpvotePower != want {
+			t.Fatalf("UpvotePower = %d, want %d", server.Data.UpvotePower, want)
+		}
+	}
+	checkPower(7)
+
+	// Clamping: 99 -> 10, -5 -> 0.
+	postForm(sess, "/keymaster/upvotes", "upvotes=99")
+	checkPower(10)
+	postForm(sess, "/keymaster/upvotes", "upvotes=-5")
+	checkPower(0)
+
+	// Guests are bounced to login.
+	reqG := httptest.NewRequest("POST", "/keymaster/upvotes", strings.NewReader("upvotes=5"))
+	reqG.RemoteAddr = "127.0.0.1:12345"
+	reqG.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	wG := httptest.NewRecorder()
+	h.ServeHTTP(wG, reqG)
+	if wG.Code != 303 || !strings.HasPrefix(wG.Header().Get("Location"), "/login") {
+		t.Fatalf("guest upvote allocation must redirect to login: %d", wG.Code)
+	}
+}
+
+func TestGoogleSignInFlow(t *testing.T) {
+	h := setupTest(t)
+
+	// 1. Not configured -> honest 503, no button on the login page.
+	w503 := request(h, "GET", "/auth/google", "")
+	if w503.Code != 503 || !strings.Contains(w503.Body.String(), "not configured") {
+		t.Fatalf("unconfigured /auth/google must 503 clearly: %d %s", w503.Code, w503.Body.String())
+	}
+	wLogin := request(h, "GET", "/login", "")
+	if strings.Contains(wLogin.Body.String(), "Sign in with Google") {
+		t.Fatal("Google button must be hidden when not configured")
+	}
+
+	// 2. Configured with mock token+userinfo endpoints -> full flow works.
+	var srvHits int
+	var mu sync.Mutex
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		srvHits++
+		mu.Unlock()
+		switch r.URL.Path {
+		case "/token":
+			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "tok-123"})
+		case "/userinfo":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"sub": "google-sub-1", "email": "google_user@example.com",
+				"email_verified": true, "name": "Google User",
+			})
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer mock.Close()
+	t.Setenv("NSM_GOOGLE_CLIENT_ID", "test-client-id")
+	t.Setenv("NSM_GOOGLE_CLIENT_SECRET", "test-client-secret")
+	t.Setenv("NSM_GOOGLE_TOKEN_URL", mock.URL+"/token")
+	t.Setenv("NSM_GOOGLE_USERINFO_URL", mock.URL+"/userinfo")
+
+	// Button is now shown.
+	wLogin2 := request(h, "GET", "/login", "")
+	if !strings.Contains(wLogin2.Body.String(), "Sign in with Google") {
+		t.Fatal("Google button must appear when configured")
+	}
+
+	// Start the flow and capture state.
+	wStart := request(h, "GET", "/auth/google", "")
+	if wStart.Code != 302 {
+		t.Fatalf("/auth/google: %d", wStart.Code)
+	}
+	loc, _ := url.Parse(wStart.Header().Get("Location"))
+	if !strings.Contains(loc.Host, "accounts.google.com") {
+		t.Fatalf("expected Google redirect, got %s", loc)
+	}
+	state := loc.Query().Get("state")
+	if state == "" {
+		t.Fatal("missing oauth state")
+	}
+	var gCookie string
+	for _, c := range wStart.Result().Cookies() {
+		if c.Name == "nsm_g_state" {
+			gCookie = c.Value
+		}
+	}
+	if gCookie != state {
+		t.Fatal("state cookie mismatch")
+	}
+
+	// Callback with valid state creates the account and signs in.
+	reqC := httptest.NewRequest("GET", "/auth/google/callback?code=authcode&state="+url.QueryEscape(state), nil)
+	reqC.RemoteAddr = "127.0.0.1:12345"
+	reqC.AddCookie(&http.Cookie{Name: "nsm_g_state", Value: state})
+	wC := httptest.NewRecorder()
+	h.ServeHTTP(wC, reqC)
+	if wC.Code != 303 {
+		t.Fatalf("callback: %d %s", wC.Code, wC.Body.String())
+	}
+	accMu.Lock()
+	gu := findUserByLoginOrEmail("google_user@example.com")
+	gu2 := false
+	for i := range acc.Users {
+		if acc.Users[i].GoogleID == "google-sub-1" {
+			gu2 = true
+		}
+	}
+	accMu.Unlock()
+	if gu == nil || !gu2 {
+		t.Fatal("Google account was not created/linked")
+	}
+	hasSession := false
+	for _, c := range wC.Result().Cookies() {
+		if c.Name == "nsm_session" && c.Value != "" {
+			hasSession = true
+		}
+	}
+	if !hasSession {
+		t.Fatal("no session cookie after Google sign-in")
+	}
+
+	// Replay/denied state -> rejected.
+	reqBad := httptest.NewRequest("GET", "/auth/google/callback?code=authcode&state=WRONG", nil)
+	reqBad.RemoteAddr = "127.0.0.1:12345"
+	reqBad.AddCookie(&http.Cookie{Name: "nsm_g_state", Value: state})
+	wBad := httptest.NewRecorder()
+	h.ServeHTTP(wBad, reqBad)
+	if wBad.Code != 400 {
+		t.Fatalf("state mismatch must 400: %d", wBad.Code)
+	}
+}
+
+// ---- minimal SMTP capture server for delivery tests ----
+
+var smtpCaptureMu sync.Mutex
+var smtpCaptureServers = map[*testing.T]*smtpCapture{}
+
+type smtpCapture struct {
+	mu   sync.Mutex
+	addr string
+	msgs []string
+}
+
+func (c *smtpCapture) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.msgs)
+}
+func (c *smtpCapture) body(i int) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if i < len(c.msgs) {
+		return c.msgs[i]
+	}
+	return ""
+}
+func (c *smtpCapture) all() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string{}, c.msgs...)
+}
+
+var lastSMTPCapture *smtpCapture
+
+func smtpCaptureAddr(t *testing.T) string {
+	t.Helper()
+	smtpCaptureMu.Lock()
+	defer smtpCaptureMu.Unlock()
+	if lastSMTPCapture == nil {
+		t.Fatal("no SMTP capture running")
+	}
+	return lastSMTPCapture.addr
+}
+
+func startSMTPCapture(t *testing.T) *smtpCapture {
+	t.Helper()
+	cap := &smtpCapture{}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	smtpCaptureMu.Lock()
+	lastSMTPCapture = cap
+	smtpCaptureMu.Unlock()
+	cap.addr = ln.Addr().String()
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				fmt.Fprintf(c, "220 capture ESMTP\r\n")
+				br := bufio.NewReader(c)
+				inData := false
+				var data strings.Builder
+				for {
+					line, err := br.ReadString('\n')
+					if err != nil {
+						return
+					}
+					trim := strings.TrimRight(line, "\r\n")
+					if inData {
+						if trim == "." {
+							inData = false
+							cap.mu.Lock()
+							cap.msgs = append(cap.msgs, data.String())
+							cap.mu.Unlock()
+							data.Reset()
+							fmt.Fprintf(c, "250 OK\r\n")
+							continue
+						}
+						data.WriteString(line)
+						data.WriteString("\n")
+						continue
+					}
+					upper := strings.ToUpper(trim)
+					switch {
+					case strings.HasPrefix(upper, "EHLO"), strings.HasPrefix(upper, "HELO"):
+						fmt.Fprintf(c, "250-capture\r\n250 AUTH PLAIN LOGIN\r\n")
+					case strings.HasPrefix(upper, "AUTH"):
+						fmt.Fprintf(c, "235 ok\r\n")
+					case strings.HasPrefix(upper, "DATA"):
+						inData = true
+						fmt.Fprintf(c, "354 end with .\r\n")
+					case strings.HasPrefix(upper, "QUIT"):
+						fmt.Fprintf(c, "221 bye\r\n")
+						return
+					default:
+						fmt.Fprintf(c, "250 OK\r\n")
+					}
+				}
+			}(conn)
+		}
+	}()
+	return cap
+}

@@ -67,6 +67,7 @@ func renderPage(w http.ResponseWriter, r *http.Request, name string, data map[st
 		}
 	}
 	data["HasPendingClientAuth"] = hasPendingClientAuth()
+	data["GoogleEnabled"] = googleEnabled()
 	data["Year"] = time.Now().Year()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
@@ -344,11 +345,21 @@ func supportPage(w http.ResponseWriter, r *http.Request) {
 	isStaff := u != nil && u.IsStaffOrHigher()
 	var myTickets []map[string]interface{}
 	var allTickets []map[string]interface{}
+	var closedLog []map[string]interface{}
 	accMu.Lock()
 	if acc != nil && u != nil {
 		for i := len(acc.SupportTickets) - 1; i >= 0; i-- {
 			tk := acc.SupportTickets[i]
-			if tk.RequesterID == u.ID || strings.EqualFold(tk.RequesterUsername, u.Username) {
+			isMine := tk.RequesterID == u.ID || strings.EqualFold(tk.RequesterUsername, u.Username)
+			if tk.Status == "Closed" {
+				// Closed tickets vanish from the working lists and are kept as
+				// a read-only log entry of what the request was about.
+				if isMine || isStaff {
+					closedLog = append(closedLog, buildSupportTicketView(&tk))
+				}
+				continue
+			}
+			if isMine {
 				myTickets = append(myTickets, buildSupportTicketView(&tk))
 			}
 			if isStaff {
@@ -364,7 +375,9 @@ func supportPage(w http.ResponseWriter, r *http.Request) {
 		"Tickets":    myTickets,
 		"MyTickets":  myTickets,
 		"AllTickets": allTickets,
+		"ClosedLog":  closedLog,
 		"IsStaff":    isStaff,
+		"CanSubmit":  u != nil,
 		"Error":      r.URL.Query().Get("error"),
 		"Msg":        r.URL.Query().Get("msg"),
 	})
@@ -530,7 +543,10 @@ func buildMux() *http.ServeMux {
 	// Keymaster
 	mux.HandleFunc("GET /keymaster", keymasterPage)
 	mux.HandleFunc("POST /keymaster/create", keymasterCreateForm)
+	mux.HandleFunc("POST /keymaster/upvotes", keymasterUpvotesForm)
 	mux.HandleFunc("POST /keymaster/{id}/revoke", keymasterRevokeForm)
+	mux.HandleFunc("GET /auth/google", googleAuthStart)
+	mux.HandleFunc("GET /auth/google/callback", googleAuthCallback)
 
 	// In-App Client Login & Discourse API Bridge
 	mux.HandleFunc("/user-api-key/new", serveUserAPIKeyNew)
