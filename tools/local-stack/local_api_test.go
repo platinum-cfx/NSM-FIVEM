@@ -2082,4 +2082,21 @@ func TestJoinCodes(t *testing.T) {
 			t.Fatalf("join code %s must resolve to %s, got %d hdr=%q", p[2], p[1], w.Code, w.Header().Get("X-CitizenFX-Url"))
 		}
 	}
+
+	// 9. FiveM-style auto-generation card: creating a key returns the
+	//    paste-ready server.cfg line AND the server's share link in one place.
+	form := url.Values{"label": {"Form Gen"}, "boundEndpoint": {"127.0.0.1:30140"}, "days": {"90"}}
+	reqF := httptest.NewRequest("POST", "/keymaster/create", strings.NewReader(form.Encode()))
+	reqF.RemoteAddr = "127.0.0.1:12345"
+	reqF.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqF.Header.Set("X-NSM-Session", sess)
+	wF := httptest.NewRecorder()
+	h.ServeHTTP(wF, reqF)
+	card := wF.Body.String()
+	if wF.Code != 200 || !strings.Contains(card, "sets sv_nsmServerKey") || !strings.Contains(card, "nsm_srv_") {
+		t.Fatalf("key generation card must include the auto-generated key and server.cfg snippet: %d", wF.Code)
+	}
+	if !strings.Contains(card, "https://nsmultiplayer.com/join/") {
+		t.Fatal("key generation card must include the server's join code link")
+	}
 }

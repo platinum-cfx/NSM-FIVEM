@@ -97,6 +97,13 @@
           <pre class="afx-code-block"><code>{{.NewKey}}</code></pre>
           <p class="muted" style="margin:10px 0 4px;font-size:0.82rem">Add this line to your <code>server.cfg</code> or <code>server-local.cfg</code>:</p>
           <pre class="afx-code-block"><code>sets sv_nsmServerKey "{{.NewKey}}"</code></pre>
+          {{if .NewKeyJoinCode}}
+          <p class="muted" style="margin:12px 0 4px;font-size:0.82rem">This server's share link (hides your IP) &mdash; works as soon as the server is live:</p>
+          <div class="nsm-f8-box" style="margin:0">
+            <code>https://nsmultiplayer.com/join/{{.NewKeyJoinCode}}</code>
+            <button type="button" class="nsm-copy-mini" onclick="navigator.clipboard.writeText('https://nsmultiplayer.com/join/{{.NewKeyJoinCode}}');this.textContent='Copied!'">Copy</button>
+          </div>
+          {{end}}
         </div>
         {{end}}
 

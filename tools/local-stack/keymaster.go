@@ -420,9 +420,10 @@ func keymasterCreateForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serveKeymasterPage(w, r, map[string]interface{}{
-		"NewKey":   fullKey,
-		"NewKeyID": rec.ID,
-		"Msg":      "Server key created. Copy the secret below now — it is shown only once.",
+		"NewKey":         fullKey,
+		"NewKeyID":       rec.ID,
+		"NewKeyJoinCode": rec.JoinCode,
+		"Msg":            "Server key created. Copy the secret below now — it is shown only once.",
 	})
 }
 
