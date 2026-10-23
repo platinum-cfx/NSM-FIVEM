@@ -325,14 +325,16 @@
     if (descEl) descEl.textContent = desc;
     if (initEl) initEl.textContent = cleanName.charAt(0).toUpperCase() || 'S';
     if (playersEl) playersEl.textContent = clients + ' / ' + maxClients;
-    if (epEl) epEl.textContent = ep;
+    var jc = row.getAttribute('data-join-code') || '';
+    var joinRef = jc || ep;
+    if (epEl) epEl.textContent = joinRef;
     if (resEl) resEl.textContent = resCount + ' loaded';
     if (locEl) locEl.textContent = locale + (onesync ? ' • OneSync' : '');
-    if (f8El) f8El.textContent = 'connect ' + ep;
-    if (joinEl) joinEl.textContent = 'https://nsmultiplayer.com/join/' + ep;
+    if (f8El) f8El.textContent = 'connect ' + joinRef;
+    if (joinEl) joinEl.textContent = 'https://nsmultiplayer.com/join/' + joinRef;
     if (upvEl) upvEl.textContent = upvotes;
     if (featLblEl) featLblEl.innerHTML = '&#9733; ' + (isFeat ? 'Featured' : 'Feature');
-    if (fullLink) fullLink.setAttribute('href', '/servers/' + encodeURIComponent(ep));
+    if (fullLink) fullLink.setAttribute('href', '/join/' + encodeURIComponent(joinRef));
 
     if (tagsEl) {
       var tags = tagsRaw ? tagsRaw.split(',') : [];

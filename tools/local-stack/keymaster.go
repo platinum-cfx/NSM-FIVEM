@@ -51,6 +51,7 @@ type ServerKey struct {
 	Username      string `json:"username"`
 	Label         string `json:"label"`
 	BoundEndpoint string `json:"boundEndpoint,omitempty"`
+	JoinCode      string `json:"joinCode,omitempty"`
 	SaltHex       string `json:"saltHex"`
 	SecretHashHex string `json:"secretHashHex"`
 	CreatedAt     int64  `json:"createdAt"`
@@ -75,6 +76,7 @@ func (k ServerKey) PublicView() map[string]interface{} {
 		"username":      k.Username,
 		"label":         k.Label,
 		"boundEndpoint": k.BoundEndpoint,
+		"joinCode":      k.JoinCode,
 		"status":        status,
 		"createdAt":     k.CreatedAt,
 		"expiresAt":     k.ExpiresAt,
@@ -185,6 +187,7 @@ func issueServerKey(u *User, label, boundEndpoint string, ttl time.Duration) (st
 
 	accMu.Lock()
 	ensureAccountsInitializedLocked()
+	rec.JoinCode = ensureJoinCodeForKeyLocked(&rec)
 	acc.ServerKeys = append(acc.ServerKeys, rec)
 	saveAccountsLocked()
 	accMu.Unlock()
@@ -291,6 +294,7 @@ func revokeServerKey(actor *User, keyID string) (int, int, string) {
 	}
 	found.Revoked = true
 	found.RevokedAt = now
+	revokeJoinCodesForKeyLocked(keyID)
 	saveAccountsLocked()
 	accMu.Unlock()
 
@@ -309,12 +313,17 @@ func listServerKeysForUser(actor *User) []map[string]interface{} {
 		return nil
 	}
 	out := []map[string]interface{}{}
-	for _, k := range acc.ServerKeys {
+	for i := range acc.ServerKeys {
+		k := &acc.ServerKeys[i]
 		// PRIVACY: a key is visible ONLY to the account that issued it —
 		// never to other members (and not even to staff browsing Keymaster).
 		if k.UserID == actor.ID {
+			ensureJoinCodeForKeyLocked(k)
 			out = append(out, k.PublicView())
 		}
+	}
+	if len(out) > 0 {
+		saveAccountsLocked()
 	}
 	return out
 }

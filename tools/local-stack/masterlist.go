@@ -288,6 +288,22 @@ func (r *registry) upsertWithOwner(endPoint string, data ServerData, keyID strin
 	return true
 }
 
+// endpointByKeyID returns the live endpoint currently heartbeating with the
+// given server key (used to resolve join codes with dynamic IPs).
+func (r *registry) endpointByKeyID(keyID string) string {
+	if keyID == "" {
+		return ""
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for ep, e := range r.servers {
+		if e.keyID == keyID && time.Since(e.last) <= heartbeatTTL {
+			return ep
+		}
+	}
+	return ""
+}
+
 func (r *registry) evictByKey(keyID string) int {
 	if keyID == "" {
 		return 0
@@ -1006,6 +1022,13 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !reg.upsertWithOwner(endPoint, data, keyID, ownerID) {
 			sendJSON(w, http.StatusForbidden, map[string]string{"lastError": "endpoint_owned_by_another_account"})
 			return
+		}
+		// Keep join codes (shareable /join/<code> links that hide the IP)
+		// pointed at this server's live endpoint.
+		if keyID != "" {
+			bindJoinCodeEndpoint(keyID, endPoint)
+		} else {
+			joinCodeForEndpoint(endPoint)
 		}
 		log.Printf("[heartbeat] %s clients=%d", endPoint, data.Clients)
 		sendJSON(w, 200, map[string]interface{}{})

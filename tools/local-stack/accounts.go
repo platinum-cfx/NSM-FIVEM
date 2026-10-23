@@ -581,6 +581,7 @@ type Accounts struct {
 	Upvotes          map[string][]int64     `json:"upvotes"` // endpoint -> user ids
 	FeaturedServers  []string               `json:"featuredServers,omitempty"`
 	ServerKeys       []ServerKey            `json:"serverKeys,omitempty"`
+	JoinCodes        map[string]JoinTarget  `json:"joinCodes,omitempty"`
 	DirectMessages   []DirectMessage        `json:"directMessages,omitempty"`
 	Notifications    []UserNotification     `json:"notifications,omitempty"`
 	SupportTickets   []SupportTicket        `json:"supportTickets,omitempty"`

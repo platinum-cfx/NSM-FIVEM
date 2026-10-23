@@ -182,6 +182,7 @@
         {{range .Servers}}
         <div class="nsm-server-row"
              data-ep="{{.EndPoint}}"
+             data-join-code="{{.JoinCode}}"
              data-name="{{.CleanName}}"
              data-raw-name="{{.Hostname}}"
              data-desc="{{.Desc}}"
@@ -345,8 +346,8 @@
               <strong id="nsm-insp-players">0 / 48</strong>
             </div>
             <div class="mp-insp-stat">
-              <span class="lbl">Endpoint</span>
-              <code id="nsm-insp-ep">127.0.0.1:30120</code>
+              <span class="lbl">Join Code</span>
+              <code id="nsm-insp-ep">&mdash;</code>
             </div>
             <div class="mp-insp-stat">
               <span class="lbl">Resources</span>
@@ -361,7 +362,7 @@
           <div class="mp-insp-section">
             <div class="mp-insp-sec-title">AFX Share / Join URL</div>
             <div class="nsm-f8-box">
-              <code id="nsm-insp-join">https://nsmultiplayer.com/join/127.0.0.1:30120</code>
+              <code id="nsm-insp-join">https://nsmultiplayer.com/join/&lt;code&gt;</code>
               <button type="button" class="nsm-copy-mini" id="nsm-insp-copy-join">Copy</button>
             </div>
           </div>
@@ -369,7 +370,7 @@
           <div class="mp-insp-section">
             <div class="mp-insp-sec-title">Quick Console Connect</div>
             <div class="nsm-f8-box">
-              <code id="nsm-insp-f8">connect 127.0.0.1:30120</code>
+              <code id="nsm-insp-f8">connect &lt;code&gt;</code>
               <button type="button" class="nsm-copy-mini" id="nsm-insp-copy">Copy</button>
             </div>
           </div>

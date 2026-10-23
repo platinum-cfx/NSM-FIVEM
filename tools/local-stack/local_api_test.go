@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -1365,10 +1366,16 @@ func TestUpvotesFeaturedAndJoinLinks(t *testing.T) {
 		t.Fatalf("GET /v1/public/featured-servers missing featured server: %d %s", wFeaturedPub.Code, wFeaturedPub.Body.String())
 	}
 
-	// 7. Verify GET /join/{ep} sets X-CitizenFX-Url and renders nsmultiplayer.com/join/{ep}
+	// 7. Verify GET /join/{ep} sets X-CitizenFX-Url and renders the code-based
+	//    share URL — raw endpoints must never appear in rendered join/console
+	//    displays (join codes hide server IPs).
 	wJoin := request(h, "GET", "/join/127.0.0.1:30120", "")
-	if wJoin.Code != 200 || wJoin.Header().Get("X-CitizenFX-Url") != "http://127.0.0.1:30120/" || !strings.Contains(wJoin.Body.String(), "https://nsmultiplayer.com/join/127.0.0.1:30120") {
+	joinBody := wJoin.Body.String()
+	if wJoin.Code != 200 || wJoin.Header().Get("X-CitizenFX-Url") != "http://127.0.0.1:30120/" || !strings.Contains(joinBody, "https://nsmultiplayer.com/join/") {
 		t.Fatalf("GET /join/127.0.0.1:30120 failed: code=%d hdr=%q", wJoin.Code, wJoin.Header().Get("X-CitizenFX-Url"))
+	}
+	if strings.Contains(joinBody, "join/127.0.0.1:30120") || strings.Contains(joinBody, "connect 127.0.0.1:30120") {
+		t.Fatal("GET /join/{ep} leaked the raw endpoint into rendered join/console displays")
 	}
 
 	// 8. Verify default FXServer / empty hostname becomes AFXserver
@@ -1925,4 +1932,119 @@ func startSMTPCapture(t *testing.T) *smtpCapture {
 		}
 	}()
 	return cap
+}
+
+func TestJoinCodes(t *testing.T) {
+	h := setupTest(t)
+	sess := registerTestUser(t, h, "joinowner")
+
+	// 1. Each key gets its own join code ("changed per key").
+	wIssueA := requestAuth(h, "POST", "/api/keymaster/issue",
+		`{"label":"Join Alpha","boundEndpoint":"127.0.0.1:30120","ttlSeconds":3600}`, map[string]string{"X-NSM-Session": sess})
+	if wIssueA.Code != 201 {
+		t.Fatalf("issue key A: %d %s", wIssueA.Code, wIssueA.Body.String())
+	}
+	var issueA struct {
+		ServerKey string                 `json:"serverKey"`
+		Key       map[string]interface{} `json:"key"`
+	}
+	if err := json.Unmarshal(wIssueA.Body.Bytes(), &issueA); err != nil {
+		t.Fatalf("issue A json: %v", err)
+	}
+	codeA, _ := issueA.Key["joinCode"].(string)
+	idA, _ := issueA.Key["id"].(string)
+	if len(codeA) != joinCodeLen || !isJoinCode(codeA) {
+		t.Fatalf("key A join code %q is not a %d-char code", codeA, joinCodeLen)
+	}
+
+	wIssueB := requestAuth(h, "POST", "/api/keymaster/issue",
+		`{"label":"Join Beta","boundEndpoint":"127.0.0.1:30120","ttlSeconds":3600}`, map[string]string{"X-NSM-Session": sess})
+	if wIssueB.Code != 201 {
+		t.Fatalf("issue key B: %d %s", wIssueB.Code, wIssueB.Body.String())
+	}
+	var issueB struct {
+		Key map[string]interface{} `json:"key"`
+	}
+	json.Unmarshal(wIssueB.Body.Bytes(), &issueB)
+	codeB, _ := issueB.Key["joinCode"].(string)
+	if codeB == "" || codeB == codeA {
+		t.Fatalf("each key must get its own join code, got %q and %q", codeA, codeB)
+	}
+
+	// 2. A keyed heartbeat binds the code to the live endpoint; /join/<code>
+	//    resolves it WITHOUT exposing the IP in rendered displays.
+	hbKeyed := `{"port":30120,"fallbackData":{"players":[],"info":{"resources":["chat"],"vars":{"sv_nsmServerKey":"` + issueA.ServerKey + `"}},"dynamic":{"clients":3,"svMaxclients":48,"hostname":"Join Code Test"}}}`
+	if w := request(h, "POST", "/api/serverlist/ingress", hbKeyed); w.Code != 200 {
+		t.Fatalf("keyed heartbeat: %d %s", w.Code, w.Body.String())
+	}
+	wJoin := request(h, "GET", "/join/"+codeA, "")
+	if wJoin.Code != 200 {
+		t.Fatalf("GET /join/%s: %d %s", codeA, wJoin.Code, wJoin.Body.String())
+	}
+	if got := wJoin.Header().Get("X-CitizenFX-Url"); got != "http://127.0.0.1:30120/" {
+		t.Fatalf("join code must hand off the resolved endpoint to NSM.exe, got X-CitizenFX-Url=%q", got)
+	}
+	if got := wJoin.Header().Get("Location"); got != "https://nsmultiplayer.com/join/"+codeA {
+		t.Fatalf("join code page must canonicalize to the code URL, got Location=%q", got)
+	}
+	body := wJoin.Body.String()
+	if !strings.Contains(body, "https://nsmultiplayer.com/join/"+codeA) {
+		t.Fatalf("join code page missing code share URL: %s", body)
+	}
+	if strings.Contains(body, "join/127.0.0.1:30120") || strings.Contains(body, "connect 127.0.0.1:30120") {
+		t.Fatal("join code page leaked the raw endpoint into rendered displays")
+	}
+
+	// 3. Unknown codes 404.
+	if w := request(h, "GET", "/join/zzzzzzz", ""); w.Code != 404 {
+		t.Fatalf("unknown join code: want 404, got %d", w.Code)
+	}
+
+	// 4. Keymaster shows the shareable code URL to its owner.
+	wKM := requestAuth(h, "GET", "/keymaster", "", map[string]string{"X-NSM-Session": sess})
+	if wKM.Code != 200 || !strings.Contains(wKM.Body.String(), "nsmultiplayer.com/join/"+codeA) {
+		t.Fatalf("keymaster missing join code link: %d", wKM.Code)
+	}
+
+	// 5. Revoking a key kills its code; other keys' codes stay alive.
+	wRev := requestAuth(h, "POST", "/api/keymaster/revoke",
+		`{"keyId":"`+idA+`"}`, map[string]string{"X-NSM-Session": sess})
+	if wRev.Code != 200 {
+		t.Fatalf("revoke key A: %d %s", wRev.Code, wRev.Body.String())
+	}
+	if w := request(h, "GET", "/join/"+codeA, ""); w.Code != 404 {
+		t.Fatalf("revoked key's join code must die, got %d", w.Code)
+	}
+	if w := request(h, "GET", "/join/"+codeB, ""); w.Code != 200 {
+		t.Fatalf("other key's join code must survive, got %d", w.Code)
+	}
+
+	// 6. Keyless servers get an auto join code so every owner can hide their IP.
+	hbKeyless := `{"port":30125,"fallbackData":{"players":[],"info":{"resources":["chat"],"vars":{}},"dynamic":{"clients":1,"svMaxclients":48,"hostname":"Keyless Hide IP"}}}`
+	if w := request(h, "POST", "/api/serverlist/ingress", hbKeyless); w.Code != 200 {
+		t.Fatalf("keyless heartbeat: %d %s", w.Code, w.Body.String())
+	}
+	wList := request(h, "GET", "/servers", "")
+	m := regexp.MustCompile(`data-join-code="([a-z0-9]+)"`).FindStringSubmatch(wList.Body.String())
+	if m == nil {
+		t.Fatal("server list rows must carry a join code")
+	}
+	codeK := m[1]
+	wJoinK := request(h, "GET", "/join/"+codeK, "")
+	if wJoinK.Code != 200 || wJoinK.Header().Get("X-CitizenFX-Url") != "http://127.0.0.1:30125/" {
+		t.Fatalf("keyless join code: %d hdr=%q", wJoinK.Code, wJoinK.Header().Get("X-CitizenFX-Url"))
+	}
+	bodyK := wJoinK.Body.String()
+	if !strings.Contains(bodyK, "https://nsmultiplayer.com/join/"+codeK) {
+		t.Fatalf("keyless join page missing code share URL: %s", bodyK)
+	}
+	if strings.Contains(bodyK, "join/127.0.0.1:30125") || strings.Contains(bodyK, "connect 127.0.0.1:30125") {
+		t.Fatal("keyless join page leaked the raw endpoint into rendered displays")
+	}
+
+	// 7. Legacy /join/<ip:port> keeps working for old links (compat).
+	wLeg := request(h, "GET", "/join/127.0.0.1:30120", "")
+	if wLeg.Code != 200 || wLeg.Header().Get("X-CitizenFX-Url") != "http://127.0.0.1:30120/" {
+		t.Fatalf("legacy /join/{ep} broke: %d hdr=%q", wLeg.Code, wLeg.Header().Get("X-CitizenFX-Url"))
+	}
 }

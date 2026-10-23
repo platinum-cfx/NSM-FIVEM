@@ -178,6 +178,7 @@
                   <tr>
                     <th>Key ID</th>
                     <th>Display Name</th>
+                    <th>Connect Code (hides your IP)</th>
                     <th>Endpoint</th>
                     <th>Status</th>
                     <th class="num">Actions</th>
@@ -188,6 +189,17 @@
                   <tr>
                     <td><code style="color:#a8c7ff">{{.id}}</code></td>
                     <td><strong style="color:#fff">{{.label}}</strong></td>
+                    <td>
+                      {{if .joinCode}}
+                      <div class="nsm-f8-box" style="margin:0">
+                        <code>https://nsmultiplayer.com/join/{{.joinCode}}</code>
+                        <button type="button" class="nsm-copy-mini" onclick="navigator.clipboard.writeText('https://nsmultiplayer.com/join/{{.joinCode}}');this.textContent='Copied!'">Copy</button>
+                      </div>
+                      <div class="muted" style="font-size:0.72rem;margin-top:3px">Share this link &mdash; your server IP stays private. Dies with this key.</div>
+                      {{else}}
+                      <span class="muted">&mdash;</span>
+                      {{end}}
+                    </td>
                     <td>
                       {{if .boundEndpoint}}<code>{{.boundEndpoint}}</code>{{else}}<span class="muted">Any Endpoint</span>{{end}}
                       {{if .lastEndpoint}}<div class="muted" style="font-size:0.75rem">Last seen: <code>{{.lastEndpoint}}</code></div>{{end}}
