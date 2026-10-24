@@ -5,6 +5,7 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -32,11 +34,24 @@ func cleanHostname(s string) string {
 	return s
 }
 
+// fmtCompact renders large counts the way the site shows them: 1100 -> "1.1k",
+// 2200 -> "2.2k", 1500000 -> "1.5m".
+func fmtCompact(n int64) string {
+	switch {
+	case n >= 1000000:
+		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.1f", float64(n)/1000000), "0"), ".") + "m"
+	case n >= 1000:
+		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.1f", float64(n)/1000), "0"), ".") + "k"
+	default:
+		return strconv.FormatInt(n, 10)
+	}
+}
+
 func initSite() {
 	if forum == nil {
 		loadForum()
 	}
-	tmpl = template.Must(template.ParseFS(siteFS, "site/templates/*.tmpl"))
+	tmpl = template.Must(template.New("").Funcs(template.FuncMap{"kfmt": fmtCompact}).ParseFS(siteFS, "site/templates/*.tmpl"))
 }
 
 func accountCount() int64 {
@@ -67,6 +82,7 @@ func renderPage(w http.ResponseWriter, r *http.Request, name string, data map[st
 		}
 	}
 	data["HasPendingClientAuth"] = hasPendingClientAuth()
+	data["GoogleEnabled"] = googleEnabled()
 	data["Year"] = time.Now().Year()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
@@ -115,9 +131,16 @@ func liveServers() []map[string]interface{} {
 		upv := int(d.UpvotePower)
 		burst := int(d.BurstPower)
 		featured := isFeaturedServer(ep)
+		private := d.Vars["nsm_private"] == "1"
+		joinCode := joinCodeForEndpointLookup(ep)
+		joinID := joinCode
+		if joinID == "" {
+			joinID = ep
+		}
 		out = append(out, map[string]interface{}{
 			// Template fields
 			"EndPoint":         ep,
+			"JoinCode":         joinCode,
 			"Hostname":         d.Hostname,
 			"CleanName":        clean,
 			"Initial":          initial,
@@ -129,6 +152,7 @@ func liveServers() []map[string]interface{} {
 			"Upvotes":          upv,
 			"BurstPower":       burst,
 			"Featured":         featured,
+			"Private":          private,
 			"Tags":             tags,
 			"Locale":           locale,
 			"Country":          country,
@@ -145,7 +169,7 @@ func liveServers() []map[string]interface{} {
 			"ServerVersion":      d.Server,
 			// Client JS fields (matching NSM.exe cfx-ui IServerView)
 			"id":               ep,
-			"joinId":           ep,
+			"joinId":           joinID,
 			"rawName":          d.Hostname,
 			"hostname":         d.Hostname,
 			"name":             clean,
@@ -276,9 +300,20 @@ func serverDetailPage(w http.ResponseWriter, r *http.Request) {
 	if unesc, err := url.PathUnescape(ep); err == nil && unesc != "" {
 		ep = strings.TrimSpace(unesc)
 	}
+	renderServerDetail(w, r, ep, joinCodeForEndpointLookup(ep))
+}
+
+// renderServerDetail renders the server landing page. joinCode (when set) is
+// the opaque share code shown instead of the raw endpoint so public pages
+// never display server IPs.
+func renderServerDetail(w http.ResponseWriter, r *http.Request, ep, joinCode string) {
 	d := reg.get(ep)
 	if d == nil {
-		renderPage(w, r, "server_missing.tmpl", map[string]interface{}{"Title": "Server Offline - NSM", "EndPoint": ep})
+		missDisplay := ep
+		if joinCode != "" {
+			missDisplay = joinCode
+		}
+		renderPage(w, r, "server_missing.tmpl", map[string]interface{}{"Title": "Server Offline - NSM", "EndPoint": missDisplay, "JoinCode": joinCode, "JoinID": missDisplay})
 		return
 	}
 	applyMods(ep, d)
@@ -304,14 +339,21 @@ func serverDetailPage(w http.ResponseWriter, r *http.Request) {
 	}
 	reg.mu.RUnlock()
 
+	joinID := joinCode
+	if joinID == "" {
+		joinID = ep
+	}
 	renderPage(w, r, "server.tmpl", map[string]interface{}{
 		"Title":         cleanHostname(d.Hostname) + " - Server List - NSM",
 		"CleanName":     cleanHostname(d.Hostname),
 		"EndPoint":      ep,
+		"JoinCode":      joinCode,
+		"JoinID":        joinID,
 		"Srv":           d,
 		"Upvotes":       int(d.UpvotePower),
 		"Voted":         voted,
 		"Featured":      isFeaturedServer(ep),
+		"Private":       d.Vars["nsm_private"] == "1",
 		"OwnerUsername": ownerUsername,
 	})
 }
@@ -344,11 +386,21 @@ func supportPage(w http.ResponseWriter, r *http.Request) {
 	isStaff := u != nil && u.IsStaffOrHigher()
 	var myTickets []map[string]interface{}
 	var allTickets []map[string]interface{}
+	var closedLog []map[string]interface{}
 	accMu.Lock()
 	if acc != nil && u != nil {
 		for i := len(acc.SupportTickets) - 1; i >= 0; i-- {
 			tk := acc.SupportTickets[i]
-			if tk.RequesterID == u.ID || strings.EqualFold(tk.RequesterUsername, u.Username) {
+			isMine := tk.RequesterID == u.ID || strings.EqualFold(tk.RequesterUsername, u.Username)
+			if tk.Status == "Closed" {
+				// Closed tickets vanish from the working lists and are kept as
+				// a read-only log entry of what the request was about.
+				if isMine || isStaff {
+					closedLog = append(closedLog, buildSupportTicketView(&tk))
+				}
+				continue
+			}
+			if isMine {
 				myTickets = append(myTickets, buildSupportTicketView(&tk))
 			}
 			if isStaff {
@@ -364,7 +416,9 @@ func supportPage(w http.ResponseWriter, r *http.Request) {
 		"Tickets":    myTickets,
 		"MyTickets":  myTickets,
 		"AllTickets": allTickets,
+		"ClosedLog":  closedLog,
 		"IsStaff":    isStaff,
+		"CanSubmit":  u != nil,
 		"Error":      r.URL.Query().Get("error"),
 		"Msg":        r.URL.Query().Get("msg"),
 	})
@@ -450,15 +504,31 @@ func buildMux() *http.ServeMux {
 	mux.HandleFunc("GET /servers", serversPage)
 	mux.HandleFunc("GET /servers/{ep}", serverDetailPage)
 	mux.HandleFunc("GET /join/{ep}", func(w http.ResponseWriter, r *http.Request) {
-		ep := strings.TrimSpace(r.PathValue("ep"))
-		if unesc, err := url.PathUnescape(ep); err == nil && unesc != "" {
-			ep = strings.TrimSpace(unesc)
+		raw := strings.TrimSpace(r.PathValue("ep"))
+		if unesc, err := url.PathUnescape(raw); err == nil && unesc != "" {
+			raw = strings.TrimSpace(unesc)
 		}
+		// Opaque join codes (like cfx.re/join/zjjkkky) hide the server IP.
+		code := strings.ToLower(raw)
+		if isJoinCode(code) {
+			ep, ok := resolveJoinCode(code)
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				renderPage(w, r, "server_missing.tmpl", map[string]interface{}{"Title": "Server Not Found - NSM", "EndPoint": code})
+				return
+			}
+			w.Header().Set("X-CitizenFX-Url", "http://"+ep+"/")
+			w.Header().Set("Location", "https://nsmultiplayer.com/join/"+code)
+			renderServerDetail(w, r, ep, code)
+			return
+		}
+		// Legacy /join/<ip:port> form — kept for compatibility.
+		ep := raw
 		if ep != "" {
 			w.Header().Set("X-CitizenFX-Url", "http://"+ep+"/")
 			w.Header().Set("Location", "https://nsmultiplayer.com/join/"+ep)
 		}
-		serverDetailPage(w, r)
+		renderServerDetail(w, r, ep, joinCodeForEndpointLookup(ep))
 	})
 	mux.HandleFunc("POST /servers/{ep}/upvote", func(w http.ResponseWriter, r *http.Request) { upvoteServer(w, r, r.PathValue("ep")) })
 	mux.HandleFunc("POST /servers/{ep}/feature", func(w http.ResponseWriter, r *http.Request) { featureServer(w, r, r.PathValue("ep")) })
@@ -530,7 +600,10 @@ func buildMux() *http.ServeMux {
 	// Keymaster
 	mux.HandleFunc("GET /keymaster", keymasterPage)
 	mux.HandleFunc("POST /keymaster/create", keymasterCreateForm)
+	mux.HandleFunc("POST /keymaster/upvotes", keymasterUpvotesForm)
 	mux.HandleFunc("POST /keymaster/{id}/revoke", keymasterRevokeForm)
+	mux.HandleFunc("GET /auth/google", googleAuthStart)
+	mux.HandleFunc("GET /auth/google/callback", googleAuthCallback)
 
 	// In-App Client Login & Discourse API Bridge
 	mux.HandleFunc("/user-api-key/new", serveUserAPIKeyNew)

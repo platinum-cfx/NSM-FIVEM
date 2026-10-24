@@ -67,13 +67,14 @@
 
     <!-- Main Workspace -->
     <div class="afx-portal-content">
-      <header class="afx-portal-header">
+      <header class="afx-portal-header" style="background:linear-gradient(120deg,rgba(47,123,255,0.16),rgba(0,248,185,0.10) 55%,rgba(15,23,42,0));border-bottom:1px solid rgba(255,255,255,0.09)">
         <div>
           <span style="font-size:0.76rem;text-transform:uppercase;letter-spacing:0.08em;color:#00f8b9;font-weight:700">AFX PORTAL &bull; SERVER MANAGEMENT</span>
-          <h1 style="margin:2px 0 0;font-size:1.45rem;color:#fff">Server Registration Keys (Keymaster)</h1>
+          <h1 style="margin:2px 0 0;font-size:1.55rem;color:#fff;letter-spacing:-0.01em">Server Registration Keys (Keymaster)</h1>
+          <p class="muted" style="margin:4px 0 0;font-size:0.84rem">Issue keys, boost your listing with upvotes, and run up to <strong style="color:#00f8b9">2048 player slots</strong> — free, no paid key required.</p>
         </div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <a href="/download-server" data-no-spa="1" class="btn btn-primary btn-sm">Download Server Artifact (NSM-Server.zip)</a>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <a href="/download-server" data-no-spa="1" class="btn btn-primary btn-sm">Download NSM-Server.zip</a>
           <a href="/servers" class="nsm-ctrl-btn">View Live Server List &nearr;</a>
           <a href="/logout" class="nsm-ctrl-btn">Sign Out</a>
         </div>
@@ -96,8 +97,58 @@
           <pre class="afx-code-block"><code>{{.NewKey}}</code></pre>
           <p class="muted" style="margin:10px 0 4px;font-size:0.82rem">Add this line to your <code>server.cfg</code> or <code>server-local.cfg</code>:</p>
           <pre class="afx-code-block"><code>sets sv_nsmServerKey "{{.NewKey}}"</code></pre>
+          {{if .NewKeyJoinCode}}
+          <p class="muted" style="margin:12px 0 4px;font-size:0.82rem">This server's share link (hides your IP) &mdash; works as soon as the server is live:</p>
+          <div class="nsm-f8-box" style="margin:0">
+            <code>https://nsmultiplayer.com/join/{{.NewKeyJoinCode}}</code>
+            <button type="button" class="nsm-copy-mini" onclick="navigator.clipboard.writeText('https://nsmultiplayer.com/join/{{.NewKeyJoinCode}}');this.textContent='Copied!'">Copy</button>
+          </div>
+          {{end}}
         </div>
         {{end}}
+
+        <!-- Quick Stats Row -->
+        <div class="afx-km-stats">
+          <div class="afx-km-stat">
+            <span class="afx-km-stat-label">Your server keys</span>
+            <strong class="afx-km-stat-value">{{len .Keys}}</strong>
+            <span class="afx-km-stat-sub">visible only to you</span>
+          </div>
+          <div class="afx-km-stat">
+            <span class="afx-km-stat-label">Free upvotes</span>
+            <strong class="afx-km-stat-value" style="color:#00f8b9">{{.UpvoteBalance}}</strong>
+            <span class="afx-km-stat-sub">{{.UpvoteAllocated}} placed on your server</span>
+          </div>
+          <div class="afx-km-stat">
+            <span class="afx-km-stat-label">Player slots</span>
+            <strong class="afx-km-stat-value" style="color:#60a5fa">2048</strong>
+            <span class="afx-km-stat-sub">included free forever</span>
+          </div>
+        </div>
+
+        <!-- Server Upvotes Card -->
+        <div class="afx-portal-card" style="margin-bottom:20px;background:linear-gradient(135deg,rgba(0,248,185,0.07),rgba(47,123,255,0.05));border-color:rgba(0,248,185,0.25)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
+            <div style="min-width:220px;flex:1">
+              <h2 style="margin:0 0 6px;font-size:1.15rem;color:#fff">Boost your server with upvotes</h2>
+              <p class="muted" style="margin:0;font-size:0.86rem;line-height:1.55">
+                Every AFX account starts with <strong style="color:#00f8b9">{{.UpvoteBalance}} free upvotes</strong>.
+                Slide to place up to 10 of them on your server — they are added to its upvote power in the
+                <a href="/servers" style="color:#00f8b9">server list</a> instantly.{{if .UpvoteServerEp}}
+                Target server: <code style="color:#a8c7ff">{{.UpvoteServerEp}}</code>{{else}}
+                They will attach to your server automatically once it is live with your key.{{end}}
+              </p>
+            </div>
+            <form method="POST" action="/keymaster/upvotes" class="form" style="min-width:280px;flex:1;gap:10px">
+              <label style="margin:0">
+                Upvotes on your server: <strong id="afx-km-upvote-val" style="color:#00f8b9;font-size:1.1rem">{{.UpvoteAllocated}}</strong> / {{.UpvoteBalance}}
+                <input type="range" name="upvotes" id="afx-km-upvote-slider" min="0" max="10" value="{{.UpvoteAllocated}}" class="afx-km-slider"
+                  oninput="document.getElementById('afx-km-upvote-val').textContent=this.value">
+              </label>
+              <button type="submit" class="btn btn-primary btn-block">Save Upvote Allocation</button>
+            </form>
+          </div>
+        </div>
 
         <div class="afx-portal-grid">
           <!-- Issue New Server Key Card -->
@@ -134,6 +185,7 @@
                   <tr>
                     <th>Key ID</th>
                     <th>Display Name</th>
+                    <th>Connect Code (hides your IP)</th>
                     <th>Endpoint</th>
                     <th>Status</th>
                     <th class="num">Actions</th>
@@ -144,6 +196,17 @@
                   <tr>
                     <td><code style="color:#a8c7ff">{{.id}}</code></td>
                     <td><strong style="color:#fff">{{.label}}</strong></td>
+                    <td>
+                      {{if .joinCode}}
+                      <div class="nsm-f8-box" style="margin:0">
+                        <code>https://nsmultiplayer.com/join/{{.joinCode}}</code>
+                        <button type="button" class="nsm-copy-mini" onclick="navigator.clipboard.writeText('https://nsmultiplayer.com/join/{{.joinCode}}');this.textContent='Copied!'">Copy</button>
+                      </div>
+                      <div class="muted" style="font-size:0.72rem;margin-top:3px">Share this link &mdash; your server IP stays private. Dies with this key.</div>
+                      {{else}}
+                      <span class="muted">&mdash;</span>
+                      {{end}}
+                    </td>
                     <td>
                       {{if .boundEndpoint}}<code>{{.boundEndpoint}}</code>{{else}}<span class="muted">Any Endpoint</span>{{end}}
                       {{if .lastEndpoint}}<div class="muted" style="font-size:0.75rem">Last seen: <code>{{.lastEndpoint}}</code></div>{{end}}

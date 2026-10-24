@@ -219,6 +219,56 @@
     </div>
     {{end}}
 
+    <!-- Closed Ticket Log: closed requests vanish from the working lists and are archived here -->
+    {{if .User}}
+    <div class="afx-portal-card" id="closed-log" style="margin-top:24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="role" style="background:rgba(148,163,184,0.18);color:#94a3b8">ARCHIVE</span>
+            <h2 style="margin:0;font-size:1.22rem;color:#fff">Closed Ticket Log ({{len .ClosedLog}})</h2>
+          </div>
+          <p class="muted" style="margin:4px 0 0;font-size:0.84rem">
+            Closed requests are removed from the working lists above and kept here as a permanent record of what each ticket was about.
+          </p>
+        </div>
+      </div>
+      {{if .ClosedLog}}
+      <div style="overflow-x:auto">
+        <table class="zd-requests-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>What the ticket was about</th>
+              <th>Category</th>
+              <th>Requester</th>
+              <th>Closed By</th>
+              <th>Closed At</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .ClosedLog}}
+            <tr>
+              <td><a href="/support/requests/{{.ID}}" style="font-family:var(--mono);color:#94a3b8;font-weight:700">#{{.ID}}</a></td>
+              <td>
+                <strong style="color:#cbd5e1">{{.Subject}}</strong>
+                {{if .Excerpt}}<div class="muted" style="font-size:0.78rem;margin-top:2px">{{.Excerpt}}</div>{{end}}
+              </td>
+              <td class="muted">{{.Category}}</td>
+              <td class="muted">@{{.RequesterUsername}}</td>
+              <td class="muted">{{.ClosedBy}}</td>
+              <td class="muted">{{.ClosedStr}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{else}}
+      <p class="muted" style="margin:0">No closed tickets yet — closed requests will be archived here.</p>
+      {{end}}
+    </div>
+    {{end}}
+
     <!-- Promoted Articles + Submit a Request 2-Column Section -->
     <div class="afx-hc-two-col" id="promoted-articles" style="margin-top:36px">
       <div>
@@ -273,8 +323,9 @@
         <div class="afx-portal-card" id="submit-ticket">
           <h3 style="margin:0 0 6px;font-size:1.12rem;color:#fff">Submit a Support Request</h3>
           <p class="muted" style="margin:0 0 14px;font-size:0.84rem">
-            Submit a report to AFX Support. You will be taken directly to your private request page where you and AFX Staff can reply.
+            {{if .User}}Submit a report to AFX Support. You will be taken directly to your private request page where you and AFX Staff can reply.{{else}}You must be signed in to your AFX account to open a support request — this keeps every ticket tied to a real account.{{end}}
           </p>
+          {{if .User}}
           <form method="post" action="/support/requests" class="form">
             <label>Your Email Address
               <input type="email" name="email" class="inp" value="{{if .User}}{{.User.Email}}{{end}}" placeholder="you@example.com" required>
@@ -309,6 +360,13 @@
             </label>
             <button type="submit" class="btn btn-primary btn-block">Submit Support Report</button>
           </form>
+          {{else}}
+          <div style="padding:26px 18px;text-align:center;border:1px dashed rgba(255,255,255,0.14);border-radius:10px">
+            <h4 style="margin:0 0 8px;color:#fff;font-size:1rem">Sign in required</h4>
+            <p class="muted" style="margin:0 0 14px;font-size:0.85rem">Support requests are tied to AFX accounts so staff can follow up safely.</p>
+            <a href="/login?next=/support%23submit-ticket" class="btn btn-primary btn-block">Sign In to Submit a Request</a>
+          </div>
+          {{end}}
         </div>
 
         <div class="afx-portal-card">

@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"regexp"
@@ -50,6 +51,7 @@ type ServerKey struct {
 	Username      string `json:"username"`
 	Label         string `json:"label"`
 	BoundEndpoint string `json:"boundEndpoint,omitempty"`
+	JoinCode      string `json:"joinCode,omitempty"`
 	SaltHex       string `json:"saltHex"`
 	SecretHashHex string `json:"secretHashHex"`
 	CreatedAt     int64  `json:"createdAt"`
@@ -74,6 +76,7 @@ func (k ServerKey) PublicView() map[string]interface{} {
 		"username":      k.Username,
 		"label":         k.Label,
 		"boundEndpoint": k.BoundEndpoint,
+		"joinCode":      k.JoinCode,
 		"status":        status,
 		"createdAt":     k.CreatedAt,
 		"expiresAt":     k.ExpiresAt,
@@ -184,6 +187,7 @@ func issueServerKey(u *User, label, boundEndpoint string, ttl time.Duration) (st
 
 	accMu.Lock()
 	ensureAccountsInitializedLocked()
+	rec.JoinCode = ensureJoinCodeForKeyLocked(&rec)
 	acc.ServerKeys = append(acc.ServerKeys, rec)
 	saveAccountsLocked()
 	accMu.Unlock()
@@ -290,6 +294,7 @@ func revokeServerKey(actor *User, keyID string) (int, int, string) {
 	}
 	found.Revoked = true
 	found.RevokedAt = now
+	revokeJoinCodesForKeyLocked(keyID)
 	saveAccountsLocked()
 	accMu.Unlock()
 
@@ -308,10 +313,17 @@ func listServerKeysForUser(actor *User) []map[string]interface{} {
 		return nil
 	}
 	out := []map[string]interface{}{}
-	for _, k := range acc.ServerKeys {
-		if k.UserID == actor.ID || roleAtLeast(actor.Role, "admin") {
+	for i := range acc.ServerKeys {
+		k := &acc.ServerKeys[i]
+		// PRIVACY: a key is visible ONLY to the account that issued it —
+		// never to other members (and not even to staff browsing Keymaster).
+		if k.UserID == actor.ID {
+			ensureJoinCodeForKeyLocked(k)
 			out = append(out, k.PublicView())
 		}
+	}
+	if len(out) > 0 {
+		saveAccountsLocked()
 	}
 	return out
 }
@@ -364,6 +376,25 @@ func serveKeymasterPage(w http.ResponseWriter, r *http.Request, extra map[string
 	}
 	if u != nil {
 		data["Keys"] = listServerKeysForUser(u)
+		data["UpvoteBalance"] = u.UpvoteAllowance()
+		upEp := ""
+		accMu.Lock()
+		if t := userByID(u.ID); t != nil {
+			data["UpvoteAllocated"] = t.UpvoteAllocation
+		}
+		for _, k := range acc.ServerKeys {
+			if k.UserID == u.ID && !k.Revoked {
+				if k.BoundEndpoint != "" {
+					upEp = k.BoundEndpoint
+					break
+				}
+				if k.LastEndpoint != "" {
+					upEp = k.LastEndpoint
+				}
+			}
+		}
+		accMu.Unlock()
+		data["UpvoteServerEp"] = upEp
 	}
 	for k, v := range extra {
 		data[k] = v
@@ -389,9 +420,10 @@ func keymasterCreateForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serveKeymasterPage(w, r, map[string]interface{}{
-		"NewKey":   fullKey,
-		"NewKeyID": rec.ID,
-		"Msg":      "Server key created. Copy the secret below now — it is shown only once.",
+		"NewKey":         fullKey,
+		"NewKeyID":       rec.ID,
+		"NewKeyJoinCode": rec.JoinCode,
+		"Msg":            "Server key created. Copy the secret below now — it is shown only once.",
 	})
 }
 
@@ -407,6 +439,31 @@ func keymasterRevokeForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/keymaster", http.StatusSeeOther)
+}
+
+func keymasterUpvotesForm(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		http.Redirect(w, r, "/login?next=/keymaster", http.StatusSeeOther)
+		return
+	}
+	_ = r.ParseForm()
+	n, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("upvotes")))
+	if n < 0 {
+		n = 0
+	}
+	if n > 10 {
+		n = 10
+	}
+	accMu.Lock()
+	if t := userByID(u.ID); t != nil {
+		t.UpvoteAllocation = n
+	}
+	saveAccountsLocked()
+	accMu.Unlock()
+	serveKeymasterPage(w, r, map[string]interface{}{
+		"Msg": fmt.Sprintf("Saved — %d of your free upvotes now boost your server's listing.", n),
+	})
 }
 
 func apiKeymasterList(w http.ResponseWriter, r *http.Request) {

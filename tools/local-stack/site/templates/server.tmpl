@@ -65,7 +65,7 @@
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 {{if .Srv.Gametype}}<span class="nsm-loaf">{{.Srv.Gametype}}</span>{{end}}
                 {{if .Srv.Mapname}}<span class="nsm-loaf">{{.Srv.Mapname}}</span>{{end}}
-                <span class="nsm-loaf"><code>{{.EndPoint}}</code></span>
+                <span class="nsm-loaf"><code>{{.JoinID}}</code></span>
                 {{if .OwnerUsername}}
                 <a href="/u/{{.OwnerUsername}}" class="nsm-loaf" style="color:#00f8b9;border-color:rgba(0,248,185,0.35)">Owner: @{{.OwnerUsername}}</a>
                 {{end}}
@@ -87,9 +87,9 @@
                 </button>
               </form>
               {{end}}
-              <button type="button" class="nsm-btn nsm-btn-primary" data-connect-ep="{{.EndPoint}}">
+              <button type="button" class="nsm-btn nsm-btn-primary" data-connect-ep="{{.EndPoint}}"{{if .Private}} disabled title="Whitelisted — not open to the public"{{end}}>
                 <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Connect in NSM.exe
+                {{if .Private}}Whitelisted{{else}}Connect in NSM.exe{{end}}
               </button>
             </div>
           </div>
@@ -114,16 +114,16 @@
             <div class="mp-details-box">
               <h3>AFX Share / Join URL</h3>
               <div class="nsm-f8-box">
-                <code>https://nsmultiplayer.com/join/{{.EndPoint}}</code>
-                <button type="button" class="nsm-copy-mini" onclick="navigator.clipboard.writeText('https://nsmultiplayer.com/join/{{.EndPoint}}');this.textContent='Copied!'">Copy</button>
+                <code>https://nsmultiplayer.com/join/{{.JoinID}}</code>
+                <button type="button" class="nsm-copy-mini" onclick="navigator.clipboard.writeText('https://nsmultiplayer.com/join/{{.JoinID}}');this.textContent='Copied!'">Copy</button>
               </div>
             </div>
 
             <div class="mp-details-box">
               <h3>Direct F8 Console Connect</h3>
               <div class="nsm-f8-box">
-                <code>connect {{.EndPoint}}</code>
-                <button type="button" class="nsm-copy-mini" onclick="navigator.clipboard.writeText('connect {{.EndPoint}}');this.textContent='Copied!'">Copy</button>
+                <code>connect {{.JoinID}}</code>
+                <button type="button" class="nsm-copy-mini" onclick="navigator.clipboard.writeText('connect {{.JoinID}}');this.textContent='Copied!'">Copy</button>
               </div>
             </div>
           </div>

@@ -58,6 +58,7 @@ type User struct {
 	Twitter          string `json:"twitter,omitempty"`
 	FavoriteServer   string `json:"favoriteServer,omitempty"`
 	Email            string   `json:"email"`
+	GoogleID         string `json:"googleId,omitempty"`
 	Pass             string   `json:"pass"`
 	Role             string   `json:"role"`
 	CreatedAt        int64    `json:"createdAt"`
@@ -74,6 +75,7 @@ type User struct {
 	FriendRequestsOut []string `json:"friendRequestsOut,omitempty"`
 	EmailVerified     bool     `json:"emailVerified,omitempty"`
 	EmailVerifyCode   string   `json:"emailVerifyCode,omitempty"`
+	UpvoteAllocation  int      `json:"upvoteAllocation,omitempty"` // 0-10 upvotes placed on the user's own server via Keymaster
 	TwoFactorEnabled  bool     `json:"twoFactorEnabled,omitempty"`
 	TwoFactorCode     string   `json:"twoFactorCode,omitempty"`
 	Banned            bool     `json:"banned,omitempty"`
@@ -186,11 +188,9 @@ func (u *User) HasPulseProOrHigher() bool {
 	return t == "pro" || t == "sovereign" || t == "eternal"
 }
 
-// UpvoteAllowance returns how many server upvotes a user's AFX Pulse tier grants:
+// UpvoteAllowance returns how many server upvotes a user can place:
 // - NSM Founder (nta~): 1,000,000 upvotes
-// - Basic Member (Free) or AFX Pulse Core: 0 upvotes
-// - AFX Pulse Pro: 1 upvote
-// - AFX Pulse Sovereign / Eternal: 4 upvotes
+// - Every AFX account: 10 free upvotes (paid packs land later)
 func (u *User) UpvoteAllowance() int {
 	if u == nil {
 		return 0
@@ -198,14 +198,7 @@ func (u *User) UpvoteAllowance() int {
 	if u.IsFounderAccount() {
 		return 1000000
 	}
-	switch u.EffectivePulseTier() {
-	case "eternal", "sovereign":
-		return 4
-	case "pro":
-		return 1
-	default:
-		return 0
-	}
+	return 10
 }
 
 func (u *User) HasPartnerBadge() bool {
@@ -575,6 +568,8 @@ type SupportTicket struct {
 	Status            string         `json:"status"` // "Open", "Answered", "Solved", "Closed"
 	CreatedAt         int64          `json:"createdAt"`
 	UpdatedAt         int64          `json:"updatedAt"`
+	ClosedAt          int64          `json:"closedAt,omitempty"`
+	ClosedBy          string         `json:"closedBy,omitempty"`
 	Messages          []SupportReply `json:"messages"`
 }
 
@@ -586,6 +581,7 @@ type Accounts struct {
 	Upvotes          map[string][]int64     `json:"upvotes"` // endpoint -> user ids
 	FeaturedServers  []string               `json:"featuredServers,omitempty"`
 	ServerKeys       []ServerKey            `json:"serverKeys,omitempty"`
+	JoinCodes        map[string]JoinTarget  `json:"joinCodes,omitempty"`
 	DirectMessages   []DirectMessage        `json:"directMessages,omitempty"`
 	Notifications    []UserNotification     `json:"notifications,omitempty"`
 	SupportTickets   []SupportTicket        `json:"supportTickets,omitempty"`
@@ -903,13 +899,6 @@ func generateSixDigitCode() string {
 	return fmt.Sprintf("%06d", 100000+(val%900000))
 }
 
-func dispatchVerificationEmail(email, username, code string) {
-	if email == "" {
-		return
-	}
-	log.Printf("[email-verify] Verification email dispatched to %s for @%s — 6-digit code: %s", email, username, code)
-}
-
 func apiRegister(w http.ResponseWriter, r *http.Request) {
 	var req struct{ Username, Password, Email, Next string }
 	isJSON := wantsJSONResponse(r)
@@ -922,13 +911,23 @@ func apiRegister(w http.ResponseWriter, r *http.Request) {
 		req.Next = r.FormValue("next")
 	}
 	un := strings.TrimSpace(req.Username)
+	emailAddr := strings.TrimSpace(req.Email)
 	if len(un) < 3 || len(req.Password) < 6 {
 		msg := "Username needs 3+ characters and password needs 6+ characters."
 		if isJSON {
 			sendAccountJSON(w, false, "username needs 3+ chars, password 6+ chars", nil)
 			return
 		}
-		renderPage(w, r, "register.tmpl", map[string]interface{}{"Title": "Create account", "Error": msg, "Next": req.Next, "PrefillUser": un, "PrefillEmail": req.Email})
+		renderPage(w, r, "register.tmpl", map[string]interface{}{"Title": "Create account", "Error": msg, "Next": req.Next, "PrefillUser": un, "PrefillEmail": emailAddr})
+		return
+	}
+	if !validEmailAddress(emailAddr) {
+		msg := "A valid email address is required so we can send your 6-digit verification code."
+		if isJSON {
+			sendAccountJSON(w, false, "a valid email address is required", nil)
+			return
+		}
+		renderPage(w, r, "register.tmpl", map[string]interface{}{"Title": "Create account", "Error": msg, "Next": req.Next, "PrefillUser": un, "PrefillEmail": emailAddr})
 		return
 	}
 	accMu.Lock()
@@ -974,10 +973,6 @@ func apiRegister(w http.ResponseWriter, r *http.Request) {
 	h, _ := bcrypt.GenerateFromPassword([]byte(req.Password), 10)
 	now := time.Now().UnixMilli()
 	verifyCode := generateSixDigitCode()
-	emailAddr := strings.TrimSpace(req.Email)
-	if emailAddr == "" {
-		emailAddr = strings.ToLower(un) + "@users.nsm.local"
-	}
 	u := User{
 		ID:              acc.NextID,
 		Username:        un,
@@ -1001,17 +996,31 @@ func apiRegister(w http.ResponseWriter, r *http.Request) {
 	saveAccountsLocked()
 	accMu.Unlock()
 
-	dispatchVerificationEmail(emailAddr, un, verifyCode)
-	log.Printf("[accounts] registered %s (id %d, verify code %s)", un, u.ID, verifyCode)
+	mailSent := dispatchVerificationEmail(emailAddr, un, verifyCode)
+	verifyMsg := "Your 6-digit verification code was emailed to " + emailAddr + "."
+	if !mailSent {
+		verifyMsg = "Your 6-digit verification code could not be emailed (mail delivery is not configured on this server) — it is also in your in-app notifications."
+	}
+	log.Printf("[accounts] registered %s (id %d, mail sent: %v)", un, u.ID, mailSent)
 	http.SetCookie(w, &http.Cookie{Name: "nsm_session", Value: tok, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 3600})
 	recordWebsiteLoginForClientAuth(u.ID)
 
 	if isJSON {
-		sendAccountJSON(w, true, "", &u)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":                 true,
+			"verificationRequired": !u.EmailVerified,
+			"message":            verifyMsg,
+			"user":               userPublicMap(&u),
+		})
 		return
 	}
-	if !u.EmailVerified && strings.TrimSpace(req.Next) == "" {
-		http.Redirect(w, r, "/verify-email?next="+url.QueryEscape("/u/"+url.PathEscape(u.Username)), http.StatusSeeOther)
+	if !u.EmailVerified {
+		next := strings.TrimSpace(req.Next)
+		if next == "" {
+			next = "/u/" + url.PathEscape(u.Username)
+		}
+		http.Redirect(w, r, "/verify-email?next="+url.QueryEscape(next)+"&msg="+url.QueryEscape(verifyMsg), http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, safeRedirectTarget(req.Next), http.StatusSeeOther)
@@ -1316,6 +1325,11 @@ func accountResendVerifyEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if newEmail != "" && !strings.EqualFold(newEmail, target.Email) {
+		if !validEmailAddress(newEmail) {
+			accMu.Unlock()
+			http.Redirect(w, r, "/verify-email?error="+url.QueryEscape("Please provide a valid email address.")+"&next="+url.QueryEscape(next), http.StatusSeeOther)
+			return
+		}
 		target.Email = newEmail
 		target.EmailVerified = false
 	}
@@ -1330,8 +1344,12 @@ func accountResendVerifyEmail(w http.ResponseWriter, r *http.Request) {
 	saveAccountsLocked()
 	accMu.Unlock()
 
-	dispatchVerificationEmail(emailAddr, un, code)
-	http.Redirect(w, r, "/verify-email?msg="+url.QueryEscape("A fresh 6-digit verification code has been sent to "+emailAddr+".")+"&next="+url.QueryEscape(next), http.StatusSeeOther)
+	mailSent := dispatchVerificationEmail(emailAddr, un, code)
+	resendMsg := "A fresh 6-digit verification code has been emailed to " + emailAddr + "."
+	if !mailSent {
+		resendMsg = "Your new 6-digit verification code could not be emailed (mail delivery is not configured on this server) — it is also in your in-app notifications."
+	}
+	http.Redirect(w, r, "/verify-email?msg="+url.QueryEscape(resendMsg)+"&next="+url.QueryEscape(next), http.StatusSeeOther)
 }
 
 func accountConfigure2FA(w http.ResponseWriter, r *http.Request) {
@@ -2484,6 +2502,8 @@ func buildDiscourseProfileData(targetCopy *User, cur *User, tab, msg, errMsg str
 	if len(chatWithOpt) > 0 {
 		chatWithParam = strings.TrimPrefix(strings.TrimSpace(chatWithOpt[0]), "@")
 	}
+	// PRIVACY: the inbox and notification feed only ever belong to the VIEWER.
+	isOwnProfile := cur != nil && cur.ID == targetCopy.ID
 
 	var upvoteCnt, serverKeyCount int
 	var allUsersSnapshot []User
@@ -2657,11 +2677,12 @@ func buildDiscourseProfileData(targetCopy *User, cur *User, tab, msg, errMsg str
 	likedPosts := likedPostsForProfile(targetCopy.Username)
 	readTopics := recentForumTopics(10)
 
-	// Build real notifications for targetCopy (starting with stored UserNotifications, such as Direct Messages & Forum Replies)
+	// Build real notifications for the profile OWNER only (stored UserNotifications
+	// such as Direct Messages & Forum Replies are private — visitors never see them).
 	var notifications []map[string]interface{}
 	unreadNotifCount := 0
 	for _, un := range notifSnapshot {
-		if un.UserID == targetCopy.ID || strings.EqualFold(un.Username, targetCopy.Username) {
+		if isOwnProfile && (un.UserID == targetCopy.ID || strings.EqualFold(un.Username, targetCopy.Username)) {
 			if un.Unread {
 				unreadNotifCount++
 			}
@@ -2680,6 +2701,9 @@ func buildDiscourseProfileData(targetCopy *User, cur *User, tab, msg, errMsg str
 		}
 	}
 	for _, lp := range likedPosts {
+		if !isOwnProfile {
+			break
+		}
 		if len(notifications) >= 12 {
 			break
 		}
@@ -2698,6 +2722,9 @@ func buildDiscourseProfileData(targetCopy *User, cur *User, tab, msg, errMsg str
 		})
 	}
 	for _, b := range unlockedBadges {
+		if !isOwnProfile {
+			break
+		}
 		if len(notifications) >= 16 {
 			break
 		}
@@ -2717,9 +2744,13 @@ func buildDiscourseProfileData(targetCopy *User, cur *User, tab, msg, errMsg str
 	}
 
 	// Build 1-on-1 Direct Message Conversations & Active Chat Thread (never linking to /forum!)
-	chatOwner := targetCopy
-	if cur != nil && tab == "messages" && !strings.EqualFold(cur.Username, targetCopy.Username) {
-		chatOwner = cur
+	// A guest, or a member visiting someone else's profile, must never see the
+	// profile owner's private messages or notifications (see isOwnProfile above).
+	chatOwner := cur
+	if chatOwner == nil {
+		chatOwner = &User{} // blank viewer: matches no conversations, exposes nothing
+	}
+	if cur != nil && tab == "messages" && !isOwnProfile {
 		if chatWithParam == "" {
 			chatWithParam = targetCopy.Username
 		}
@@ -3285,12 +3316,34 @@ func buildSupportTicketView(tk *SupportTicket) map[string]interface{} {
 		"Status":            tk.Status,
 		"CreatedStr":        time.Unix(tk.CreatedAt, 0).Format("Jan 02, 2006 15:04"),
 		"UpdatedStr":        formatRelativeTime(tk.UpdatedAt),
-		"Messages":          msgs,
+		"ClosedAt":          tk.ClosedAt,
+		"ClosedBy":          tk.ClosedBy,
+		"ClosedStr": func() string {
+			if tk.ClosedAt > 0 {
+				return time.Unix(tk.ClosedAt, 0).Format("Jan 02, 2006 15:04")
+			}
+			return ""
+		}(),
+		"Excerpt": func() string {
+			if len(tk.Messages) == 0 {
+				return ""
+			}
+			ex := strings.TrimSpace(tk.Messages[0].Body)
+			if len(ex) > 180 {
+				ex = ex[:180] + "..."
+			}
+			return ex
+		}(),
+		"Messages": msgs,
 	}
 }
 
 func supportCreateRequest(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
+	if u == nil {
+		http.Redirect(w, r, "/login?next="+url.QueryEscape("/support#submit-ticket"), http.StatusSeeOther)
+		return
+	}
 	_ = r.ParseForm()
 	email := strings.TrimSpace(r.FormValue("email"))
 	subject := strings.TrimSpace(r.FormValue("subject"))
@@ -3526,12 +3579,20 @@ func supportStatusRequest(w http.ResponseWriter, r *http.Request) {
 		if acc.SupportTickets[i].ID == id {
 			acc.SupportTickets[i].Status = status
 			acc.SupportTickets[i].UpdatedAt = time.Now().Unix()
+			if status == "Closed" {
+				acc.SupportTickets[i].ClosedAt = time.Now().Unix()
+				acc.SupportTickets[i].ClosedBy = u.Username
+			}
 			break
 		}
 	}
 	saveAccountsLocked()
 	accMu.Unlock()
 
+	if status == "Closed" {
+		http.Redirect(w, r, "/support?msg="+url.QueryEscape("Ticket #"+strconv.FormatInt(id, 10)+" was closed and moved to the closed ticket log."), http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, fmt.Sprintf("/support/requests/%d?msg=%s", id, url.QueryEscape("Ticket status updated to "+status+".")), http.StatusSeeOther)
 }
 
@@ -3648,6 +3709,38 @@ func adminTogglePartner(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---- upvotes (Founder nta~ = 1,000,000 Upvotes, AFX Pulse Sovereign / Eternal = 4 Upvotes, Pro = 1 Upvote, Core / Basic = 0) ----
+
+// allocationBoost returns the upvotes (0-10) that the owner of the server
+// listed at endPoint has placed on their own server with the Keymaster slider.
+// Bound keys match their endpoint; unbound keys match wherever they last ran.
+func allocationBoost(ep string) int {
+	accMu.Lock()
+	defer accMu.Unlock()
+	if acc == nil || ep == "" {
+		return 0
+	}
+	now := keyClock().Unix()
+	boost := 0
+	for _, k := range acc.ServerKeys {
+		if k.Revoked || now >= k.ExpiresAt {
+			continue
+		}
+		matches := strings.EqualFold(k.BoundEndpoint, ep) || (k.BoundEndpoint == "" && strings.EqualFold(k.LastEndpoint, ep))
+		if !matches {
+			continue
+		}
+		if u := userByID(k.UserID); u != nil {
+			n := u.UpvoteAllocation
+			if n > 10 {
+				n = 10
+			}
+			if n > boost {
+				boost = n
+			}
+		}
+	}
+	return boost
+}
 
 func upvoteCountLocked(ep string) int {
 	if acc == nil {

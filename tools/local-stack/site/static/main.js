@@ -325,14 +325,16 @@
     if (descEl) descEl.textContent = desc;
     if (initEl) initEl.textContent = cleanName.charAt(0).toUpperCase() || 'S';
     if (playersEl) playersEl.textContent = clients + ' / ' + maxClients;
-    if (epEl) epEl.textContent = ep;
+    var jc = row.getAttribute('data-join-code') || '';
+    var joinRef = jc || ep;
+    if (epEl) epEl.textContent = joinRef;
     if (resEl) resEl.textContent = resCount + ' loaded';
     if (locEl) locEl.textContent = locale + (onesync ? ' • OneSync' : '');
-    if (f8El) f8El.textContent = 'connect ' + ep;
-    if (joinEl) joinEl.textContent = 'https://nsmultiplayer.com/join/' + ep;
+    if (f8El) f8El.textContent = 'connect ' + joinRef;
+    if (joinEl) joinEl.textContent = 'https://nsmultiplayer.com/join/' + joinRef;
     if (upvEl) upvEl.textContent = upvotes;
     if (featLblEl) featLblEl.innerHTML = '&#9733; ' + (isFeat ? 'Featured' : 'Feature');
-    if (fullLink) fullLink.setAttribute('href', '/servers/' + encodeURIComponent(ep));
+    if (fullLink) fullLink.setAttribute('href', '/join/' + encodeURIComponent(joinRef));
 
     if (tagsEl) {
       var tags = tagsRaw ? tagsRaw.split(',') : [];
@@ -1228,8 +1230,9 @@
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (data) {
           if (!data) return;
+          function nsmFmtK(n) { n = Number(n) || 0; if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'm'; if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k'; return String(n); }
           var pEls = document.querySelectorAll('[data-stat="players"]');
-          for (var i = 0; i < pEls.length; i++) pEls[i].textContent = String(data.players || 0);
+          for (var i = 0; i < pEls.length; i++) pEls[i].textContent = nsmFmtK(data.players || 0);
           var sEls = document.querySelectorAll('[data-stat="servers"]');
           for (var j = 0; j < sEls.length; j++) sEls[j].textContent = String(data.count || 0);
           if (Array.isArray(data.servers)) {
@@ -1241,6 +1244,12 @@
               var upNodes = document.querySelectorAll('[data-upvote-count="' + ep + '"]');
               for (var u = 0; u < upNodes.length; u++) {
                 upNodes[u].textContent = String(upv);
+              }
+              var slCard = document.querySelector('.sl-card[data-ep="' + ep + '"]');
+              if (slCard) {
+                slCard.setAttribute('data-clients', String(srv.Clients || srv.players || 0));
+                var clEl = slCard.querySelector('[data-sl-clients-val]');
+                if (clEl) clEl.innerHTML = String(srv.Clients || srv.players || 0) + ' <small>/ ' + (srv.MaxClients || 0) + '</small>';
               }
               var row = document.querySelector('.nsm-server-row[data-ep="' + ep + '"]');
               if (row) {
