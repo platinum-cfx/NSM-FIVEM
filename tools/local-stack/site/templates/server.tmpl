@@ -87,9 +87,9 @@
                 </button>
               </form>
               {{end}}
-              <button type="button" class="nsm-btn nsm-btn-primary" data-connect-ep="{{.EndPoint}}">
+              <button type="button" class="nsm-btn nsm-btn-primary" data-connect-ep="{{.EndPoint}}"{{if .Private}} disabled title="Whitelisted — not open to the public"{{end}}>
                 <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Connect in NSM.exe
+                {{if .Private}}Whitelisted{{else}}Connect in NSM.exe{{end}}
               </button>
             </div>
           </div>

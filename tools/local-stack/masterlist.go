@@ -1438,6 +1438,7 @@ func main() {
 	loadForum()
 	initSite()
 	patchLocalUIBundlesOnDisk()
+	startShowcaseServers()
 
 	srv := &http.Server{
 		Addr:              addr,

@@ -120,6 +120,8 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   #nsm-mp-app .sl-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  #nsm-mp-app .sl-priv-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 0.62rem; font-weight: 800; letter-spacing: 0.08em; color: #c4b5fd; background: rgba(139,92,246,0.16); border: 1px solid rgba(139,92,246,0.4); border-radius: 999px; padding: 2px 8px; margin-top: 4px; }
+  #nsm-mp-app .sl-btn[disabled] { opacity: 0.6; cursor: not-allowed; filter: grayscale(0.35); }
   #nsm-mp-app .sl-tag {
     font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em; color: rgba(240, 244, 248, 0.72);
     background: rgba(255, 255, 255, 0.06); border: 1px solid var(--sl-line); padding: 2px 8px; border-radius: 999px;
@@ -190,7 +192,7 @@
       <p class="sl-sub">Live NSM &amp; AFX servers — pick one and jump in.</p>
       <div class="sl-stat-row">
         <span class="sl-pill"><span class="sl-live-dot"></span><span class="sl-num">{{.Stats.Servers}}</span> servers online</span>
-        <span class="sl-pill"><span class="sl-num">{{.Stats.Players}}</span> players online</span>
+        <span class="sl-pill"><span class="sl-num">{{kfmt .Stats.Players}}</span> players online</span>
         <span class="sl-pill sl-locked">&#128274; Join codes keep every server IP private</span>
         {{if and .User .User.IsFounderAccount}}
         <span class="sl-pill" style="border-color:rgba(251,191,36,0.5);color:#fbbf24">&#9733; Founder mode — Feature buttons enabled</span>
@@ -239,6 +241,7 @@
               <a class="sl-name" href="/join/{{if .JoinCode}}{{.JoinCode}}{{else}}{{.EndPoint}}{{end}}">
                 <span class="sl-name-txt">{{.CleanName}}</span>
                 <span class="sl-star-badge">&#9733; FEATURED</span>
+                {{if .Private}}<span class="sl-priv-badge">&#128274; WHITELISTED</span>{{end}}
               </a>
               <div class="sl-desc">{{if .Desc}}{{.Desc}}{{else}}{{.GameType}}{{if .MapName}} &bull; {{.MapName}}{{end}}{{end}}</div>
             </div>
@@ -254,9 +257,9 @@
             </div>
           </div>
           <div class="sl-actions">
-            <button type="button" class="sl-btn sl-primary" data-sl-connect="{{.EndPoint}}">
+            <button type="button" class="sl-btn sl-primary" {{if .Private}}disabled data-sl-private title="Whitelisted — not open to the public"{{else}}data-sl-connect="{{.EndPoint}}"{{end}}>
               <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              Connect
+              {{if .Private}}&#128274; Private{{else}}Connect{{end}}
             </button>
             <button type="button" class="sl-btn sl-icon-btn" data-sl-share="{{if .JoinCode}}{{.JoinCode}}{{else}}{{.EndPoint}}{{end}}" title="Copy join link (hides IP)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
@@ -300,6 +303,7 @@
             <div class="sl-name-col">
               <a class="sl-name" href="/join/{{if .JoinCode}}{{.JoinCode}}{{else}}{{.EndPoint}}{{end}}">
                 <span class="sl-name-txt">{{.CleanName}}</span>
+                {{if .Private}}<span class="sl-priv-badge">&#128274; WHITELISTED</span>{{end}}
               </a>
               <div class="sl-desc">{{if .Desc}}{{.Desc}}{{else}}{{.GameType}}{{if .MapName}} &bull; {{.MapName}}{{end}}{{end}}</div>
             </div>
@@ -320,9 +324,9 @@
             </div>
           </div>
           <div class="sl-actions">
-            <button type="button" class="sl-btn sl-primary" data-sl-connect="{{.EndPoint}}">
+            <button type="button" class="sl-btn sl-primary" {{if .Private}}disabled data-sl-private title="Whitelisted — not open to the public"{{else}}data-sl-connect="{{.EndPoint}}"{{end}}>
               <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              Connect
+              {{if .Private}}&#128274; Private{{else}}Connect{{end}}
             </button>
             <button type="button" class="sl-btn sl-icon-btn" data-sl-share="{{if .JoinCode}}{{.JoinCode}}{{else}}{{.EndPoint}}{{end}}" title="Copy join link (hides IP)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>

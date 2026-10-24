@@ -5,6 +5,7 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -32,11 +34,24 @@ func cleanHostname(s string) string {
 	return s
 }
 
+// fmtCompact renders large counts the way the site shows them: 1100 -> "1.1k",
+// 2200 -> "2.2k", 1500000 -> "1.5m".
+func fmtCompact(n int64) string {
+	switch {
+	case n >= 1000000:
+		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.1f", float64(n)/1000000), "0"), ".") + "m"
+	case n >= 1000:
+		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.1f", float64(n)/1000), "0"), ".") + "k"
+	default:
+		return strconv.FormatInt(n, 10)
+	}
+}
+
 func initSite() {
 	if forum == nil {
 		loadForum()
 	}
-	tmpl = template.Must(template.ParseFS(siteFS, "site/templates/*.tmpl"))
+	tmpl = template.Must(template.New("").Funcs(template.FuncMap{"kfmt": fmtCompact}).ParseFS(siteFS, "site/templates/*.tmpl"))
 }
 
 func accountCount() int64 {
@@ -116,6 +131,7 @@ func liveServers() []map[string]interface{} {
 		upv := int(d.UpvotePower)
 		burst := int(d.BurstPower)
 		featured := isFeaturedServer(ep)
+		private := d.Vars["nsm_private"] == "1"
 		joinCode := joinCodeForEndpointLookup(ep)
 		joinID := joinCode
 		if joinID == "" {
@@ -136,6 +152,7 @@ func liveServers() []map[string]interface{} {
 			"Upvotes":          upv,
 			"BurstPower":       burst,
 			"Featured":         featured,
+			"Private":          private,
 			"Tags":             tags,
 			"Locale":           locale,
 			"Country":          country,
@@ -336,6 +353,7 @@ func renderServerDetail(w http.ResponseWriter, r *http.Request, ep, joinCode str
 		"Upvotes":       int(d.UpvotePower),
 		"Voted":         voted,
 		"Featured":      isFeaturedServer(ep),
+		"Private":       d.Vars["nsm_private"] == "1",
 		"OwnerUsername": ownerUsername,
 	})
 }

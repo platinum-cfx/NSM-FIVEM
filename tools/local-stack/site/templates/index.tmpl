@@ -8,7 +8,7 @@
           </div>
           <div class="hero-cta">
             <div class="players">
-              <span class="live-dot"></span>Join the <span class="current-players" data-stat="players">{{index .Stats "Players"}}</span> people playing right now!
+              <span class="live-dot"></span>Join the <span class="current-players" data-stat="players">{{kfmt (index .Stats "Players")}}</span> people playing right now!
             </div>
             <div class="btnpadder" style="position:relative">
               <a id="dl" href="/download" data-no-spa="1">
@@ -118,7 +118,7 @@
             <a class="ghostbtn" href="/servers">
               <div class="in"><span class="gbtn-txt">Open Live Server List</span></div>
             </a>
-            <span class="dl-text"><strong data-stat="servers">{{index .Stats "Servers"}}</strong> live servers &middot; <strong data-stat="players">{{index .Stats "Players"}}</strong> players online</span>
+            <span class="dl-text"><strong data-stat="servers">{{index .Stats "Servers"}}</strong> live servers &middot; <strong data-stat="players">{{kfmt (index .Stats "Players")}}</strong> players online</span>
           </div>
         </div>
         <div class="cright"></div>

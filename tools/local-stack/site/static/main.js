@@ -1230,8 +1230,9 @@
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (data) {
           if (!data) return;
+          function nsmFmtK(n) { n = Number(n) || 0; if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'm'; if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k'; return String(n); }
           var pEls = document.querySelectorAll('[data-stat="players"]');
-          for (var i = 0; i < pEls.length; i++) pEls[i].textContent = String(data.players || 0);
+          for (var i = 0; i < pEls.length; i++) pEls[i].textContent = nsmFmtK(data.players || 0);
           var sEls = document.querySelectorAll('[data-stat="servers"]');
           for (var j = 0; j < sEls.length; j++) sEls[j].textContent = String(data.count || 0);
           if (Array.isArray(data.servers)) {
