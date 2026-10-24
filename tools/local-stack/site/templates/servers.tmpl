@@ -1,470 +1,522 @@
-{{define "nsm_server_launcher"}}
-<div class="mp-app-frame" id="nsm-mp-app">
-  <!-- NSM.exe Top NavBar (HomeButton + ListTypeTabs + ServerFiltersWithDirectConnect + PlatformStats + UserBar + Settings) -->
-  <header class="mp-navbar">
-    <div class="mp-navbar-left">
-      <a href="/" class="mp-home-btn" title="Home — NSM">
-        <img src="/img/nsm-icon.png" alt="NSM" class="mp-brand-icon">
-      </a>
+{{template "head" .}}
+<style>
+  /* ===== NSM Server List — modern UI (scoped to this page) ===== */
+  #nsm-mp-app {
+    --sl-bg: #0a1020;
+    --sl-card: rgba(19, 28, 48, 0.92);
+    --sl-card2: rgba(13, 21, 38, 0.96);
+    --sl-line: rgba(255, 255, 255, 0.08);
+    --sl-line-hi: rgba(0, 248, 185, 0.35);
+    --sl-text: #f0f4f8;
+    --sl-mut: rgba(240, 244, 248, 0.58);
+    --sl-mint: #00f8b9;
+    --sl-blue: #2f7bff;
+    --sl-gold: #fbbf24;
+    padding: 26px 0 60px;
+    background:
+      radial-gradient(900px 320px at 12% -40px, rgba(47, 123, 255, 0.16), transparent 70%),
+      radial-gradient(760px 300px at 88% -60px, rgba(0, 248, 185, 0.12), transparent 70%);
+    min-height: calc(100vh - 220px);
+  }
+  #nsm-mp-app .sl-wrap { max-width: 1120px; margin: 0 auto; padding: 0 22px; }
 
-      <!-- ListTypeTabs (Tabular.Root size="large") -->
-      <div class="mp-tabular-root" role="tablist" aria-label="Server Lists">
-        <button type="button" class="mp-tabular-item active" data-tab="all" title="Browse All Servers">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-          <span class="mp-tab-label">Servers</span>
-          <span class="mp-tab-badge" id="nsm-tab-count-all">{{len .Servers}}</span>
-        </button>
-        <button type="button" class="mp-tabular-item" data-tab="supporters" title="Supporters &amp; Boosted Servers">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color:#00f8b9"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-          <span class="mp-tab-label">Supporters</span>
-        </button>
-        <button type="button" class="mp-tabular-item" data-tab="history" title="Recently Joined Servers">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color:#2096f3"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span class="mp-tab-label">History</span>
-          <span class="mp-tab-badge" id="nsm-tab-count-history">0</span>
-        </button>
-        <button type="button" class="mp-tabular-item" data-tab="favorites" title="Favorite Servers">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color:#f40552"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-          <span class="mp-tab-label">Favorites</span>
-          <span class="mp-tab-badge" id="nsm-tab-count-favorites">0</span>
-        </button>
-      </div>
+  /* Hero */
+  #nsm-mp-app .sl-hero { margin: 6px 0 22px; }
+  #nsm-mp-app .sl-hero h1 {
+    margin: 0 0 6px; font-size: 2.35rem; font-weight: 800; letter-spacing: -0.02em; color: var(--sl-text);
+  }
+  #nsm-mp-app .sl-hero h1 .sl-grad {
+    background: linear-gradient(92deg, #2f7bff 0%, #00f8b9 55%, #7de0ff 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  #nsm-mp-app .sl-sub { margin: 0 0 16px; color: var(--sl-mut); font-size: 1.02rem; }
+  #nsm-mp-app .sl-stat-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  #nsm-mp-app .sl-pill {
+    display: inline-flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 999px;
+    background: rgba(19, 28, 48, 0.85); border: 1px solid var(--sl-line); color: var(--sl-text);
+    font-size: 0.83rem; font-weight: 600;
+  }
+  #nsm-mp-app .sl-pill .sl-num { font-size: 0.98rem; font-weight: 800; color: var(--sl-mint); }
+  #nsm-mp-app .sl-live-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--sl-mint);
+    box-shadow: 0 0 0 0 rgba(0, 248, 185, 0.55); animation: slPulse 2s infinite;
+  }
+  @keyframes slPulse {
+    0% { box-shadow: 0 0 0 0 rgba(0, 248, 185, 0.5); }
+    70% { box-shadow: 0 0 0 7px rgba(0, 248, 185, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(0, 248, 185, 0); }
+  }
+  #nsm-mp-app .sl-pill.sl-locked { color: var(--sl-mut); font-weight: 500; }
 
-      <!-- ServerFiltersWithDirectConnect inside NavBar -->
-      <div class="mp-navbar-filters">
-        <div class="nsm-search-box" id="nsm-search-box">
-          <span class="nsm-search-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          </span>
-          <div class="nsm-search-chips" id="nsm-search-chips"></div>
-          <input type="text" id="nsm-server-search" placeholder="Search servers, tags, locales, or enter IP:port..." autocomplete="off">
-          <button type="button" class="nsm-search-clear" id="nsm-search-clear" style="display:none" title="Clear search">&times;</button>
+  /* Search + sort */
+  #nsm-mp-app .sl-controls {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 18px 0 26px;
+  }
+  #nsm-mp-app .sl-search {
+    flex: 1 1 300px; position: relative; max-width: 460px;
+  }
+  #nsm-mp-app .sl-search input {
+    width: 100%; box-sizing: border-box; padding: 11px 14px 11px 40px; border-radius: 12px;
+    background: rgba(19, 28, 48, 0.85); border: 1px solid var(--sl-line); color: var(--sl-text);
+    font-size: 0.95rem; outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  #nsm-mp-app .sl-search input:focus { border-color: var(--sl-line-hi); box-shadow: 0 0 0 3px rgba(0, 248, 185, 0.12); }
+  #nsm-mp-app .sl-search svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--sl-mut); }
+  #nsm-mp-app .sl-sort { display: flex; gap: 6px; background: rgba(19, 28, 48, 0.7); border: 1px solid var(--sl-line); border-radius: 12px; padding: 4px; }
+  #nsm-mp-app .sl-sort button {
+    border: 0; background: transparent; color: var(--sl-mut); font-weight: 600; font-size: 0.82rem;
+    padding: 7px 13px; border-radius: 9px; cursor: pointer; transition: all .15s;
+  }
+  #nsm-mp-app .sl-sort button:hover { color: var(--sl-text); }
+  #nsm-mp-app .sl-sort button.sl-active { background: linear-gradient(135deg, rgba(47, 123, 255, 0.35), rgba(0, 248, 185, 0.25)); color: #fff; }
 
-          <!-- DirectConnect Popover when typing IP:port -->
-          <div class="mp-direct-connect-popover" id="nsm-direct-connect-popover" style="display:none">
-            <div class="mp-dc-row">
-              <span class="mp-dc-label" id="nsm-dc-label">Direct Connect to <code>127.0.0.1:30120</code></span>
-              <button type="button" class="nsm-btn nsm-btn-primary nsm-btn-sm" id="nsm-dc-btn">Press Enter to Connect</button>
-            </div>
-          </div>
-        </div>
+  /* Section headers */
+  #nsm-mp-app .sl-sec { margin: 0 0 34px; }
+  #nsm-mp-app .sl-sec-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 14px; }
+  #nsm-mp-app .sl-sec-head h2 { margin: 0; font-size: 1.28rem; font-weight: 800; color: var(--sl-text); letter-spacing: -0.01em; }
+  #nsm-mp-app .sl-sec-head .sl-count { color: var(--sl-mut); font-size: 0.86rem; font-weight: 600; }
+  #nsm-mp-app .sl-hint { color: var(--sl-mut); font-size: 0.8rem; margin-left: auto; }
+  #nsm-mp-app .sl-hint.sl-gold { color: rgba(251, 191, 36, 0.85); }
 
-        <!-- FilterPopover -->
-        <div class="nsm-popover-anchor">
-          <button type="button" class="nsm-ctrl-btn" id="nsm-filter-btn" title="Filter Servers">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-            <span>Filters</span>
-            <span class="nsm-filter-badge" id="nsm-filter-badge" style="display:none">0</span>
-          </button>
+  /* Grid + cards */
+  #nsm-mp-app .sl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+  #nsm-mp-app .sl-card {
+    position: relative; display: flex; flex-direction: column; gap: 12px; padding: 16px;
+    background: linear-gradient(180deg, var(--sl-card), var(--sl-card2));
+    border: 1px solid var(--sl-line); border-radius: 16px;
+    transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+  }
+  #nsm-mp-app .sl-card:hover {
+    transform: translateY(-3px); border-color: var(--sl-line-hi);
+    box-shadow: 0 14px 34px rgba(2, 8, 23, 0.55), 0 0 0 1px rgba(0, 248, 185, 0.12);
+  }
+  #nsm-mp-app .sl-card.sl-featured {
+    border-color: rgba(251, 191, 36, 0.4);
+    background: linear-gradient(180deg, rgba(38, 32, 18, 0.55), var(--sl-card2));
+  }
+  #nsm-mp-app .sl-card.sl-featured:hover { border-color: rgba(251, 191, 36, 0.7); box-shadow: 0 14px 34px rgba(2, 8, 23, 0.55), 0 0 0 1px rgba(251, 191, 36, 0.2); }
+  #nsm-mp-app .sl-card-top { display: flex; gap: 12px; align-items: center; min-width: 0; }
+  #nsm-mp-app .sl-icon {
+    width: 52px; height: 52px; border-radius: 13px; overflow: hidden; flex-shrink: 0;
+    background: linear-gradient(135deg, rgba(47, 123, 255, 0.4), rgba(0, 248, 185, 0.28));
+    display: flex; align-items: center; justify-content: center;
+  }
+  #nsm-mp-app .sl-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #nsm-mp-app .sl-icon span { font-size: 1.35rem; font-weight: 800; color: #fff; }
+  #nsm-mp-app .sl-name-col { min-width: 0; flex: 1; }
+  #nsm-mp-app .sl-name {
+    display: flex; align-items: center; gap: 7px; min-width: 0;
+    font-size: 1.02rem; font-weight: 700; color: var(--sl-text); text-decoration: none;
+  }
+  #nsm-mp-app .sl-name .sl-name-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #nsm-mp-app .sl-name:hover .sl-name-txt { color: var(--sl-mint); }
+  #nsm-mp-app .sl-star-badge {
+    flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(251, 191, 36, 0.16); border: 1px solid rgba(251, 191, 36, 0.5); color: var(--sl-gold);
+    font-size: 0.64rem; font-weight: 800; letter-spacing: 0.04em; padding: 2px 7px; border-radius: 999px;
+  }
+  #nsm-mp-app .sl-desc {
+    color: var(--sl-mut); font-size: 0.82rem; margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #nsm-mp-app .sl-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  #nsm-mp-app .sl-tag {
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em; color: rgba(240, 244, 248, 0.72);
+    background: rgba(255, 255, 255, 0.06); border: 1px solid var(--sl-line); padding: 2px 8px; border-radius: 999px;
+    max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
 
-          <div class="nsm-popover nsm-filter-popover" id="nsm-filter-popover" style="display:none">
-            <div class="nsm-popover-section">
-              <label class="nsm-checkbox-row">
-                <input type="checkbox" id="nsm-hide-empty">
-                <span class="nsm-checkbox-indicator"></span>
-                <span>Hide Empty Servers</span>
-              </label>
-              <label class="nsm-checkbox-row">
-                <input type="checkbox" id="nsm-hide-full">
-                <span class="nsm-checkbox-indicator"></span>
-                <span>Hide Full Servers</span>
-              </label>
-            </div>
+  /* Big stats */
+  #nsm-mp-app .sl-stats { display: flex; gap: 10px; }
+  #nsm-mp-app .sl-stat {
+    flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.035); border: 1px solid var(--sl-line); border-radius: 12px;
+  }
+  #nsm-mp-app .sl-stat .sl-stat-lbl { font-size: 0.64rem; font-weight: 800; letter-spacing: 0.09em; color: var(--sl-mut); }
+  #nsm-mp-app .sl-stat .sl-stat-val { font-size: 1.28rem; font-weight: 800; color: var(--sl-text); line-height: 1.15; }
+  #nsm-mp-app .sl-stat .sl-stat-val small { font-size: 0.82rem; font-weight: 700; color: var(--sl-mut); }
+  #nsm-mp-app .sl-stat.sl-click { cursor: pointer; transition: border-color .15s, background .15s; }
+  #nsm-mp-app .sl-stat.sl-click:hover { border-color: rgba(0, 248, 185, 0.4); background: rgba(0, 248, 185, 0.07); }
+  #nsm-mp-app .sl-stat.sl-click .sl-stat-val { color: var(--sl-mint); }
+  #nsm-mp-app .sl-stat.sl-click.sl-bumped { animation: slPop .35s ease; }
+  @keyframes slPop { 40% { transform: scale(1.04); } }
 
-            <div class="nsm-facet-tabs">
-              <button type="button" class="nsm-facet-tab active" data-facet-tab="tags">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-                Tags
-              </button>
-              <button type="button" class="nsm-facet-tab" data-facet-tab="locales">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                Locales
-              </button>
-            </div>
+  /* Actions */
+  #nsm-mp-app .sl-actions { display: flex; gap: 8px; margin-top: auto; }
+  #nsm-mp-app .sl-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    border-radius: 11px; font-weight: 700; font-size: 0.86rem; cursor: pointer;
+    padding: 9px 12px; border: 1px solid var(--sl-line); background: rgba(255, 255, 255, 0.05); color: var(--sl-text);
+    transition: all .15s; text-decoration: none;
+  }
+  #nsm-mp-app .sl-btn:hover { border-color: rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.1); }
+  #nsm-mp-app .sl-btn svg { width: 13px; height: 13px; }
+  #nsm-mp-app .sl-btn.sl-primary {
+    flex: 1; border: 0; color: #04121c;
+    background: linear-gradient(135deg, #2f7bff, #00f8b9);
+  }
+  #nsm-mp-app .sl-btn.sl-primary:hover { filter: brightness(1.08); }
+  #nsm-mp-app .sl-btn.sl-icon-btn { padding: 9px 11px; }
+  #nsm-mp-app .sl-btn.sl-gold { color: var(--sl-gold); border-color: rgba(251, 191, 36, 0.4); background: rgba(251, 191, 36, 0.1); }
+  #nsm-mp-app .sl-btn.sl-gold:hover { background: rgba(251, 191, 36, 0.2); border-color: rgba(251, 191, 36, 0.65); }
 
-            <div class="nsm-facet-search-wrap">
-              <input type="text" id="nsm-facet-search" placeholder="Search tags..." autocomplete="off">
-            </div>
+  /* Empty states + toast */
+  #nsm-mp-app .sl-empty {
+    padding: 26px 18px; text-align: center; color: var(--sl-mut); font-size: 0.92rem;
+    border: 1px dashed var(--sl-line); border-radius: 14px;
+  }
+  #nsm-mp-app .sl-empty strong { color: var(--sl-text); }
+  #sl-toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(12px);
+    background: rgba(15, 23, 42, 0.97); border: 1px solid rgba(0, 248, 185, 0.45); color: var(--sl-text);
+    padding: 11px 18px; border-radius: 12px; font-size: 0.9rem; font-weight: 600;
+    opacity: 0; pointer-events: none; transition: all .22s ease; z-index: 9999;
+    box-shadow: 0 12px 34px rgba(2, 8, 23, 0.6);
+  }
+  #sl-toast.sl-show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-            <div class="nsm-facet-list" id="nsm-facet-tags-list"></div>
-            <div class="nsm-facet-list" id="nsm-facet-locales-list" style="display:none"></div>
-          </div>
-        </div>
+  @media (max-width: 560px) {
+    #nsm-mp-app .sl-hero h1 { font-size: 1.8rem; }
+    #nsm-mp-app .sl-grid { grid-template-columns: 1fr; }
+  }
+</style>
 
-        <!-- SortPopover -->
-        <div class="nsm-popover-anchor">
-          <button type="button" class="nsm-ctrl-btn" id="nsm-sort-btn" title="Sort Servers">
-            <span id="nsm-sort-label">Players</span>
-            <span id="nsm-sort-dir-icon" class="nsm-sort-arrow">&#8595;</span>
-          </button>
+<div id="nsm-mp-app">
+  <div class="sl-wrap">
 
-          <div class="nsm-popover nsm-sort-popover" id="nsm-sort-popover" style="display:none">
-            <div class="nsm-sort-item" data-sort="boosts">
-              <span class="label">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
-                Boosts
-              </span>
-              <span class="value" data-sort-ind="boosts"></span>
-            </div>
-            <div class="nsm-sort-item" data-sort="name">
-              <span class="label">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
-                Name
-              </span>
-              <span class="value" data-sort-ind="name"></span>
-            </div>
-            <div class="nsm-sort-item active" data-sort="players">
-              <span class="label">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                Players
-              </span>
-              <span class="value" data-sort-ind="players">&#8595;</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Right side of NavBar: External Platform Links + PlatformStats + UserBar + Settings -->
-    <div class="mp-navbar-right">
-      <div class="mp-ext-links">
-        <a href="/keymaster" class="mp-ext-link" title="Open AFX Portal">AFX Portal</a>
-        <a href="/forum" class="mp-ext-link" title="Open AFX Forum">Forum</a>
-        <a href="/marketplace" class="mp-ext-link" title="Open AFX Marketplace">Marketplace</a>
-        <a href="/docs" class="mp-ext-link" title="Open NSM Documentation">Docs</a>
-        <a href="/support" class="mp-ext-link" title="Open AFX Support">Support</a>
-        {{if and .User .User.IsStaffOrHigher}}
-        <a href="/admin/users" class="mp-ext-link" style="color:#6ea8ff;font-weight:700" title="Staff Panel">Staff</a>
+    <!-- ===================== HERO ===================== -->
+    <header class="sl-hero">
+      <h1><span class="sl-grad">Server List</span></h1>
+      <p class="sl-sub">Live NSM &amp; AFX servers — pick one and jump in.</p>
+      <div class="sl-stat-row">
+        <span class="sl-pill"><span class="sl-live-dot"></span><span class="sl-num">{{.Stats.Servers}}</span> servers online</span>
+        <span class="sl-pill"><span class="sl-num">{{.Stats.Players}}</span> players online</span>
+        <span class="sl-pill sl-locked">&#128274; Join codes keep every server IP private</span>
+        {{if and .User .User.IsFounderAccount}}
+        <span class="sl-pill" style="border-color:rgba(251,191,36,0.5);color:#fbbf24">&#9733; Founder mode — Feature buttons enabled</span>
         {{end}}
       </div>
+    </header>
 
-      <div class="mp-platform-stats" title="Live NSM Masterlist Players &amp; Servers">
-        <span class="mp-stat-pill">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-          <strong data-stat="players">{{if .Stats}}{{index .Stats "Players"}}{{else}}0{{end}}</strong>
-        </span>
-        <span class="mp-stat-pill">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="7" rx="1.5"/><rect x="2" y="14" width="20" height="7" rx="1.5"/></svg>
-          <strong id="nsm-visible-count">{{len .Servers}}</strong>
-        </span>
+    <!-- ===================== SEARCH + SORT ===================== -->
+    <div class="sl-controls">
+      <div class="sl-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+        <input id="sl-search" type="text" placeholder="Search servers, tags, gamemodes…" autocomplete="off">
       </div>
-
-      {{if .User}}
-      <a href="/u/{{.User.Username}}" class="mp-user-bar" title="Signed in as @{{.User.Username}} — Click for Profile">
-        <img src="{{.User.AvatarPath}}" alt="{{.User.Username}}" class="mp-user-avatar">
-        <span class="mp-user-name">{{.User.EffectiveDisplayName}}</span>
-      </a>
-      {{else}}
-      <a href="/login" class="mp-user-bar mp-user-signin" title="Sign in to AFX &amp; NSM">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span>Sign In</span>
-      </a>
-      {{end}}
-
-      <button type="button" class="mp-icon-btn" id="nsm-settings-btn" title="NSM Settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </button>
+      <div class="sl-sort" id="sl-sort">
+        <button type="button" class="sl-active" data-sort="players">Players</button>
+        <button type="button" data-sort="upvotes">Upvotes</button>
+        <button type="button" data-sort="name">Name</button>
+      </div>
     </div>
-  </header>
 
-  <!-- NSM.exe ServersPage Body: Left .list + Right .pinned (PinnedServers / Live Server Inspector) -->
-  <div class="mp-page-body">
-    <!-- Left: .list (exact NSM.exe ServerListItem rows) -->
-    <div class="mp-servers-list-pane" id="nsm-server-list-body">
-      <div class="mp-list-col-header">
-        <span>ICON</span>
-        <span>SERVER NAME &amp; GAMEMODE</span>
-        <span>TAGS / ACTIONS</span>
-        <span style="text-align:right">LOCALE &amp; BOOST</span>
-        <span style="text-align:right">PLAYERS</span>
+    <!-- ===================== FEATURED ===================== -->
+    <section class="sl-sec" id="sl-featured-sec">
+      <div class="sl-sec-head">
+        <h2>&#9733; Featured Servers</h2>
+        {{if and .User .User.IsFounderAccount}}
+        <span class="sl-hint sl-gold">Click ★ Feature on any card to pin or unpin it here and in NSM.exe.</span>
+        {{else}}
+        <span class="sl-hint">Official servers pinned by nta~</span>
+        {{end}}
       </div>
-      {{if .Servers}}
-        {{range .Servers}}
-        <div class="nsm-server-row"
-             data-ep="{{.EndPoint}}"
-             data-join-code="{{.JoinCode}}"
-             data-name="{{.CleanName}}"
-             data-raw-name="{{.Hostname}}"
-             data-desc="{{.Desc}}"
-             data-gametype="{{.GameType}}"
-             data-mapname="{{.MapName}}"
-             data-clients="{{.Clients}}"
-             data-maxclients="{{.MaxClients}}"
-             data-upvotes="{{.Upvotes}}"
-             data-burst="{{.BurstPower}}"
-             data-featured="{{if .Featured}}1{{else}}0{{end}}"
-             data-locale="{{.Locale}}"
-             data-country="{{.Country}}"
-             data-onesync="{{.OneSync}}"
-             data-gamebuild="{{.GameBuild}}"
-             data-purelevel="{{.PureLevel}}"
-             data-resources="{{.Resources}}"
-             data-serverversion="{{.ServerVersion}}"
-             data-tags="{{range $i, $t := .Tags}}{{if $i}},{{end}}{{$t}}{{end}}">
-          <!-- ServerIcon (40x40 rounded square) -->
-          <div class="nsm-srv-icon">
-            <img src="/api/servers/icon/{{.EndPoint}}/{{.IconVersion}}.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-            <span class="nsm-srv-icon-fallback" style="display:none">{{.Initial}}</span>
-          </div>
-
-          <!-- Title + Description Loaf -->
-          <div class="nsm-srv-title-col">
-            <div style="display:flex;align-items:center;gap:6px;min-width:0">
-              <span class="nsm-loaf" data-featured-badge="{{.EndPoint}}" style="{{if not .Featured}}display:none;{{end}}background:rgba(245,158,11,0.18);border:1px solid rgba(245,158,11,0.55);color:#fbbf24;font-weight:700;font-size:0.68rem;padding:1px 6px;flex-shrink:0">&#9733; FEATURED</span>
-              <span class="nsm-srv-hostname" data-colorize="{{.Hostname}}">{{.CleanName}}</span>
+      <div class="sl-grid" id="sl-featured-grid">
+        {{range .FeaturedServers}}
+        <article class="sl-card sl-featured"
+                 data-ep="{{.EndPoint}}"
+                 data-join-code="{{.JoinCode}}"
+                 data-name="{{.CleanName}}"
+                 data-clients="{{.Clients}}"
+                 data-upvotes="{{.Upvotes}}"
+                 data-search="{{.CleanName}} {{.Desc}} {{.GameType}} {{range .Tags}}{{.}} {{end}}">
+          <div class="sl-card-top">
+            <div class="sl-icon">
+              <img src="/api/servers/icon/{{.EndPoint}}/{{.IconVersion}}.png" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+              <span style="display:none">{{.Initial}}</span>
             </div>
-            {{if .Desc}}
-            <span class="nsm-srv-desc-loaf">{{.Desc}}</span>
-            {{else if .GameType}}
-            <span class="nsm-srv-desc-loaf">{{.GameType}}{{if .MapName}} &bull; {{.MapName}}{{end}}</span>
-            {{end}}
+            <div class="sl-name-col">
+              <a class="sl-name" href="/join/{{if .JoinCode}}{{.JoinCode}}{{else}}{{.EndPoint}}{{end}}">
+                <span class="sl-name-txt">{{.CleanName}}</span>
+                <span class="sl-star-badge">&#9733; FEATURED</span>
+              </a>
+              <div class="sl-desc">{{if .Desc}}{{.Desc}}{{else}}{{.GameType}}{{if .MapName}} &bull; {{.MapName}}{{end}}{{end}}</div>
+            </div>
           </div>
-
-          <!-- Tags (hide-on-hover) -->
-          <div class="nsm-srv-tags hide-on-hover">
-            {{if .GameType}}<span class="nsm-loaf">{{.GameType}}</span>{{end}}
-            {{range .Tags}}
-            <span class="nsm-loaf" data-tag-click="{{.}}">{{.}}</span>
-            {{end}}
+          <div class="sl-stats">
+            <div class="sl-stat">
+              <span class="sl-stat-lbl">PLAYERS</span>
+              <span class="sl-stat-val">{{.Clients}} <small>/ {{.MaxClients}}</small></span>
+            </div>
+            <div class="sl-stat sl-click" data-sl-upvote="{{.EndPoint}}" title="Click to boost this server">
+              <span class="sl-stat-lbl">UPVOTES</span>
+              <span class="sl-stat-val"><span data-upvote-count="{{.EndPoint}}">{{.Upvotes}}</span></span>
+            </div>
           </div>
-
-          <!-- Actions (show-on-hover): Connect + Owner Feature -->
-          <div class="nsm-srv-actions show-on-hover" onclick="event.stopPropagation()">
-            <button type="button" class="nsm-connect-btn" data-connect-ep="{{.EndPoint}}">
-              <svg viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <div class="sl-actions">
+            <button type="button" class="sl-btn sl-primary" data-sl-connect="{{.EndPoint}}">
+              <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               Connect
             </button>
+            <button type="button" class="sl-btn sl-icon-btn" data-sl-share="{{if .JoinCode}}{{.JoinCode}}{{else}}{{.EndPoint}}{{end}}" title="Copy join link (hides IP)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+            </button>
             {{if and $.User $.User.IsFounderAccount}}
-            <button type="button" class="nsm-details-btn" data-feature-ep="{{.EndPoint}}" style="{{if .Featured}}background:rgba(245,158,11,0.24);border-color:#f59e0b;color:#fbbf24{{end}}" title="Owner (nta~): Toggle Featured Server">
-              &#9733; {{if .Featured}}Featured{{else}}Feature{{end}}
+            <button type="button" class="sl-btn sl-icon-btn sl-gold" data-sl-feature="{{.EndPoint}}" data-sl-featured="1" title="Owner (nta~): toggle Featured">
+              <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
             </button>
             {{end}}
           </div>
-
-          <!-- Country Flag + Power (Upvote/Burst) -->
-          <div class="nsm-srv-meta" onclick="event.stopPropagation()">
-            <span class="nsm-country-pill" title="Locale: {{.Locale}}">{{.Country}}</span>
-            <button type="button" class="nsm-power-pill" data-upvote-ep="{{.EndPoint}}" title="Server Boost / Upvote Power (Click to Boost)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-              <span data-upvote-count="{{.EndPoint}}">{{.Upvotes}}</span>
-            </button>
-          </div>
-
-          <!-- Favorite Star -->
-          <div class="nsm-srv-fav show-on-hover" onclick="event.stopPropagation()">
-            <button type="button" class="nsm-fav-btn" data-fav-ep="{{.EndPoint}}" title="Toggle Favorite">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            </button>
-          </div>
-
-          <!-- Players Count -->
-          <div class="nsm-srv-players">
-            <span class="cur">{{.Clients}}</span><span class="sep">/</span><span class="max">{{.MaxClients}}</span>
-          </div>
+        </article>
+        {{else}}
+        <div class="sl-empty" id="sl-featured-empty" style="grid-column:1/-1">
+          Official featured NSM servers pinned by <strong>nta~</strong> appear here.
         </div>
         {{end}}
-      {{else}}
-        <div class="nsm-empty-list" id="nsm-empty-initial">
-          <div class="nsm-empty-icon">
-            <img src="/img/nsm-icon.png" alt="NSM" style="width:36px;height:36px">
-          </div>
-          <h3>No Live Servers Reporting Right Now</h3>
-          <p>Start <code>nsm-server.exe +exec server-local.cfg</code> or issue a server key in <a href="/keymaster" style="color:#00f8b9">AFX Portal</a> — live servers appear here automatically in real time.</p>
-        </div>
-      {{end}}
-    </div>
-
-    <!-- Right: .pinned (NSM.exe PinnedServers + Live Selected Server Inspector Panel) -->
-    <aside class="mp-pinned-pane" id="nsm-pinned-pane">
-      <!-- Featured Servers Box (PinnedServers in NSM.exe & Web) -->
-      <div class="mp-pinned-box" id="nsm-featured-servers-box" style="margin-bottom:14px;border-color:rgba(245,158,11,0.35);background:linear-gradient(180deg,rgba(245,158,11,0.08),rgba(15,23,42,0.75))">
-        <div class="mp-pinned-hdr">
-          <span style="color:#fbbf24;font-weight:700">
-            <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px;color:#fbbf24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            FEATURED SERVERS
-          </span>
-          {{if and .User .User.IsFounderAccount}}
-          <span style="font-size:0.7rem;color:#fbbf24;opacity:0.9">Owner Controls Active (nta~)</span>
-          {{end}}
-        </div>
-        <div id="nsm-featured-servers-list" style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
-          {{if .FeaturedServers}}
-            {{range .FeaturedServers}}
-            <div class="nsm-featured-card" data-featured-card="{{.EndPoint}}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(15,23,42,0.75);border:1px solid rgba(245,158,11,0.35);cursor:pointer">
-              <div style="min-width:0;flex:1">
-                <span style="color:#fff;font-weight:700;font-size:0.86rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-colorize="{{.Hostname}}">{{.CleanName}}</span>
-                <div style="font-size:0.73rem;color:rgba(240,244,248,0.65);display:flex;gap:10px;margin-top:2px">
-                  <span>{{.Clients}}/{{.MaxClients}} players</span>
-                  <span style="color:#00f8b9">&#9889; <span data-upvote-count="{{.EndPoint}}">{{.Upvotes}}</span></span>
-                </div>
-              </div>
-              <button type="button" class="nsm-connect-btn" data-connect-ep="{{.EndPoint}}" style="padding:5px 10px;font-size:0.75rem">Connect</button>
-            </div>
-            {{end}}
-          {{else}}
-            <p id="nsm-featured-empty" style="font-size:0.78rem;color:rgba(240,244,248,0.55);margin:2px 0">
-              {{if and .User .User.IsFounderAccount}}Click <strong>&#9733; Feature</strong> on any server row or inspector below to pin it to Featured Servers on both nsmultiplayer.com and NSM.exe.{{else}}Official featured NSM servers pinned by nta~ appear here.{{end}}
-            </p>
-          {{end}}
-        </div>
       </div>
+    </section>
 
-      <div class="mp-inspector-card" id="nsm-inspector-card">
-        <div class="mp-inspector-banner" id="nsm-insp-banner">
-          <div class="mp-inspector-banner-overlay">
-            <div class="nsm-srv-icon nsm-srv-icon-lg">
-              <span class="nsm-srv-icon-fallback" id="nsm-insp-initial">N</span>
+    <!-- ===================== ALL SERVERS ===================== -->
+    <section class="sl-sec">
+      <div class="sl-sec-head">
+        <h2>All Servers</h2>
+        <span class="sl-count">{{len .Servers}} listed</span>
+      </div>
+      <div class="sl-grid" id="sl-all-grid">
+        {{range .Servers}}
+        {{if not .Featured}}
+        <article class="sl-card"
+                 data-ep="{{.EndPoint}}"
+                 data-join-code="{{.JoinCode}}"
+                 data-name="{{.CleanName}}"
+                 data-clients="{{.Clients}}"
+                 data-upvotes="{{.Upvotes}}"
+                 data-search="{{.CleanName}} {{.Desc}} {{.GameType}} {{range .Tags}}{{.}} {{end}}">
+          <div class="sl-card-top">
+            <div class="sl-icon">
+              <img src="/api/servers/icon/{{.EndPoint}}/{{.IconVersion}}.png" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+              <span style="display:none">{{.Initial}}</span>
             </div>
-            <div style="min-width:0;flex:1">
-              <div class="mp-insp-badge">SELECTED SERVER</div>
-              <h3 id="nsm-insp-title">Select a Server</h3>
-              <p id="nsm-insp-desc">Click any server row on the left to inspect its live players, resources, tags, and connect in NSM.exe.</p>
+            <div class="sl-name-col">
+              <a class="sl-name" href="/join/{{if .JoinCode}}{{.JoinCode}}{{else}}{{.EndPoint}}{{end}}">
+                <span class="sl-name-txt">{{.CleanName}}</span>
+              </a>
+              <div class="sl-desc">{{if .Desc}}{{.Desc}}{{else}}{{.GameType}}{{if .MapName}} &bull; {{.MapName}}{{end}}{{end}}</div>
             </div>
           </div>
-        </div>
-
-        <div class="mp-inspector-body">
-          <div class="mp-insp-actions">
-            <button type="button" class="nsm-btn nsm-btn-primary" id="nsm-insp-connect" style="flex:1;justify-content:center">
-              <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              Connect in NSM.exe
+          {{if .Tags}}
+          <div class="sl-tags">
+            {{range $i, $t := .Tags}}{{if lt $i 4}}<span class="sl-tag">{{$t}}</span>{{end}}{{end}}
+          </div>
+          {{end}}
+          <div class="sl-stats">
+            <div class="sl-stat">
+              <span class="sl-stat-lbl">PLAYERS</span>
+              <span class="sl-stat-val">{{.Clients}} <small>/ {{.MaxClients}}</small></span>
+            </div>
+            <div class="sl-stat sl-click" data-sl-upvote="{{.EndPoint}}" title="Click to boost this server">
+              <span class="sl-stat-lbl">UPVOTES</span>
+              <span class="sl-stat-val"><span data-upvote-count="{{.EndPoint}}">{{.Upvotes}}</span></span>
+            </div>
+          </div>
+          <div class="sl-actions">
+            <button type="button" class="sl-btn sl-primary" data-sl-connect="{{.EndPoint}}">
+              <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Connect
             </button>
-            <button type="button" class="nsm-ctrl-btn" id="nsm-insp-boost" title="Upvote / Boost Server">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color:#00f8b9"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-              <span id="nsm-insp-upvotes">0</span>
+            <button type="button" class="sl-btn sl-icon-btn" data-sl-share="{{if .JoinCode}}{{.JoinCode}}{{else}}{{.EndPoint}}{{end}}" title="Copy join link (hides IP)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
             </button>
-            {{if and .User .User.IsFounderAccount}}
-            <button type="button" class="nsm-ctrl-btn" id="nsm-insp-feature" title="Owner (nta~): Toggle Featured Server" style="color:#fbbf24;border-color:rgba(245,158,11,0.45)">
-              <span id="nsm-insp-feature-label">&#9733; Feature</span>
+            {{if and $.User $.User.IsFounderAccount}}
+            <button type="button" class="sl-btn sl-icon-btn" data-sl-feature="{{.EndPoint}}" data-sl-featured="0" title="Owner (nta~): toggle Featured">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
             </button>
             {{end}}
           </div>
-
-          <div class="mp-insp-stats-grid">
-            <div class="mp-insp-stat">
-              <span class="lbl">Players</span>
-              <strong id="nsm-insp-players">0 / 48</strong>
-            </div>
-            <div class="mp-insp-stat">
-              <span class="lbl">Join Code</span>
-              <code id="nsm-insp-ep">&mdash;</code>
-            </div>
-            <div class="mp-insp-stat">
-              <span class="lbl">Resources</span>
-              <strong id="nsm-insp-res">0 loaded</strong>
-            </div>
-            <div class="mp-insp-stat">
-              <span class="lbl">Locale / Sync</span>
-              <strong id="nsm-insp-locale">en-US &bull; OneSync</strong>
-            </div>
-          </div>
-
-          <div class="mp-insp-section">
-            <div class="mp-insp-sec-title">AFX Share / Join URL</div>
-            <div class="nsm-f8-box">
-              <code id="nsm-insp-join">https://nsmultiplayer.com/join/&lt;code&gt;</code>
-              <button type="button" class="nsm-copy-mini" id="nsm-insp-copy-join">Copy</button>
-            </div>
-          </div>
-
-          <div class="mp-insp-section">
-            <div class="mp-insp-sec-title">Quick Console Connect</div>
-            <div class="nsm-f8-box">
-              <code id="nsm-insp-f8">connect &lt;code&gt;</code>
-              <button type="button" class="nsm-copy-mini" id="nsm-insp-copy">Copy</button>
-            </div>
-          </div>
-
-          <div class="mp-insp-section">
-            <div class="mp-insp-sec-title">Server Tags</div>
-            <div class="nsm-tag-cloud" id="nsm-insp-tags">
-              <span class="nsm-loaf">nsm</span>
-              <span class="nsm-loaf">afx</span>
-              <span class="nsm-loaf">roleplay</span>
-            </div>
-          </div>
+        </article>
+        {{end}}
+        {{else}}
+        <div class="sl-empty" style="grid-column:1/-1">
+          <strong>No servers online right now.</strong><br>
+          Server owners: start your AFX server with a key — it appears here within one heartbeat.
         </div>
+        {{end}}
       </div>
+      <div class="sl-empty" id="sl-search-empty" style="display:none;margin-top:12px">
+        No servers match your search.
+      </div>
+    </section>
 
-      <!-- Pinned / Regional Top Servers Box -->
-      <div class="mp-pinned-box">
-        <div class="mp-pinned-hdr">
-          <span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:#00f8b9"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            HOST YOUR OWN NSM SERVER
-          </span>
-          <a href="/keymaster">AFX Portal &rarr;</a>
-        </div>
-        <p style="font-size:0.8rem;color:rgba(240,244,248,0.65);margin:6px 0 10px;line-height:1.45">
-          Generate a free <code>nsm_srv_...</code> license key in AFX Portal and launch <code>nsm-server.exe</code> to list your server here in real time.
-        </p>
-      </div>
-    </aside>
-  </div>
-
-  <!-- NSM.exe Settings Modal -->
-  <div class="mp-modal-backdrop" id="nsm-settings-modal" style="display:none">
-    <div class="mp-modal-card">
-      <div class="mp-modal-hdr">
-        <div style="display:flex;align-items:center;gap:10px">
-          <img src="/img/nsm-icon.png" alt="NSM" style="width:24px;height:24px">
-          <h3>NSM Client &amp; Browser Settings</h3>
-        </div>
-        <button type="button" class="mp-modal-close" id="nsm-settings-close">&times;</button>
-      </div>
-      <div class="mp-modal-body">
-        <div class="mp-setting-row">
-          <div>
-            <strong>Player Nickname</strong>
-            <p>Your in-game display name when joining NSM servers</p>
-          </div>
-          <input type="text" id="nsm-setting-nick" placeholder="{{if .User}}{{.User.Username}}{{else}}NSMPlayer{{end}}" class="mp-setting-input">
-        </div>
-        <div class="mp-setting-row">
-          <div>
-            <strong>Interface Theme</strong>
-            <p>Switch between NSM Dark Navy Glass and Light mode</p>
-          </div>
-          <select id="nsm-setting-theme" class="mp-setting-input">
-            <option value="dark">NSM Dark Glass (Default)</option>
-            <option value="light">NSM Light Mode</option>
-          </select>
-        </div>
-        <div class="mp-setting-row">
-          <div>
-            <strong>Default Localhost Server Port</strong>
-            <p>Used for 1-click Localhost connection</p>
-          </div>
-          <input type="text" id="nsm-setting-port" value="30120" class="mp-setting-input" style="width:110px">
-        </div>
-        <div class="mp-setting-row">
-          <div>
-            <strong>AFX Account Status</strong>
-            <p>Linked to NSM Masterlist &amp; In-Game Profile</p>
-          </div>
-          {{if .User}}
-          <a href="/account" class="nsm-btn nsm-btn-primary nsm-btn-sm">@{{.User.Username}} ({{.User.Role}})</a>
-          {{else}}
-          <a href="/login" class="nsm-btn nsm-btn-primary nsm-btn-sm">Sign In via AFX Portal</a>
-          {{end}}
-        </div>
-      </div>
-    </div>
   </div>
 </div>
-{{end}}
+<div id="sl-toast"></div>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Server List - NSM</title>
-  <link rel="icon" type="image/png" href="/img/nsm-icon.png">
-  <link rel="stylesheet" href="/css/style.css?v=078m">
-</head>
-<body class="mp-standalone-body">
-  {{template "nsm_server_launcher" .}}
-  <script src="/js/main.js?v=078m"></script>
-</body>
-</html>
+<script>
+(function () {
+  var toastEl = document.getElementById('sl-toast');
+  var toastTimer = null;
+  function toast(msg) {
+    if (!toastEl) return;
+    toastEl.textContent = msg;
+    toastEl.classList.add('sl-show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('sl-show'); }, 2200);
+  }
+  function allCards() {
+    return Array.prototype.slice.call(document.querySelectorAll('#nsm-mp-app .sl-card'));
+  }
+  function gridFor(card) { return card.closest('#sl-featured-grid') ? 'featured' : 'all'; }
+
+  /* ---- Connect (launches NSM.exe via the fivem:// deep link) ---- */
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-sl-connect]');
+    if (!b) return;
+    var ep = b.getAttribute('data-sl-connect');
+    if (!ep) return;
+    try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText('connect ' + ep); } catch (err) {}
+    window.location.href = 'fivem://connect/' + ep;
+    toast('Launching NSM.exe…');
+  });
+
+  /* ---- Share (copy the IP-hiding join link) ---- */
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-sl-share]');
+    if (!b) return;
+    var ref = b.getAttribute('data-sl-share');
+    var url = 'https://nsmultiplayer.com/join/' + ref;
+    function done() { toast('Join link copied — server IP stays hidden'); }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done, function () { window.prompt('Copy join link:', url); });
+      } else {
+        window.prompt('Copy join link:', url);
+      }
+    } catch (err) { window.prompt('Copy join link:', url); }
+  });
+
+  /* ---- Upvote / boost ---- */
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-sl-upvote]');
+    if (!b) return;
+    var ep = b.getAttribute('data-sl-upvote');
+    if (!ep) return;
+    fetch('/api/servers/upvote', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint: ep })
+    }).then(function (r) {
+      if (r.status === 401) {
+        window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+        return null;
+      }
+      return r.json();
+    }).then(function (data) {
+      if (!data || typeof data.upvotes !== 'number') return;
+      var nodes = document.querySelectorAll('[data-upvote-count="' + CSS.escape(ep) + '"]');
+      for (var i = 0; i < nodes.length; i++) nodes[i].textContent = String(data.upvotes);
+      var card = document.querySelector('#nsm-mp-app .sl-card[data-ep="' + CSS.escape(ep) + '"]');
+      if (card) {
+        card.setAttribute('data-upvotes', String(data.upvotes));
+        var block = card.querySelector('.sl-stat.sl-click');
+        if (block) { block.classList.remove('sl-bumped'); void block.offsetWidth; block.classList.add('sl-bumped'); }
+      }
+      toast('Boosted! Upvote power: ' + data.upvotes);
+    }).catch(function () {});
+  });
+
+  /* ---- Founder: toggle Featured (relocates the card between sections) ---- */
+  function setFeaturedUI(card, isFeat) {
+    card.classList.toggle('sl-featured', isFeat);
+    var name = card.querySelector('.sl-name');
+    if (name) {
+      var badge = name.querySelector('.sl-star-badge');
+      if (isFeat && !badge) {
+        badge = document.createElement('span');
+        badge.className = 'sl-star-badge';
+        badge.innerHTML = '&#9733; FEATURED';
+        name.appendChild(badge);
+      } else if (!isFeat && badge) {
+        badge.remove();
+      }
+    }
+    var btn = card.querySelector('[data-sl-feature]');
+    if (btn) {
+      btn.setAttribute('data-sl-featured', isFeat ? '1' : '0');
+      btn.classList.toggle('sl-gold', isFeat);
+      btn.querySelector('svg').setAttribute('fill', isFeat ? 'currentColor' : 'none');
+    }
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-sl-feature]');
+    if (!b) return;
+    var ep = b.getAttribute('data-sl-feature');
+    if (!ep) return;
+    fetch('/api/servers/feature', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint: ep })
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      if (!data || !data.ok) { toast('Only the founder (nta~) can feature servers'); return; }
+      var isFeat = !!data.featured;
+      var card = document.querySelector('#nsm-mp-app .sl-card[data-ep="' + CSS.escape(ep) + '"]');
+      if (!card) return;
+      setFeaturedUI(card, isFeat);
+      var featGrid = document.getElementById('sl-featured-grid');
+      var allGrid = document.getElementById('sl-all-grid');
+      if (isFeat && featGrid) {
+        var empty = document.getElementById('sl-featured-empty');
+        if (empty) empty.remove();
+        featGrid.insertBefore(card, featGrid.firstChild);
+      } else if (!isFeat && allGrid) {
+        allGrid.insertBefore(card, allGrid.firstChild);
+      }
+      toast(isFeat ? 'Server featured on NSM' : 'Server removed from Featured');
+    }).catch(function () {});
+  });
+
+  /* ---- Search ---- */
+  var searchInput = document.getElementById('sl-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', function () {
+      var q = this.value.trim().toLowerCase();
+      var visible = 0;
+      allCards().forEach(function (card) {
+        var hay = (card.getAttribute('data-search') || card.getAttribute('data-name') || '').toLowerCase();
+        var show = !q || hay.indexOf(q) !== -1;
+        card.style.display = show ? '' : 'none';
+        if (show) visible++;
+      });
+      var se = document.getElementById('sl-search-empty');
+      if (se) se.style.display = (q && visible === 0) ? '' : 'none';
+    });
+  }
+
+  /* ---- Sort ---- */
+  var sortBox = document.getElementById('sl-sort');
+  if (sortBox) {
+    sortBox.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-sort]');
+      if (!btn) return;
+      var buttons = sortBox.querySelectorAll('button');
+      for (var i = 0; i < buttons.length; i++) buttons[i].classList.toggle('sl-active', buttons[i] === btn);
+      var key = btn.getAttribute('data-sort');
+      var dir = (key === 'name') ? 1 : -1;
+      var grid = document.getElementById('sl-all-grid');
+      if (!grid) return;
+      var cards = Array.prototype.slice.call(grid.querySelectorAll('.sl-card'));
+      cards.sort(function (a, b) {
+        if (key === 'name') {
+          return dir * (a.getAttribute('data-name') || '').localeCompare(b.getAttribute('data-name') || '');
+        }
+        var av = parseInt(a.getAttribute('data-' + (key === 'upvotes' ? 'upvotes' : 'clients')), 10) || 0;
+        var bv = parseInt(b.getAttribute('data-' + (key === 'upvotes' ? 'upvotes' : 'clients')), 10) || 0;
+        return dir * (av - bv) || (a.getAttribute('data-name') || '').localeCompare(b.getAttribute('data-name') || '');
+      });
+      cards.forEach(function (c) { grid.appendChild(c); });
+    });
+  }
+})();
+</script>
+{{template "foot" .}}
