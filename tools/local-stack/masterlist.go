@@ -518,6 +518,43 @@ func applyMods(ep string, d *ServerData) {
 	// Local-first: never fabricate players or counts from persisted admin state.
 }
 
+func commaInt(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	if n < 1000 {
+		return s
+	}
+	var out []byte
+	for i := 0; i < len(s); i++ {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			out = append(out, ',')
+		}
+		out = append(out, s[i])
+	}
+	return string(out)
+}
+
+// decorateListVars enriches the per-entry vars for the NSM.exe server list
+// (streamRedir and single): the client list shows the description from
+// sv_projectDesc, so the live upvote total is pinned there. The website reads
+// descriptions straight from the registry copy and stays unadorned.
+func decorateListVars(ep string, d *ServerData) {
+	desc := strings.TrimSpace(d.Vars["sv_projectDesc"])
+	if d.UpvotePower > 0 {
+		chip := "\u25b2 " + commaInt(d.UpvotePower) + " upvotes"
+		if desc != "" {
+			desc = chip + " \u00b7 " + desc
+		} else {
+			desc = chip
+		}
+	}
+	vars := make(map[string]string, len(d.Vars)+1)
+	for k, v := range d.Vars {
+		vars[k] = v
+	}
+	vars["sv_projectDesc"] = desc
+	d.Vars = vars
+}
+
 // ---------------------------------------------------------------------------
 // heartbeat -> ServerData mapping
 // ---------------------------------------------------------------------------
@@ -855,6 +892,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for ep, e := range live {
 			d := e.data
 			applyMods(ep, &d)
+			decorateListVars(ep, &d)
 			out[ep] = &entry{data: d, last: e.last}
 		}
 		body := streamBytes(out)
@@ -866,8 +904,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(path, "/api/servers/single/"):
 		ep := strings.TrimPrefix(path, "/api/servers/single/")
 		if d := reg.get(ep); d != nil {
-			applyMods(ep, d)
-			sendJSON(w, http.StatusOK, map[string]interface{}{"EndPoint": ep, "Data": d})
+			dd := *d
+			applyMods(ep, &dd)
+			decorateListVars(ep, &dd)
+			sendJSON(w, http.StatusOK, map[string]interface{}{"EndPoint": ep, "Data": &dd})
 		} else {
 			sendJSON(w, http.StatusNotFound, map[string]interface{}{})
 		}

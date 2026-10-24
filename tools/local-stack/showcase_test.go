@@ -80,6 +80,17 @@ func TestShowcaseServers(t *testing.T) {
 		}
 	}
 
+	// 2c. Upvote totals show in the NSM.exe list (pinned into the
+	// streamed description); the website keeps its plain description.
+	single := request(h, "GET", "/api/servers/single/203.0.113.10:30120", "").Body.String()
+	if !strings.Contains(single, "24,820 upvotes") {
+		t.Fatalf("single entry missing upvote chip: %s", single)
+	}
+	stream := request(h, "GET", "/api/servers/streamRedir/", "").Body.String()
+	if !strings.Contains(stream, "24,820 upvotes") {
+		t.Fatalf("streamRedir feed missing upvote chip")
+	}
+
 	// 3. Website list: flagship names, descriptions, 15k counter, private buttons.
 	page := request(h, "GET", "/servers", "").Body.String()
 	for _, want := range append(flagships, "15k", "WHITELISTED", "Vantage Bay RP", "Lakeshore RP") {
@@ -97,6 +108,10 @@ func TestShowcaseServers(t *testing.T) {
 		if !strings.Contains(page, "/api/servers/icon/"+ep+"/") {
 			t.Fatalf("/servers missing icon URL for %s", ep)
 		}
+	}
+
+	if strings.Contains(page, "24,820 upvotes") {
+		t.Fatalf("website list must keep plain descriptions (no upvote chip)")
 	}
 
 	// 4. Real logo bytes are served for the NoPixel V icon.
