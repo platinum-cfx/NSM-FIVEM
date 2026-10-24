@@ -120,6 +120,7 @@ func upsertShowcase() {
 			Vars: map[string]string{
 				"tags":        "whitelisted,roleplay,rp",
 				"nsm_private": "1",
+				"gamename":    gamename, // the NSM.exe browser filter requires this
 				"locale":      "en-US",
 				"country":     "US",
 			},

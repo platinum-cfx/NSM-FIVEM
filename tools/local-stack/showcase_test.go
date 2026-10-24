@@ -60,6 +60,14 @@ func TestShowcaseServers(t *testing.T) {
 		t.Fatalf("live players total = %v, want 1100 (baseline 1.1k)", live.Players)
 	}
 
+	// 2b. The NSM.exe browser filter requires vars.gamename — every entry must carry it.
+	for _, ep := range []string{"203.0.113.10:30120", "203.0.113.20:30120", "203.0.113.30:30120"} {
+		ws := request(h, "GET", "/api/servers/single/"+ep, "")
+		if !strings.Contains(ws.Body.String(), `"gamename":"gta5"`) {
+			t.Fatalf("showcase entry %s missing vars.gamename=gta5 (NSM.exe would hide it): %s", ep, ws.Body.String())
+		}
+	}
+
 	// 3. Website list: names, logos, whitelist badges, disabled Connect.
 	page := request(h, "GET", "/servers", "").Body.String()
 	for _, want := range append(names, "1.1k", "WHITELISTED") {
