@@ -7,15 +7,16 @@ import (
 	"testing"
 )
 
-// TestShowcaseServers covers the three founder-curated private showcase
-// servers: they appear on both list surfaces, their player counts sum to the
-// 1.1k baseline with NoPixel V holding the largest share, they are private
-// (no Connect), and the counters read 1.1k.
+// TestShowcaseServers covers the founder-curated private showcase set: all
+// listings appear on both list surfaces, player counts sum to exactly the
+// 15k baseline with NoPixel V holding the largest share, every entry is
+// private (no Connect), descriptions and gamename flow to the client list,
+// and the counts wiggle while staying sum-locked.
 func TestShowcaseServers(t *testing.T) {
 	h := setupTest(t)
 	upsertShowcase()
 
-	// 1. The shared list API (website + NSM.exe) carries all three.
+	// 1. The shared list API (website + NSM.exe) carries the whole set.
 	w := request(h, "GET", "/api/servers/live", "")
 	var live struct {
 		Servers []map[string]interface{} `json:"servers"`
@@ -24,64 +25,75 @@ func TestShowcaseServers(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &live); err != nil {
 		t.Fatalf("live JSON: %v: %s", err, w.Body.String())
 	}
+	if len(live.Servers) != 53 {
+		t.Fatalf("live servers = %d, want 53", len(live.Servers))
+	}
 	byName := map[string]map[string]interface{}{}
 	for _, s := range live.Servers {
 		if name, _ := s["CleanName"].(string); name != "" {
 			byName[name] = s
 		}
 	}
-	names := []string{"NoPixel V - Whitelisted", "Eclipse RP - Serious Roleplay", "Harborline RP"}
-	var seen []map[string]interface{}
-	for _, n := range names {
-		s, ok := byName[n]
-		if !ok {
-			t.Fatalf("showcase server %q missing from /api/servers/live", n)
+	flagships := []string{"NoPixel V - Whitelisted", "Eclipse RP - Serious Roleplay", "Harborline RP"}
+	for _, n := range flagships {
+		if _, ok := byName[n]; !ok {
+			t.Fatalf("flagship server %q missing from /api/servers/live", n)
 		}
-		seen = append(seen, s)
 	}
 
-	// 2. Player counts: sum exactly 1100, NoPixel V has the most.
+	// 2. Counts: sum exactly 15,000, NoPixel V is the largest, all private.
 	sum := 0.0
-	for _, s := range seen {
+	np := 0.0
+	for _, s := range live.Servers {
 		c, _ := s["Clients"].(float64)
 		sum += c
+		if name, _ := s["CleanName"].(string); name == "NoPixel V - Whitelisted" {
+			np = c
+		}
 		if priv, _ := s["Private"].(bool); !priv {
 			t.Fatalf("server %v not marked private", s["CleanName"])
 		}
 	}
-	if int(sum) != 1100 {
-		t.Fatalf("showcase player sum = %v, want 1100", sum)
+	if int(sum) != 15000 {
+		t.Fatalf("showcase player sum = %v, want 15000", sum)
 	}
-	np := seen[0]["Clients"].(float64)
-	if np <= seen[1]["Clients"].(float64) || np <= seen[2]["Clients"].(float64) {
-		t.Fatalf("NoPixel V must have the largest share: %v vs %v/%v", np, seen[1]["Clients"], seen[2]["Clients"])
+	for _, s := range live.Servers {
+		c, _ := s["Clients"].(float64)
+		if c > np {
+			t.Fatalf("NoPixel V must have the largest share, but %v has %v", s["CleanName"], c)
+		}
 	}
-	if int(live.Players) != 1100 {
-		t.Fatalf("live players total = %v, want 1100 (baseline 1.1k)", live.Players)
+	if int(live.Players) != 15000 {
+		t.Fatalf("live players total = %v, want 15000 (15k baseline)", live.Players)
 	}
 
-	// 2b. The NSM.exe browser filter requires vars.gamename — every entry must carry it.
-	for _, ep := range []string{"203.0.113.10:30120", "203.0.113.20:30120", "203.0.113.30:30120"} {
+	// 2b. The NSM.exe browser filter requires vars.gamename; its list also
+	// shows descriptions from vars.sv_projectDesc — both must flow.
+	for _, ep := range []string{"203.0.113.10:30120", "203.0.113.100:30120", "203.0.113.149:30120"} {
 		ws := request(h, "GET", "/api/servers/single/"+ep, "")
-		if !strings.Contains(ws.Body.String(), `"gamename":"gta5"`) {
-			t.Fatalf("showcase entry %s missing vars.gamename=gta5 (NSM.exe would hide it): %s", ep, ws.Body.String())
+		body := ws.Body.String()
+		if !strings.Contains(body, `"gamename":"gta5"`) {
+			t.Fatalf("showcase entry %s missing vars.gamename=gta5 (NSM.exe would hide it): %s", ep, body)
+		}
+		if !strings.Contains(body, `"sv_projectDesc"`) {
+			t.Fatalf("showcase entry %s missing vars.sv_projectDesc (no description on the NSM.exe list): %s", ep, body)
 		}
 	}
 
-	// 3. Website list: names, logos, whitelist badges, disabled Connect.
+	// 3. Website list: flagship names, descriptions, 15k counter, private buttons.
 	page := request(h, "GET", "/servers", "").Body.String()
-	for _, want := range append(names, "1.1k", "WHITELISTED") {
+	for _, want := range append(flagships, "15k", "WHITELISTED", "Vantage Bay RP", "Lakeshore RP") {
 		if !strings.Contains(page, want) {
 			t.Fatalf("/servers missing %q", want)
 		}
 	}
-	if got := strings.Count(page, "data-sl-private"); got != 3 {
-		t.Fatalf("/servers private buttons = %d, want 3", got)
+	if got := strings.Count(page, "data-sl-private"); got != 53 {
+		t.Fatalf("/servers private buttons = %d, want 53", got)
 	}
 	if strings.Contains(page, `data-sl-connect="203.0.113.`) {
 		t.Fatalf("/servers must not offer Connect for private showcase servers")
 	}
-	for _, ep := range []string{"203.0.113.10:30120", "203.0.113.20:30120", "203.0.113.30:30120"} {
+	for _, ep := range []string{"203.0.113.10:30120", "203.0.113.100:30120"} {
 		if !strings.Contains(page, "/api/servers/icon/"+ep+"/") {
 			t.Fatalf("/servers missing icon URL for %s", ep)
 		}
@@ -97,10 +109,10 @@ func TestShowcaseServers(t *testing.T) {
 		t.Fatalf("icon fetch failed: code=%d", wIcon.Code)
 	}
 
-	// 5. Homepage counter reads 1.1k.
+	// 5. Homepage counter reads 15k.
 	home := request(h, "GET", "/", "").Body.String()
-	if !strings.Contains(home, "1.1k") {
-		t.Fatalf("homepage missing 1.1k player count")
+	if !strings.Contains(home, "15k") {
+		t.Fatalf("homepage missing 15k player count")
 	}
 
 	// 6. Detail pages honor privacy too.
@@ -110,9 +122,9 @@ func TestShowcaseServers(t *testing.T) {
 		t.Fatalf("private server detail page missing Whitelisted connect state")
 	}
 
-	// 7. Counts wiggle like real join/leave traffic but stay sum-locked to 1.1k.
+	// 7. Counts wiggle like real join/leave traffic but stay sum-locked to 15k.
 	moves := 0
-	var last []float64
+	last := map[string]float64{}
 	for i := 0; i < 30; i++ {
 		showcaseJitterStep()
 		upsertShowcase()
@@ -123,26 +135,41 @@ func TestShowcaseServers(t *testing.T) {
 		if err := json.Unmarshal(w2.Body.Bytes(), &live2); err != nil {
 			t.Fatalf("live JSON: %v", err)
 		}
-		bn := map[string]float64{}
+		sum2 := 0.0
+		changed := false
 		for _, s := range live2.Servers {
-			if name, _ := s["CleanName"].(string); name != "" {
-				bn[name], _ = s["Clients"].(float64)
+			name, _ := s["CleanName"].(string)
+			c, _ := s["Clients"].(float64)
+			sum2 += c
+			if prev, ok := last[name]; ok && prev != c {
+				changed = true
+			}
+			last[name] = c
+		}
+		if int(sum2) != 15000 {
+			t.Fatalf("jitter broke the 15k sum: %v", sum2)
+		}
+		// every listing stays within its ±5% band around the base
+		for _, s := range live2.Servers {
+			name, _ := s["CleanName"].(string)
+			c, _ := s["Clients"].(float64)
+			base := 0.0
+			for _, b := range append(showcaseBase, showcaseExtra...) {
+				if b.Hostname == name {
+					base = float64(b.Clients)
+				}
+			}
+			band := base / 20
+			if band < 3 {
+				band = 3
+			}
+			if c < base-band || c > base+band {
+				t.Fatalf("%s count %v left band (%v±%v)", name, c, base, band)
 			}
 		}
-		np2, ec2, hb2 := bn["NoPixel V - Whitelisted"], bn["Eclipse RP - Serious Roleplay"], bn["Harborline RP"]
-		if int(np2+ec2+hb2) != 1100 {
-			t.Fatalf("jitter broke the 1.1k sum: %v + %v + %v", np2, ec2, hb2)
-		}
-		if !(np2 > ec2 && np2 > hb2) {
-			t.Fatalf("NoPixel V lost the largest share: %v/%v/%v", np2, ec2, hb2)
-		}
-		if np2 < 625 || np2 > 675 || ec2 < 285 || ec2 > 315 || hb2 < 143 || hb2 > 157 {
-			t.Fatalf("counts left plausible bands: %v/%v/%v", np2, ec2, hb2)
-		}
-		if last != nil && (np2 != last[0] || ec2 != last[1] || hb2 != last[2]) {
+		if changed {
 			moves++
 		}
-		last = []float64{np2, ec2, hb2}
 	}
 	if moves == 0 {
 		t.Fatalf("player counts never changed across 30 jitter steps")
