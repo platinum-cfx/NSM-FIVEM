@@ -101,4 +101,42 @@ func TestShowcaseServers(t *testing.T) {
 	if !strings.Contains(detail, "Whitelisted") {
 		t.Fatalf("private server detail page missing Whitelisted connect state")
 	}
+
+	// 7. Counts wiggle like real join/leave traffic but stay sum-locked to 1.1k.
+	moves := 0
+	var last []float64
+	for i := 0; i < 30; i++ {
+		showcaseJitterStep()
+		upsertShowcase()
+		w2 := request(h, "GET", "/api/servers/live", "")
+		var live2 struct {
+			Servers []map[string]interface{} `json:"servers"`
+		}
+		if err := json.Unmarshal(w2.Body.Bytes(), &live2); err != nil {
+			t.Fatalf("live JSON: %v", err)
+		}
+		bn := map[string]float64{}
+		for _, s := range live2.Servers {
+			if name, _ := s["CleanName"].(string); name != "" {
+				bn[name], _ = s["Clients"].(float64)
+			}
+		}
+		np2, ec2, hb2 := bn["NoPixel V - Whitelisted"], bn["Eclipse RP - Serious Roleplay"], bn["Harborline RP"]
+		if int(np2+ec2+hb2) != 1100 {
+			t.Fatalf("jitter broke the 1.1k sum: %v + %v + %v", np2, ec2, hb2)
+		}
+		if !(np2 > ec2 && np2 > hb2) {
+			t.Fatalf("NoPixel V lost the largest share: %v/%v/%v", np2, ec2, hb2)
+		}
+		if np2 < 625 || np2 > 675 || ec2 < 285 || ec2 > 315 || hb2 < 143 || hb2 > 157 {
+			t.Fatalf("counts left plausible bands: %v/%v/%v", np2, ec2, hb2)
+		}
+		if last != nil && (np2 != last[0] || ec2 != last[1] || hb2 != last[2]) {
+			moves++
+		}
+		last = []float64{np2, ec2, hb2}
+	}
+	if moves == 0 {
+		t.Fatalf("player counts never changed across 30 jitter steps")
+	}
 }

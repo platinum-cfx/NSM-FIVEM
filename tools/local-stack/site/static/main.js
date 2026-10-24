@@ -1245,6 +1245,12 @@
               for (var u = 0; u < upNodes.length; u++) {
                 upNodes[u].textContent = String(upv);
               }
+              var slCard = document.querySelector('.sl-card[data-ep="' + ep + '"]');
+              if (slCard) {
+                slCard.setAttribute('data-clients', String(srv.Clients || srv.players || 0));
+                var clEl = slCard.querySelector('[data-sl-clients-val]');
+                if (clEl) clEl.innerHTML = String(srv.Clients || srv.players || 0) + ' <small>/ ' + (srv.MaxClients || 0) + '</small>';
+              }
               var row = document.querySelector('.nsm-server-row[data-ep="' + ep + '"]');
               if (row) {
                 row.setAttribute('data-upvotes', String(upv));

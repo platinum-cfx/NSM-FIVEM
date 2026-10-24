@@ -10,6 +10,8 @@ package main
 import (
 	"encoding/base64"
 	"log"
+	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -40,14 +42,75 @@ func showcaseIconB64(s showcaseServer) string {
 	return base64.StdEncoding.EncodeToString(raw)
 }
 
+// Showcase player-count noise: the numbers wander a little so the listings look
+// alive with people joining and leaving, but the three counts always sum to
+// exactly the showcase baseline (1100) so the platform's live player counter
+// stays honest — it reads 1.1k + real players, never more or less.
+var (
+	jitterMu   sync.Mutex
+	jitterWalk = map[string]int{} // endPoint -> current offset from the base count
+)
+
+// showcaseJitterStep nudges every non-lead server's count inside a small band
+// (±5% of its base) and leaves the lead server (NoPixel V) to absorb the
+// difference, which keeps the grand total pinned.
+func showcaseJitterStep() {
+	jitterMu.Lock()
+	defer jitterMu.Unlock()
+	for i, s := range showcaseList {
+		if i == 0 {
+			continue
+		}
+		band := int(s.Clients) / 20 // ±5%
+		if band < 3 {
+			band = 3
+		}
+		step := int(s.Clients) / 100
+		if step < 2 {
+			step = 2
+		}
+		off := jitterWalk[s.Ep] + rand.Intn(2*step+1) - step
+		if off < -band {
+			off = -band
+		}
+		if off > band {
+			off = band
+		}
+		jitterWalk[s.Ep] = off
+	}
+}
+
+// showcaseCounts returns the current player counts: jittered bases for all but
+// the lead server, which gets whatever remains so the sum is exact.
+func showcaseCounts() []int64 {
+	jitterMu.Lock()
+	defer jitterMu.Unlock()
+	total := int64(0)
+	for _, s := range showcaseList {
+		total += s.Clients
+	}
+	out := make([]int64, len(showcaseList))
+	rest := int64(0)
+	for i, s := range showcaseList {
+		if i == 0 {
+			continue
+		}
+		out[i] = s.Clients + int64(jitterWalk[s.Ep])
+		rest += out[i]
+	}
+	out[0] = total - rest
+	return out
+}
+
 // upsertShowcase registers (or refreshes) the showcase entries so they stay in
 // the live registry like any heartbeating server.
 func upsertShowcase() {
-	for _, s := range showcaseList {
+	counts := showcaseCounts()
+	for i, s := range showcaseList {
 		iconVersion := reg.setIcon(s.Ep, showcaseIconB64(s))
 		reg.upsert(s.Ep, ServerData{
 			SVMaxclients:        s.MaxClients,
-			Clients:             s.Clients,
+			Clients:             counts[i],
 			Hostname:            s.Hostname,
 			Gametype:            "Roleplay",
 			Mapname:             "Los Santos",
@@ -66,14 +129,16 @@ func upsertShowcase() {
 	}
 }
 
-// startShowcaseServers upserts the showcase entries now and keeps them fresh.
-// Tests call upsertShowcase directly instead of starting the ticker.
+// startShowcaseServers upserts the showcase entries now and keeps them fresh,
+// nudging the player counts every 30s so they read like real join/leave flow.
+// Tests call upsertShowcase/showcaseJitterStep directly instead of the ticker.
 func startShowcaseServers() {
 	upsertShowcase()
 	go func() {
-		t := time.NewTicker(2 * time.Minute)
+		t := time.NewTicker(30 * time.Second)
 		defer t.Stop()
 		for range t.C {
+			showcaseJitterStep()
 			upsertShowcase()
 		}
 	}()
