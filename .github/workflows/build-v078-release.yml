@@ -255,6 +255,8 @@ jobs:
                       seen_ico_entries.add(old_entry)
                       ico_replacements.append((old_entry, render_nsm_icon_dib(dim, size)))
 
+          proto_replaced = []
+
           def patch_pe_binary(raw_bytes: bytes, filename: str) -> bytes:
               data = bytearray(raw_bytes)
               orig_len = len(data)
@@ -468,6 +470,21 @@ jobs:
                   old_a = old_s.encode("ascii") + b"\x00"
                   new_a = (new_s.encode("ascii") + b"\x00").ljust(len(old_a), b"\x00")
                   data[:] = re.sub(re.escape(old_a), lambda _: new_a, data, flags=re.IGNORECASE)
+
+              # Rename the fivem:// URL protocol handler display name
+              # (ProtocolRegister writes PRODUCT_NAME as the scheme's display
+              # name) so the browser prompt reads "Open NSM?" instead of
+              # "Open FiveM?". The scheme itself is lowercase "fivem" and is
+              # deliberately left registered so existing fivem://connect/...
+              # deep links keep working unchanged.
+              proto_old = "FiveM\u0000".encode("utf-16le")
+              proto_new = "NSM\u0000\u0000\u0000".encode("utf-16le")
+              assert len(proto_new) == len(proto_old)
+              if proto_old in data:
+                  n = data.count(proto_old)
+                  data[:] = data.replace(proto_old, proto_new)
+                  proto_replaced.append(n)
+                  print(f"[pe-patch] {filename}: protocol display name 'FiveM' -> 'NSM' ({n} string(s))")
 
               # Prevent NSM.exe from creating a secondary "NSM - ... (FxDK).lnk" shortcut on startup
               # and switch SHGetSetFolderCustomSettings iIconIndex from -IDI_SNAIL (-201 / 0xffffff37) to -IDI_ICON1 (-1 / 0xffffffff)
@@ -773,6 +790,7 @@ jobs:
               assert "NSM-Client/CoreRT.dll" in names
               assert "NSM-Client/AxiomFX/ui.zip" in names
               assert "NSM-Client/AxiomFX/ros/ros.crt" in names
+              assert sum(proto_replaced) >= 1, "protocol display name literal 'FiveM\\0' not found in any PE — the 'Open NSM?' rename would not apply"
               assert "NSM-Client/AxiomFXGame.dll" in names
               assert "NSM-Client/AxiomFX_TLSDummy.dll" in names
               assert "NSM-Client/afx_curl_x86_64.dll" in names
