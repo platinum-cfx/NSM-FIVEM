@@ -1,0 +1,99 @@
+{{template "head" .}}
+  <section class="hero" style="padding:3.2rem 0 2.2rem">
+    <div class="container">
+      <div class="spacer">
+        <p class="lead" style="margin:0 0 .6rem"><strong>NSM Status</strong></p>
+        <h1 style="font-size:2.1rem;margin:0 0 1.1rem">System uptime &amp; incident history</h1>
+        {{if eq .Status.Overall "operational"}}
+        <div id="st-banner" style="background:rgba(22,199,132,.14);border:1px solid rgba(22,199,132,.5);color:#16c784;padding:.9rem 1.2rem;border-radius:10px;font-size:1.15rem;font-weight:600;display:inline-block">
+          &#9679;&nbsp; {{.Status.OverallText}}
+        </div>
+        {{else if eq .Status.Overall "degraded"}}
+        <div id="st-banner" style="background:rgba(240,185,11,.14);border:1px solid rgba(240,185,11,.5);color:#f0b90b;padding:.9rem 1.2rem;border-radius:10px;font-size:1.15rem;font-weight:600;display:inline-block">
+          &#9679;&nbsp; {{.Status.OverallText}}
+        </div>
+        {{else}}
+        <div id="st-banner" style="background:rgba(234,57,67,.14);border:1px solid rgba(234,57,67,.5);color:#ea3943;padding:.9rem 1.2rem;border-radius:10px;font-size:1.15rem;font-weight:600;display:inline-block">
+          &#9679;&nbsp; {{.Status.OverallText}}
+        </div>
+        {{end}}
+        <p class="muted" style="margin-top:.9rem">Live health monitoring for the NSM platform — every service is checked automatically, every 60 seconds.</p>
+      </div>
+    </div>
+  </section>
+</div>
+<main>
+
+<section class="features">
+  <div class="container">
+    <div class="spacer">
+      <h1 style="margin:0 0 1.2rem">Systems</h1>
+      {{range .Status.Components}}
+      <div style="background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:1.15rem 1.35rem;margin:0 0 14px">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:6px">
+          <strong style="font-size:1.06rem">{{.Name}}</strong>
+          {{if eq .Status "operational"}}
+          <span style="background:rgba(22,199,132,.16);color:#16c784;border:1px solid rgba(22,199,132,.45);border-radius:99px;padding:.18rem .7rem;font-size:.78rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase">Operational</span>
+          {{else if eq .Status "degraded"}}
+          <span style="background:rgba(240,185,11,.16);color:#f0b90b;border:1px solid rgba(240,185,11,.45);border-radius:99px;padding:.18rem .7rem;font-size:.78rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase">Degraded Performance</span>
+          {{else if eq .Status "partial-outage"}}
+          <span style="background:rgba(234,57,67,.16);color:#ea3943;border:1px solid rgba(234,57,67,.45);border-radius:99px;padding:.18rem .7rem;font-size:.78rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase">Partial Outage</span>
+          {{else}}
+          <span style="background:rgba(234,57,67,.22);color:#ea3943;border:1px solid rgba(234,57,67,.6);border-radius:99px;padding:.18rem .7rem;font-size:.78rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase">Major Outage</span>
+          {{end}}
+          <span class="muted" style="margin-left:auto;font-size:.84rem">{{printf "%.2f" .Uptime.D90}}% uptime over 90 days</span>
+        </div>
+        <div class="muted" style="font-size:.88rem;margin-bottom:.75rem">{{.Description}}</div>
+        <div style="display:flex;gap:2px;align-items:flex-end;height:34px">
+          {{range .DayBars}}
+          <span title="{{.D}} — {{if lt .P 0}}no data{{else}}{{.P}}% uptime{{end}}" style="flex:1;min-width:2px;height:100%;border-radius:2px;background:{{if lt .P 0}}#2b3140{{else if ge .P 99}}#16c784{{else if ge .P 90}}#f0b90b{{else}}#ea3943{{end}}"></span>
+          {{end}}
+        </div>
+        <div class="muted" style="display:flex;justify-content:space-between;font-size:.72rem;margin-top:5px">
+          <span>90 days ago</span><span>Today</span>
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </div>
+</section>
+
+<section class="reqs">
+  <div class="container">
+    <div class="spacer">
+      <hr>
+      <h1>Past incidents</h1>
+      {{if .IncidentViews}}
+        {{range .IncidentViews}}
+        <div style="background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:1.15rem 1.35rem;margin:0 0 14px">
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px">
+            <strong>{{.Name}}</strong>
+            {{if .Ongoing}}
+            <span style="background:rgba(234,57,67,.16);color:#ea3943;border-radius:99px;padding:.14rem .65rem;font-size:.76rem;font-weight:700;text-transform:uppercase">Ongoing</span>
+            {{else}}
+            <span style="background:rgba(22,199,132,.16);color:#16c784;border-radius:99px;padding:.14rem .65rem;font-size:.76rem;font-weight:700;text-transform:uppercase">Resolved</span>
+            {{end}}
+            <span class="muted" style="font-size:.82rem">{{.StartedText}} &rarr; {{.ResolvedText}}</span>
+          </div>
+          {{range .Updates}}
+          <div style="display:flex;gap:10px;padding:7px 0;border-top:1px solid rgba(255,255,255,.07)">
+            <span class="muted" style="font-size:.8rem;white-space:nowrap">{{.TText}}</span>
+            <span style="font-size:.82rem;font-weight:700;text-transform:capitalize;white-space:nowrap">{{.State}}</span>
+            <span class="muted" style="font-size:.84rem">{{.Text}}</span>
+          </div>
+          {{end}}
+        </div>
+        {{end}}
+      {{else}}
+        <p class="muted">No incidents in the recorded history. All clear.</p>
+      {{end}}
+      <p class="muted" style="margin-top:1.2rem;font-size:.84rem">Incidents are opened and resolved automatically by the NSM monitoring system.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+  setTimeout(function () { window.location.reload(); }, 60000);
+</script>
+
+{{template "foot" .}}

@@ -1479,6 +1479,7 @@ func main() {
 	initSite()
 	patchLocalUIBundlesOnDisk()
 	startShowcaseServers()
+	startStatusMonitor("http://" + probeAddr)
 
 	srv := &http.Server{
 		Addr:              addr,

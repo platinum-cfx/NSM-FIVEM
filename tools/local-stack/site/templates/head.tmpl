@@ -47,6 +47,7 @@
       <li><a href="/support" class="{{if eq .Page "/support"}}active{{end}}">Support</a></li>
       <li><a href="/forum" class="{{if eq .Page "/forum"}}active{{end}}">Forum</a></li>
       <li><a href="/marketplace" class="{{if eq .Page "/marketplace"}}active{{end}}">Marketplace</a></li>
+      <li><a href="/status" class="{{if eq .Page "/status"}}active{{end}}">Status</a></li>
       <li><a href="/docs" class="{{if eq .Page "/docs"}}active{{end}}">Documentation</a></li>
       {{if and .User (or (eq .User.Role "owner") (eq .User.Role "admin") (eq .User.Role "staff"))}}
       <li><a href="/admin/users" class="{{if eq .Page "/admin/users"}}active{{end}}">Staff</a></li>

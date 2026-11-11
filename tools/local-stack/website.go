@@ -501,6 +501,8 @@ func buildMux() *http.ServeMux {
 
 	// pages
 	mux.HandleFunc("GET /{$}", homePage)
+	mux.HandleFunc("GET /status", statusPage)
+	mux.HandleFunc("GET /api/status", apiStatus)
 	mux.HandleFunc("GET /servers", serversPage)
 	mux.HandleFunc("GET /servers/{ep}", serverDetailPage)
 	mux.HandleFunc("GET /join/{ep}", func(w http.ResponseWriter, r *http.Request) {
