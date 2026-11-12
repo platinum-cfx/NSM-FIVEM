@@ -1664,3 +1664,99 @@ header.nsm-top-header ul.links a.active, .drop-trigger.active { color: var(--zx-
 .zx-game:hover { transform: translateY(-3px); border-color: rgba(24, 232, 136, 0.45); }
 .zx-game img { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; }
 .zx-game span { color: var(--zx-mut); font-size: 0.74rem; text-align: center; }
+
+
+/* ---------- ZAPX configurator + config screen ---------- */
+.zx-field-lbl {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  color: var(--zx-mut);
+  margin: 0 0 7px;
+}
+.zx-field-hint { display: block; color: var(--zx-mut); font-size: 0.82rem; margin-top: 7px; }
+
+.zx-loc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+.zx-loc {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  padding: 13px 14px;
+  background: rgba(10, 13, 19, 0.7);
+  border: 1px solid var(--zx-line);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color var(--zx-fast) var(--zx-ease), background var(--zx-fast) var(--zx-ease);
+}
+.zx-loc input { position: absolute; opacity: 0; pointer-events: none; }
+.zx-loc .cd { font-family: var(--font-mono); font-size: 0.82rem; color: var(--zx-green); letter-spacing: 0.08em; }
+.zx-loc .nm { color: var(--zx-mut); font-size: 0.82rem; }
+.zx-loc:hover { border-color: rgba(24, 232, 136, 0.4); }
+.zx-loc:has(input:checked) {
+  border-color: var(--zx-green);
+  background: rgba(24, 232, 136, 0.1);
+}
+.zx-loc:has(input:checked) .nm { color: #fff; }
+
+.zx-cfg-wrap {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 18px;
+  align-items: start;
+}
+.zx-cfg-rail {
+  background: rgba(12, 14, 20, 0.7);
+  border: 1px solid var(--zx-line);
+  border-radius: 14px;
+  padding: 14px;
+  position: sticky;
+  top: 84px;
+}
+.zx-cfg-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: rgba(10, 13, 19, 0.8);
+  border: 1px solid var(--zx-line);
+  border-radius: 10px;
+  color: var(--zx-mut);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  margin-bottom: 12px;
+}
+.zx-cfg-grp {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--zx-mut);
+  margin: 12px 4px 6px;
+}
+.zx-cfg-file {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: #c6d2df;
+  font-size: 0.86rem;
+}
+.zx-cfg-file .material-icons-outlined { font-size: 17px; color: var(--zx-green); opacity: 0.8; }
+.zx-cfg-on {
+  background: rgba(24, 232, 136, 0.14);
+  color: var(--zx-green);
+  font-weight: 600;
+}
+.zx-cfg-main { min-width: 0; }
+@media (max-width: 860px) {
+  .zx-cfg-wrap { grid-template-columns: 1fr; }
+  .zx-cfg-rail { position: static; }
+  .zx-card-row[style] { grid-template-columns: 1fr !important; }
+}
+.zx-mapwrap img { max-height: 460px; object-fit: cover; }

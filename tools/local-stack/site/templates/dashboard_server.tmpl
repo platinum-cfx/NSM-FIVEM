@@ -101,11 +101,25 @@
     <div class="zx-order">
       <div class="zx-order-top"><span class="zx-pill zx-pill-green">Config</span> server.cfg — the configuration your server runs on</div>
       <p class="zx-note" style="margin:0 0 12px">Everything your server loads lives here: its name, slots, resources (<code>ensure</code> lines) and connection settings. Edit below and press <strong>Save</strong>, then restart the server for changes to take effect. (FileZilla users: this same file is <code>/server.cfg</code> at the FTP root.)</p>
+      <div class="zx-cfg-wrap">
+        <aside class="zx-cfg-rail">
+          <div class="zx-cfg-search"><span class="material-icons-outlined">search</span> server.cfg</div>
+          <div class="zx-cfg-grp">Files</div>
+          <div class="zx-cfg-file zx-cfg-on"><span class="material-icons-outlined">description</span> server.cfg</div>
+          <div class="zx-cfg-grp">Parameters</div>
+          <div class="zx-cfg-file"><span class="material-icons-outlined">badge</span> sv_hostname</div>
+          <div class="zx-cfg-file"><span class="material-icons-outlined">groups</span> sv_maxclients</div>
+          <div class="zx-cfg-file"><span class="material-icons-outlined">lan</span> endpoints</div>
+          <div class="zx-cfg-file"><span class="material-icons-outlined">folder</span> ensure lines</div>
+        </aside>
+        <div class="zx-cfg-main">
       <textarea id="cfgtext" spellcheck="false" style="width:100%;min-height:420px;font:13px/1.5 'JetBrains Mono',ui-monospace,Consolas,monospace;background:rgba(10,13,19,.8);color:#e6f2ec;border:1px solid rgba(24,232,136,.3);border-radius:12px;padding:14px">loading…</textarea>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
-        <button class="btn primary" onclick="cfgSave()">SAVE CONFIG</button>
-        <button class="btn" onclick="cfgSaveRestart()">SAVE &amp; RESTART SERVER</button>
-        <span id="cfgmsg" style="color:var(--zx-green-hi)"></span>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+            <button class="btn primary" onclick="cfgSave()">SAVE CONFIG</button>
+            <button class="btn" onclick="cfgSaveRestart()">SAVE &amp; RESTART SERVER</button>
+            <span id="cfgmsg" style="color:var(--zx-green-hi)"></span>
+          </div>
+        </div>
       </div>
     </div>
   {{end}}

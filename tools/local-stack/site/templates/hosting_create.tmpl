@@ -1,55 +1,66 @@
 {{template "head" .}}
-<section class="hero">
+<section class="hero zx-hero">
   <div class="container">
     <div class="spacer">
-      <div class="copy">
-        <h1>Create your server</h1>
-        <p>One standard package, installed automatically. You need an NSM account — and every account can run one server.</p>
+      <div class="zx-eyebrow"><span class="live-dot"></span> NSM HOSTING &mdash; CREATE</div>
+      <h1 class="zx-hero-title">Create your server. <em>Go live.</em></h1>
+      <div class="zx-hero-chips">
+        <span class="zx-pill zx-pill-green">Free forever</span>
+        <span class="zx-pill zx-pill-dark">One per account</span>
+        <span class="zx-pill zx-pill-dark">Online in minutes</span>
       </div>
     </div>
   </div>
 </section>
 
-<section>
+<main>
+<section class="zx-band">
   <div class="container">
     <div class="spacer">
       {{if .Error}}
-      <div style="border:1px solid #e57373;border-radius:12px;padding:14px 18px;margin-bottom:22px;color:#ff9c9c">
-        <strong>Could not create the server:</strong> {{.Error}}
+      <div class="zx-note-banner" style="border-color:rgba(231,80,80,.5);background:rgba(231,80,80,.1);color:#ff9c9c">
+        <span class="material-icons-outlined" style="color:#ff9c9c">error_outline</span>
+        <span><strong>Could not create the server:</strong> {{.Error}}</span>
       </div>
       {{end}}
-      <div class="fx">
-        <div class="c-lg-6 c-md-6 c-xs-12">
-          <h2>Your package</h2>
-          <table class="stat-table">
-            <tr><td class="stat">Package</td><td>{{.PKG.Name}}</td></tr>
-            <tr><td class="stat">Player slots</td><td>{{.PKG.Slots}}</td></tr>
-            <tr><td class="stat">Memory</td><td>{{.PKG.RAMGB}} GB RAM allocation</td></tr>
-            <tr><td class="stat">Storage</td><td>{{.PKG.DiskGB}} GB</td></tr>
-            <tr><td class="stat">Price</td><td>Free</td></tr>
-          </table>
-          <p style="opacity:.8">The official server software is downloaded and installed for you, and your ports (from the 500-port pool, {{.First}}–{{.Last}}) are reserved and written into <code>server.cfg</code> automatically.</p>
+      <form method="post" action="/hosting/create">
+      <div class="zx-card-row" style="grid-template-columns:1.15fr .85fr">
+        <div class="zx-order">
+          <div class="zx-order-top"><span class="zx-pill zx-pill-green">Configure</span> Server details</div>
+            <p style="margin:0 0 18px">
+              <span class="zx-field-lbl">SERVER_NAME</span>
+              <input name="name" maxlength="40" placeholder="my-awesome-city" style="width:100%;padding:12px 14px;border-radius:10px">
+              <span class="zx-field-hint">Shown to players in the server list.</span>
+            </p>
+            <span class="zx-field-lbl">REGION</span>
+            <div class="zx-loc-grid">
+              <label class="zx-loc"><input type="radio" name="region" value="us-east" checked><span class="cd">US-E</span><span class="nm">US East</span></label>
+              <label class="zx-loc"><input type="radio" name="region" value="us-west"><span class="cd">US-W</span><span class="nm">US West</span></label>
+              <label class="zx-loc"><input type="radio" name="region" value="eu-west"><span class="cd">EU-W</span><span class="nm">EU West</span></label>
+              <label class="zx-loc"><input type="radio" name="region" value="eu-central"><span class="cd">EU-C</span><span class="nm">EU Central</span></label>
+              <label class="zx-loc"><input type="radio" name="region" value="ap-singapore"><span class="cd">AP-SE</span><span class="nm">Asia (Singapore)</span></label>
+              <label class="zx-loc"><input type="radio" name="region" value="ap-sydney"><span class="cd">AP-SY</span><span class="nm">Australia (Sydney)</span></label>
+            </div>
+            <p class="zx-note" style="margin:18px 0 0">Creating installs the server on our VPS &mdash; you manage it entirely from the dashboard. One server per NSM account.</p>
         </div>
-        <div class="c-lg-6 c-md-6 c-xs-12">
-          <h2>Server details</h2>
-          <form method="post" action="/hosting/create">
-            <p><label>City name<br><input name="name" maxlength="40" placeholder="my-awesome-city" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:inherit"></label></p>
-            <p><label>Region<br>
-              <select name="region" style="width:100%;padding:11px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:inherit">
-                <option value="us-east">US East</option>
-                <option value="us-west">US West</option>
-                <option value="eu-west">EU West</option>
-                <option value="eu-central">EU Central</option>
-                <option value="ap-singapore">Asia (Singapore)</option>
-                <option value="ap-sydney">Australia (Sydney)</option>
-              </select>
-            </label></p>
-            <p><button class="btn primary block" type="submit">Create my server</button></p>
-            <p style="opacity:.75">Creating installs the server on our VPS — you manage it entirely from the dashboard. One server per NSM account.</p>
-          </form>
+        <div class="zx-order">
+          <div class="zx-order-top"><span class="zx-pill zx-pill-green">Order</span> Your package</div>
+          <div class="zx-tierchips"><span class="zx-tierchip on">{{.PKG.Slots}} slots</span><span class="zx-tierchip">{{.PKG.RAMGB}} GB RAM</span><span class="zx-tierchip">{{.PKG.DiskGB}} GB</span><span class="zx-tierchip">{{.PKG.Ports}} ports</span></div>
+          <div class="zx-price">€0 <span>/ forever</span></div>
+          <ul class="zx-checks">
+            <li>{{.PKG.Name}} &mdash; the standard package</li>
+            <li>Official server software, installed for you</li>
+            <li>Ports reserved automatically ({{.First}}&ndash;{{.Last}} pool)</li>
+            <li>Console, files, Config tab &amp; private join link</li>
+          </ul>
+          <div class="zx-order-top" style="margin:6px 0 0"><span class="zx-pill zx-pill-dark">Due today</span> <strong style="color:#fff;font-family:var(--font-mono)">Free</strong></div>
+          <button class="btn primary block" type="submit" style="width:100%;margin-top:14px">Create my server</button>
+          <p class="zx-field-hint" style="text-align:center;margin-top:10px">No payment required &middot; delete anytime</p>
         </div>
       </div>
+      </form>
     </div>
   </div>
 </section>
+
 {{template "foot" .}}
