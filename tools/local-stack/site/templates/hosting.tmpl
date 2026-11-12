@@ -12,7 +12,7 @@
         <h1 class="zx-h1">Your city goes live here.<br><em>In under a minute.</em></h1>
         <p class="zx-sub">Deploy a free NSM server straight from the website: pre-configured, joinable in one click, with a web console and FileZilla file access built in. We run it — you build it.</p>
         <div class="zx-hero-cta">
-          <a class="btn primary zx-btn-lg" href="#deploy"><span class="txt">DEPLOY A FREE SERVER</span><span class="desc">Live in under 60 seconds</span></a>
+          <a class="btn primary zx-btn-lg" href="/deploy"><span class="txt">DEPLOY A FREE SERVER</span><span class="desc">Live in under 60 seconds</span></a>
           <a class="btn zx-btn-ghost zx-btn-lg" href="/dashboard"><span class="txt">OPEN DASHBOARD</span><span class="desc">Manage your cities</span></a>
         </div>
         <p class="zx-note">Every tier is free &middot; 500 ports allocated to the hosting pool &middot; cancel by just deleting the server.</p>
@@ -26,7 +26,7 @@
             <li><b>03</b><span>FileZilla access + file manager for your resources.</span></li>
             <li><b>04</b><span>Private join link that hides the server address.</span></li>
           </ol>
-          <a class="btn primary" href="#deploy">CONFIGURE NOW</a>
+          <a class="btn primary" href="/deploy">CONFIGURE NOW</a>
         </div>
       </aside>
     </div>
@@ -58,7 +58,7 @@
             <li>Web console &amp; FileZilla access</li>
             <li>{{.Blurb}}</li>
           </ul>
-          <a class="btn primary" href="#deploy" onclick="document.getElementById('tier').value='{{.ID}}'">DEPLOY {{.Name}}</a>
+          <a class="btn primary" href="/deploy?tier={{.ID}}">DEPLOY {{.Name}}</a>
         </div>
         {{end}}
       </div>
@@ -120,7 +120,7 @@
   <div class="container">
     <h2>Ready when you are.</h2>
     <p>Your free city deploys in seconds.</p>
-    <a class="btn primary zx-btn-lg" href="#deploy"><span class="txt">DEPLOY A FREE SERVER</span><span class="desc">Free forever</span></a>
+    <a class="btn primary zx-btn-lg" href="/deploy"><span class="txt">DEPLOY A FREE SERVER</span><span class="desc">Free forever</span></a>
     <p class="zx-note">or <a href="/servers">browse the live server list</a> &middot; <a href="/docs">read the docs</a></p>
   </div>
 </section>

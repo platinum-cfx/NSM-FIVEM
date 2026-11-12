@@ -455,3 +455,107 @@ code { font-family: ui-monospace, Consolas, monospace; }
 @media (max-width: 960px) {
   .zx-host-deploy { grid-template-columns: 1fr; }
 }
+
+/* ---------- hosting ad band (front page) ---------- */
+.zx-hostad {
+  background: linear-gradient(180deg, var(--zx-ink-2), rgba(14,22,33,0));
+  padding: 74px 0 60px;
+}
+.zx-hostad-grid {
+  display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 34px; align-items: center;
+}
+.zx-hostad-lead h2 {
+  font-family: var(--font-header); font-weight: 700;
+  font-size: clamp(1.9rem, 3.6vw, 2.7rem); line-height: 1.12; margin: 0 0 14px;
+}
+.zx-hostad-lead h2 em { font-style: normal; color: var(--zx-green); }
+.zx-hostad-lead p { color: var(--zx-mut); max-width: 56ch; }
+.zx-hostad-cards {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;
+}
+.zx-hostad-card {
+  background: var(--zx-ink-3); border: 1px solid var(--zx-line); border-radius: 18px;
+  padding: 22px 18px; position: relative;
+}
+.zx-hostad-card-hl { border-color: rgba(118, 192, 67, 0.55); }
+.zx-hostad-card h3 { font-family: var(--font-header); font-size: 1.15rem; margin: 0 0 6px; }
+.zx-hostad-card .zx-price { margin-bottom: 10px; }
+.zx-loc-strip {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  margin-top: 30px; color: var(--zx-mut); font-size: 0.92rem;
+}
+.zx-loc-strip .zx-pill small { opacity: 0.7; margin-left: 4px; }
+
+/* ---------- deploy wizard (plan -> location -> config -> summary) ---------- */
+.zx-wizard {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 340px);
+  gap: 30px; align-items: start;
+}
+.zx-num-title {
+  display: flex; align-items: center; gap: 14px;
+  font-family: var(--font-header); font-size: 1.55rem; margin: 34px 0 18px;
+}
+.zx-wizard-main .zx-num-title:first-child { margin-top: 0; }
+.zx-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 42px; height: 42px; border-radius: 50%; flex: none;
+  background: var(--zx-green); color: var(--zx-ink); font-weight: 700; font-size: 1.15rem;
+}
+.zx-plan-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.zx-loc-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.zx-opt {
+  position: relative; display: block; cursor: pointer;
+  background: var(--zx-ink-3); border: 1.5px solid var(--zx-line); border-radius: 18px;
+  padding: 22px 18px 18px; transition: border-color 0.15s, transform 0.15s;
+}
+.zx-opt:hover { transform: translateY(-2px); border-color: rgba(118, 192, 67, 0.5); }
+.zx-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.zx-opt:has(input:checked) { border-color: var(--zx-green); box-shadow: 0 0 0 3px rgba(118, 192, 67, 0.18); }
+.zx-opt h3 { font-family: var(--font-header); margin: 0 0 6px; }
+.zx-loc { padding: 16px; }
+.zx-loc-name { font-family: var(--font-header); font-weight: 600; }
+.zx-loc-area { display: block; color: var(--zx-mut); font-size: 0.82rem; font-weight: 400; }
+.zx-loc-badge { position: absolute; top: 12px; right: 12px; }
+.zx-summary { position: sticky; top: 24px; }
+.zx-sum-list { list-style: none; margin: 0; padding: 0; }
+.zx-sum-list li {
+  display: flex; justify-content: space-between; gap: 12px; padding: 9px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.08); color: var(--zx-mut); font-size: 0.92rem;
+}
+.zx-sum-list li b { color: #e8eef5; text-align: right; }
+.zx-sum-total { display: flex; justify-content: space-between; align-items: baseline; font-size: 1.05rem; }
+
+/* ---------- panel sidebar (console-first) ---------- */
+.zx-panel-wrap {
+  display: grid; grid-template-columns: 224px minmax(0, 1fr);
+  gap: 24px; align-items: start;
+}
+.zx-side {
+  background: var(--zx-ink-2); border: 1px solid var(--zx-line); border-radius: 18px;
+  padding: 14px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 24px;
+}
+.zx-side-head {
+  font-family: var(--font-header); font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; font-size: 0.78rem; color: var(--zx-mut);
+  padding: 10px 12px 12px; border-bottom: 1px solid var(--zx-line); margin-bottom: 8px;
+}
+.zx-side-item {
+  display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 12px;
+  color: var(--zx-mut); font-family: var(--font-header); font-weight: 600; font-size: 0.92rem;
+}
+.zx-side-item:hover { color: #fff; background: rgba(118, 192, 67, 0.08); }
+.zx-side-on, .zx-side-on:hover {
+  color: var(--zx-green); background: rgba(118, 192, 67, 0.12);
+}
+.zx-side-ic { width: 18px; text-align: center; opacity: 0.9; }
+.zx-panel-main { min-width: 0; }
+@media (max-width: 960px) {
+  .zx-hostad-grid { grid-template-columns: 1fr; }
+  .zx-wizard { grid-template-columns: 1fr; }
+  .zx-summary { position: static; }
+  .zx-plan-row, .zx-loc-row { grid-template-columns: 1fr; }
+  .zx-panel-wrap { grid-template-columns: 1fr; }
+  .zx-side { position: static; flex-direction: row; flex-wrap: wrap; }
+  .zx-side-head { display: none; }
+}

@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -447,9 +448,58 @@ func (m *hostingManager) command(s *HostedServer, cmdText string) error {
 	return err
 }
 
+// hostingRegions are the deploy locations shown in the wizard.
+var hostingRegions = []struct {
+	ID, City, Area, Badge string
+}{
+	{"us-east", "Ashburn", "US East", "Recommended"},
+	{"us-west", "Dallas", "US West", ""},
+	{"eu-west", "London", "EU West", ""},
+	{"eu-central", "Frankfurt", "EU Central", ""},
+	{"ap-singapore", "Singapore", "Asia", "New!"},
+	{"ap-sydney", "Sydney", "Australia", ""},
+}
+
 // ---------------------------------------------------------------------------
 // HTTP API + pages
 // ---------------------------------------------------------------------------
+
+// deployWizardPage is the RocketNode-style order flow: plan -> location ->
+// configuration -> summary, all on one page. Signed-out visitors land on the
+// login screen first (with a next= back to the wizard).
+func deployWizardPage(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
+		return
+	}
+	renderPage(w, r, "deploy.tmpl", map[string]interface{}{
+		"Title":   "Deploy a Free NSM Server - NSM",
+		"Tiers":   hostingTiers,
+		"Regions": hostingRegions,
+		"Tier":    r.URL.Query().Get("tier"),
+		"Region":  r.URL.Query().Get("region"),
+	})
+}
+
+func deployWizardSubmit(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		http.Redirect(w, r, "/login?next="+url.QueryEscape("/deploy"), http.StatusFound)
+		return
+	}
+	_ = r.ParseForm()
+	s, err := hostMgr().deploy(u, r.FormValue("name"), r.FormValue("plan"), r.FormValue("region"))
+	if err != nil {
+		renderPage(w, r, "deploy.tmpl", map[string]interface{}{
+			"Title": "Deploy a Free NSM Server - NSM", "Tiers": hostingTiers, "Regions": hostingRegions,
+			"Tier": r.FormValue("plan"), "Region": r.FormValue("region"),
+			"Error": "Could not deploy: " + err.Error(),
+		})
+		return
+	}
+	http.Redirect(w, r, "/dashboard/"+s.ID, http.StatusSeeOther)
+}
 
 func hostRandToken(n int) string {
 	const abc = "abcdefghjkmnpqrstuvwxyz23456789"
@@ -511,6 +561,16 @@ func dashboardPage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// panelTab defaults to the console — the console is the panel home, the way
+// game-server panels work.
+func panelTab(t string) string {
+	switch t {
+	case "overview", "files", "ports", "console":
+		return t
+	}
+	return "console"
+}
+
 func dashboardServerPage(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	if u == nil {
@@ -544,7 +604,7 @@ func dashboardServerPage(w http.ResponseWriter, r *http.Request) {
 	}
 	renderPage(w, r, "dashboard_server.tmpl", map[string]interface{}{
 		"Title": snap.Name + " - Dashboard - NSM", "S": snap, "Tier": tier,
-		"Tab": r.URL.Query().Get("tab"), "Players": players,
+		"Tab": panelTab(r.URL.Query().Get("tab")), "Players": players,
 		"First": hostingPortFirst, "Last": hostingPortLast,
 		"PublicIP": os.Getenv("NSM_PUBLIC_IP"),
 	})
@@ -958,6 +1018,8 @@ func registerHostingRoutes(mux *http.ServeMux) {
 	// bring up hosted-city state + FileZilla endpoints at boot so FTP survives
 	// panel restarts without waiting for the first dashboard visit
 	hostMgr()
+	mux.HandleFunc("GET /deploy", deployWizardPage)
+	mux.HandleFunc("POST /deploy", deployWizardSubmit)
 	mux.HandleFunc("GET /hosting", hostingPage)
 	mux.HandleFunc("POST /hosting/deploy", hostingDeploy)
 	mux.HandleFunc("GET /dashboard", dashboardPage)

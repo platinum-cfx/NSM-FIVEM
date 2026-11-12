@@ -18,19 +18,23 @@
       </div>
       {{if $s.Note}}<p class="zx-note" style="color:#e8b45c">{{$s.Note}}</p>{{end}}
     </div>
-    <div class="zx-panel-tabs">
-      <a class="zx-tab{{if or (eq $tab "") (eq $tab "overview")}} zx-tab-on{{end}}" href="?tab=overview">Overview</a>
-      <a class="zx-tab{{if eq $tab "console"}} zx-tab-on{{end}}" href="?tab=console">Console</a>
-      <a class="zx-tab{{if eq $tab "files"}} zx-tab-on{{end}}" href="?tab=files">Files</a>
-      <a class="zx-tab{{if eq $tab "ports"}} zx-tab-on{{end}}" href="?tab=ports">Ports</a>
-    </div>
   </div>
 </section>
 
 <section class="zx-picks" style="padding-top:26px">
   <div class="container">
+  <div class="zx-panel-wrap">
+    <nav class="zx-side">
+      <div class="zx-side-head">NSM Panel</div>
+      <a class="zx-side-item{{if eq $tab "console"}} zx-side-on{{end}}" href="?tab=console"><span class="zx-side-ic">></span> Console</a>
+      <a class="zx-side-item{{if eq $tab "overview"}} zx-side-on{{end}}" href="?tab=overview"><span class="zx-side-ic">◎</span> Overview</a>
+      <a class="zx-side-item{{if eq $tab "files"}} zx-side-on{{end}}" href="?tab=files"><span class="zx-side-ic">≡</span> Files</a>
+      <a class="zx-side-item{{if eq $tab "ports"}} zx-side-on{{end}}" href="?tab=ports"><span class="zx-side-ic">#</span> Ports</a>
+      <a class="zx-side-item" href="/dashboard"><span class="zx-side-ic">←</span> All cities</a>
+    </nav>
+    <div class="zx-panel-main">
 
-  {{if or (eq $tab "") (eq $tab "overview")}}
+  {{if eq $tab "overview"}}
     <div class="zx-fact-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">
       <div class="zx-fact"><span class="num">{{.Players}}</span><span class="lbl">players connected now</span></div>
       <div class="zx-fact"><span class="num">{{$s.GamePort}}</span><span class="lbl">game port</span></div>
@@ -125,6 +129,8 @@
     </div>
   {{end}}
 
+    </div>
+  </div>
   </div>
 </section>
 

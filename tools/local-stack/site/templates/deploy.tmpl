@@ -1,0 +1,109 @@
+{{template "head" .}}
+<section class="zx-hero zx-host-hero" style="padding-bottom:26px">
+  <div class="container">
+    <div class="zx-ticker">
+      <span class="zx-tick zx-tick-ok">Instant setup</span>
+      <span class="zx-tick">Free forever — no trials, no invoices</span>
+      <span class="zx-tick zx-tick-new">Web console + FileZilla file access included</span>
+    </div>
+    <div class="zx-hero-lead" style="max-width:none">
+      <p class="zx-eyebrow">NSM hosting</p>
+      <h1 class="zx-h1" style="font-size:clamp(2.1rem,4vw,3rem)">Deploy your city.</h1>
+      <p class="zx-sub">Pick a plan, pick a location, name it — your server deploys in seconds with a live console.</p>
+    </div>
+  </div>
+</section>
+
+<section class="zx-picks" style="padding-top:24px">
+  <div class="container">
+    <form class="zx-wizard" method="post" action="/deploy">
+      <div class="zx-wizard-main">
+
+        <h2 class="zx-num-title"><span class="zx-num">1</span> Select your plan</h2>
+        <div class="zx-plan-row">
+          {{range $i, $t := .Tiers}}
+          <label class="zx-opt{{if eq $t.ID "enforcer"}} zx-opt-hl{{end}}">
+            <input type="radio" name="plan" value="{{$t.ID}}"{{if or (eq $.Tier $t.ID) (and (eq $.Tier "") (eq $t.ID "citizen"))}} checked{{end}} onchange="zxSum()">
+            {{if eq $t.ID "enforcer"}}<span class="zx-pill zx-pill-green zx-pick-tag">Most popular</span>{{end}}
+            <h3>{{$t.Name}}</h3>
+            <div class="zx-price"><span class="zx-free">Free</span> <small>forever</small></div>
+            <ul class="zx-checks">
+              <li>{{$t.MemoryGB}} GB RAM</li>
+              <li>{{$t.Slots}} player slots</li>
+              <li>{{$t.Ports}} ports</li>
+              <li>Web console &amp; commands</li>
+              <li>FileZilla file access</li>
+              <li>Private join links</li>
+            </ul>
+          </label>
+          {{end}}
+        </div>
+
+        <h2 class="zx-num-title"><span class="zx-num">2</span> Choose a location</h2>
+        <div class="zx-loc-row">
+          {{range .Regions}}
+          <label class="zx-opt zx-loc">
+            <input type="radio" name="region" value="{{.ID}}"{{if or (eq $.Region .ID) (and (eq $.Region "") (eq .ID "us-east"))}} checked{{end}} onchange="zxSum()">
+            <div class="zx-loc-name">{{.City}} <span class="zx-loc-area">{{.Area}}</span></div>
+            {{if .Badge}}<span class="zx-pill {{if eq .Badge "Recommended"}}zx-pill-green{{else}}zx-pill-dark{{end}} zx-loc-badge">{{.Badge}}</span>{{end}}
+          </label>
+          {{end}}
+        </div>
+
+        <h2 class="zx-num-title"><span class="zx-num">3</span> Configuration</h2>
+        <div class="zx-order">
+          <div class="zx-order-top"><span class="zx-pill zx-pill-dark">City</span> Server details</div>
+          <p class="zx-form-row"><label>City name</label><input name="name" placeholder="my-awesome-city" maxlength="40"></p>
+          <ul class="zx-checks" style="margin:0">
+            <li>Pre-written <code>server.cfg</code> with your name and slots</li>
+            <li>Join link privacy: <strong>on</strong> — your address stays hidden</li>
+            <li>Starter <code>resources/</code> folder ready for your gamemode</li>
+          </ul>
+        </div>
+      </div>
+
+      <aside class="zx-summary">
+        <div class="zx-order">
+          <div class="zx-order-top"><span class="zx-pill zx-pill-green">Summary</span> Your order</div>
+          <ul class="zx-sum-list">
+            <li><span>Plan</span><b id="sum-plan">—</b></li>
+            <li><span>Location</span><b id="sum-loc">—</b></li>
+            <li><span>Setup</span><b>Instant</b></li>
+            <li><span>Billing</span><b>Free forever</b></li>
+          </ul>
+          <hr>
+          <div class="zx-sum-total"><span>Due today</span><b class="zx-free">$0.00</b></div>
+          <button class="btn primary zx-btn-lg" type="submit" style="width:100%;margin-top:14px">
+            <span class="txt">PLACE ORDER &amp; DEPLOY</span>
+            <span class="desc">Live in seconds</span>
+          </button>
+          <p class="zx-note">Deploys straight into your <a href="/dashboard">dashboard</a> with a live console.</p>
+        </div>
+      </aside>
+    </form>
+
+    <div class="zx-fact-grid" style="margin-top:46px">
+      <div class="zx-fact"><span class="num">Instant</span><span class="lbl">setup — your city deploys in seconds</span></div>
+      <div class="zx-fact"><span class="num">Console</span><span class="lbl">live output and commands in the panel</span></div>
+      <div class="zx-fact"><span class="num">Files</span><span class="lbl">FileZilla access and a built-in file manager</span></div>
+      <div class="zx-fact"><span class="num">Free</span><span class="lbl">forever — no trials, no invoices</span></div>
+    </div>
+  </div>
+</section>
+
+<script>
+function zxSum() {
+  var p = document.querySelector('input[name=plan]:checked');
+  var r = document.querySelector('input[name=region]:checked');
+  if (p) {
+    var names = { {{range $i, $t := .Tiers}}{{if $i}}, {{end}}"{{$t.ID}}": "{{$t.Name}} — {{$t.MemoryGB}} GB, {{$t.Slots}} slots"{{end}} };
+    document.getElementById('sum-plan').textContent = names[p.value] || p.value;
+  }
+  if (r) {
+    var rnames = { {{range $i, $r := .Regions}}{{if $i}}, {{end}}"{{$r.ID}}": "{{$r.City}} ({{$r.Area}})"{{end}} };
+    document.getElementById('sum-loc').textContent = rnames[r.value] || r.value;
+  }
+}
+zxSum();
+</script>
+{{template "foot" .}}
