@@ -18,11 +18,42 @@ func withMode(t *testing.T, mode string) {
 	t.Cleanup(func() { runMode, accountsReadOnly = oldMode, oldRO })
 }
 
-func withServiceURLs(t *testing.T, master, web, status string) {
+func withServiceURLs(t *testing.T, master, feed, join, accounts string) {
 	t.Helper()
-	oldM, oldW, oldS := masterBaseURL, webBaseURL, statusBaseURL
-	masterBaseURL, webBaseURL, statusBaseURL = master, web, status
-	t.Cleanup(func() { masterBaseURL, webBaseURL, statusBaseURL = oldM, oldW, oldS })
+	oldM, oldF, oldJ, oldA := masterBaseURL, feedBaseURL, joinBaseURL, accountsBaseURL
+	masterBaseURL, feedBaseURL, joinBaseURL, accountsBaseURL = master, feed, join, accounts
+	t.Cleanup(func() { masterBaseURL, feedBaseURL, joinBaseURL, accountsBaseURL = oldM, oldF, oldJ, oldA })
+}
+
+func TestPathOwner(t *testing.T) {
+	cases := map[string]string{
+		"/api/servers/live":                 "master",
+		"/api/serverlist/ingress":           "master",
+		"/api/servers/streamRedir":          "feed",
+		"/join/ab12xyz":                     "join",
+		"/login":                            "accounts",
+		"/register":                         "accounts",
+		"/keymaster":                        "accounts",
+		"/api/upvote/":                      "accounts",
+		"/api/servers/upvote":               "accounts",
+		"/servers/203.0.113.7:30120/upvote": "accounts",
+		"/u/nta~":                           "accounts",
+		"/support/requests":                 "accounts",
+		"/internal/accounts/bind":           "accounts",
+		"/":                                 "website",
+		"/servers":                          "website",
+		"/servers/203.0.113.7:30120":        "website",
+		"/forum/t/1":                        "website",
+		"/status":                           "website",
+		"/api/status":                       "website",
+		"/download":                         "website",
+		"/css/style.css":                    "website",
+	}
+	for path, want := range cases {
+		if got := pathOwner(path); got != want {
+			t.Errorf("pathOwner(%q) = %q, want %q", path, got, want)
+		}
+	}
 }
 
 func TestNormalizeRow(t *testing.T) {
@@ -50,7 +81,7 @@ func TestNormalizeRow(t *testing.T) {
 
 func TestInternalBindEndpoint(t *testing.T) {
 	setupTest(t)
-	withMode(t, "web")
+	withMode(t, "accounts")
 	oldTok := internalToken
 	internalToken = ""
 	t.Cleanup(func() { internalToken = oldTok })
@@ -119,7 +150,7 @@ func TestBindHeartbeatAccounts(t *testing.T) {
 	defer fakeWeb.Close()
 
 	withMode(t, "master")
-	withServiceURLs(t, "", fakeWeb.URL, "")
+	withServiceURLs(t, "", "", "", fakeWeb.URL)
 	bindHeartbeatAccounts("key-1", "203.0.113.5:30120")
 	req, _ := got.Load().(internalBindRequest)
 	if req.KeyID != "key-1" || req.Endpoint != "203.0.113.5:30120" {
@@ -157,8 +188,8 @@ func TestWebRowsFromMaster(t *testing.T) {
 	}))
 	defer fakeMaster.Close()
 
-	withMode(t, "web")
-	withServiceURLs(t, fakeMaster.URL, "", "")
+	withMode(t, "website")
+	withServiceURLs(t, fakeMaster.URL, "", "", "")
 	remoteRowsMu.Lock()
 	remoteRows, remoteRowsAt = nil, time.Time{}
 	remoteRowsMu.Unlock()
@@ -188,7 +219,7 @@ func TestWebRowsFromMaster(t *testing.T) {
 	}
 }
 
-func TestMasterRoutesUpvoteToWeb(t *testing.T) {
+func TestMasterRoutesUpvoteToAccounts(t *testing.T) {
 	setupTest(t)
 	var got atomic.Int32
 	fakeWeb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -198,7 +229,7 @@ func TestMasterRoutesUpvoteToWeb(t *testing.T) {
 	defer fakeWeb.Close()
 
 	withMode(t, "master")
-	withServiceURLs(t, "", fakeWeb.URL, "")
+	withServiceURLs(t, "", "", "", fakeWeb.URL)
 	h := rootHandler()
 
 	req := httptest.NewRequest("GET", "/api/upvote/203.0.113.7:30120", nil)

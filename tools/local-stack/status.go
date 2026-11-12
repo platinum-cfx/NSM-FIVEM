@@ -71,12 +71,12 @@ type statusProbe struct {
 }
 
 var statusProbeList = []statusProbe{
-	{"website", "Website & Dashboard", "The NSM website, pages and downloads", "/", []int{200}, "", "web"},
+	{"website", "Website & Dashboard", "The NSM website, pages and downloads", "/", []int{200}, "", "website"},
 	{"list-api", "Server List API", "Live server list data for the website and apps", "/api/servers/live", []int{200}, `"servers"`, "master"},
-	{"client-feed", "NSM.exe Client Feed", "The binary list feed the NSM.exe browser reads", "/api/servers/streamRedir/", []int{200}, "", "master"},
+	{"client-feed", "NSM.exe Client Feed", "The binary list feed the NSM.exe browser reads", "/api/servers/streamRedir/", []int{200}, "", "feed"},
 	{"ingest", "Server Ingestion", "Game server heartbeats and listing updates", "/api/serverlist/ingress", []int{405}, "", "master"}, // GET must be 405: route mounted, POST-only
-	{"join", "Join Links", "Shareable /join/ connect links", "/join/status-check", []int{200, 301, 302, 404}, "", "web"},
-	{"auth", "Accounts & Sign-In", "Login, registration and account sessions", "/login", []int{200}, "", "web"},
+	{"join", "Join Links", "Shareable /join/ connect links", "/join/status-check", []int{200, 301, 302, 404}, "", "join"},
+	{"auth", "Accounts & Sign-In", "Login, registration and account sessions", "/login", []int{200}, "", "accounts"},
 }
 
 // statusDoRequest performs one probe request and returns (statusCode, body).
@@ -87,7 +87,7 @@ var statusProbeList = []statusProbe{
 // watches the web and master processes independently — that is the point of
 // running the status page in its own command.
 func statusBaseFor(path string) string {
-	target := "web"
+	target := "website"
 	for _, p := range statusProbeList {
 		if p.path == path {
 			target = p.target
@@ -288,9 +288,12 @@ func statusAddUpdateLocked(id, name, state, text string) {
 
 // startStatusMonitor loads history and runs check cycles forever.
 // Only called from main(); tests drive runStatusCycle directly.
-func startStatusMonitor(masterBase, webBase string) {
-	statusProbeBase = webBase
-	statusTargetBases = map[string]string{"master": masterBase, "web": webBase}
+func startStatusMonitor(bases map[string]string) {
+	statusTargetBases = bases
+	statusProbeBase = bases["website"]
+	if statusProbeBase == "" {
+		statusProbeBase = "http://127.0.0.1:80"
+	}
 	loadStatus()
 	go func() {
 		// give the HTTP listener a moment to come up before the first probe

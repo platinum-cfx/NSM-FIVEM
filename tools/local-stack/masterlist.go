@@ -555,6 +555,16 @@ func decorateListVars(ep string, d *ServerData) {
 	d.Vars = vars
 }
 
+// serveStreamRedir writes the binary list feed the NSM.exe browser reads.
+// In the client feed exe it is built from rows cached off the master list.
+func serveStreamRedir(w http.ResponseWriter, r *http.Request) {
+	body := streamBytes(feedEntries())
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.WriteHeader(http.StatusOK)
+	w.Write(body)
+}
+
 // ---------------------------------------------------------------------------
 // heartbeat -> ServerData mapping
 // ---------------------------------------------------------------------------
@@ -887,19 +897,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, body)
 
 	case path == "/api/servers/streamRedir/" || path == "/api/servers/streamRedir":
-		live := reg.live()
-		out := make(map[string]*entry, len(live))
-		for ep, e := range live {
-			d := e.data
-			applyMods(ep, &d)
-			decorateListVars(ep, &d)
-			out[ep] = &entry{data: d, last: e.last}
-		}
-		body := streamBytes(out)
-		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
-		w.WriteHeader(http.StatusOK)
-		w.Write(body)
+		serveStreamRedir(w, r)
 
 	case strings.HasPrefix(path, "/api/servers/single/"):
 		ep := strings.TrimPrefix(path, "/api/servers/single/")
@@ -1397,11 +1395,12 @@ func main() {
 	opass := flag.String("owner-pass", os.Getenv("OWNER_PASS"), "set a new password for the owner account at startup")
 	keyPath := flag.String("ticket-public-key", "", "optional trusted RSA public key PEM; no tickets are issued")
 	reqKeys := flag.Bool("require-keys", os.Getenv("NSM_REQUIRE_KEYS") == "1", "require a valid NSM keymaster server key on /api/serverlist/ingress")
-	// Split-mode service URLs (see services.go). env NSM_MASTER_URL /
-	// NSM_WEB_URL / NSM_STATUS_URL work too.
-	flag.StringVar(&masterBaseURL, "master-url", envOr("NSM_MASTER_URL", "http://127.0.0.1:8081"), "master service URL (web/status modes)")
-	flag.StringVar(&webBaseURL, "web-url", envOr("NSM_WEB_URL", "http://127.0.0.1:8080"), "web service URL (master/status modes)")
-	flag.StringVar(&statusBaseURL, "status-url", envOr("NSM_STATUS_URL", "http://127.0.0.1:8090"), "status service URL (web mode)")
+	// Service URLs for split deploys (see services.go). env NSM_MASTER_URL /
+	// NSM_FEED_URL / NSM_JOIN_URL / NSM_ACCOUNTS_URL work too.
+	flag.StringVar(&masterBaseURL, "master-url", envOr("NSM_MASTER_URL", "http://127.0.0.1:8081"), "master list service URL")
+	flag.StringVar(&feedBaseURL, "feed-url", envOr("NSM_FEED_URL", "http://127.0.0.1:8082"), "client feed service URL")
+	flag.StringVar(&joinBaseURL, "join-url", envOr("NSM_JOIN_URL", "http://127.0.0.1:8083"), "join links service URL")
+	flag.StringVar(&accountsBaseURL, "accounts-url", envOr("NSM_ACCOUNTS_URL", "http://127.0.0.1:8084"), "accounts service URL")
 	parseRunMode()
 	flag.Parse()
 	requireKeys = *reqKeys

@@ -92,7 +92,7 @@ func renderPage(w http.ResponseWriter, r *http.Request, name string, data map[st
 
 // liveServers returns the current masterlist registry entries for the site and JSON API.
 func liveServers() []map[string]interface{} {
-	if runMode == "web" {
+	if remoteRowsMode() {
 		return fetchRemoteRows()
 	}
 	out := []map[string]interface{}{}
@@ -232,7 +232,7 @@ func liveServers() []map[string]interface{} {
 
 func totalPlayers() int64 {
 	var n int64
-	if runMode == "web" {
+	if remoteRowsMode() {
 		for _, row := range fetchRemoteRows() {
 			n += rowInt64(row, "Clients")
 		}
@@ -492,6 +492,36 @@ func apiServersLive(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleJoinRoute serves shareable /join/<code> links that hide the server
+// IP. Shared by the website front (serve mode) and the join links exe.
+func handleJoinRoute(w http.ResponseWriter, r *http.Request) {
+	raw := strings.TrimSpace(r.PathValue("ep"))
+	if unesc, err := url.PathUnescape(raw); err == nil && unesc != "" {
+		raw = strings.TrimSpace(unesc)
+	}
+	// Opaque join codes (like cfx.re/join/zjjkkky) hide the server IP.
+	code := strings.ToLower(raw)
+	if isJoinCode(code) {
+		ep, ok := resolveJoinCode(code)
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			renderPage(w, r, "server_missing.tmpl", map[string]interface{}{"Title": "Server Not Found - NSM", "EndPoint": code})
+			return
+		}
+		w.Header().Set("X-CitizenFX-Url", "http://"+ep+"/")
+		w.Header().Set("Location", "https://nsmultiplayer.com/join/"+code)
+		renderServerDetail(w, r, ep, code)
+		return
+	}
+	// Legacy /join/<ip:port> form — kept for compatibility.
+	ep := raw
+	if ep != "" {
+		w.Header().Set("X-CitizenFX-Url", "http://"+ep+"/")
+		w.Header().Set("Location", "https://nsmultiplayer.com/join/"+ep)
+	}
+	renderServerDetail(w, r, ep, joinCodeForEndpointLookup(ep))
+}
+
 // ---- router assembly (Go 1.22 patterns) ----
 
 func buildMux() *http.ServeMux {
@@ -511,33 +541,7 @@ func buildMux() *http.ServeMux {
 	mux.HandleFunc("GET /api/status", apiStatus)
 	mux.HandleFunc("GET /servers", serversPage)
 	mux.HandleFunc("GET /servers/{ep}", serverDetailPage)
-	mux.HandleFunc("GET /join/{ep}", func(w http.ResponseWriter, r *http.Request) {
-		raw := strings.TrimSpace(r.PathValue("ep"))
-		if unesc, err := url.PathUnescape(raw); err == nil && unesc != "" {
-			raw = strings.TrimSpace(unesc)
-		}
-		// Opaque join codes (like cfx.re/join/zjjkkky) hide the server IP.
-		code := strings.ToLower(raw)
-		if isJoinCode(code) {
-			ep, ok := resolveJoinCode(code)
-			if !ok {
-				w.WriteHeader(http.StatusNotFound)
-				renderPage(w, r, "server_missing.tmpl", map[string]interface{}{"Title": "Server Not Found - NSM", "EndPoint": code})
-				return
-			}
-			w.Header().Set("X-CitizenFX-Url", "http://"+ep+"/")
-			w.Header().Set("Location", "https://nsmultiplayer.com/join/"+code)
-			renderServerDetail(w, r, ep, code)
-			return
-		}
-		// Legacy /join/<ip:port> form — kept for compatibility.
-		ep := raw
-		if ep != "" {
-			w.Header().Set("X-CitizenFX-Url", "http://"+ep+"/")
-			w.Header().Set("Location", "https://nsmultiplayer.com/join/"+ep)
-		}
-		renderServerDetail(w, r, ep, joinCodeForEndpointLookup(ep))
-	})
+	mux.HandleFunc("GET /join/{ep}", handleJoinRoute)
 	mux.HandleFunc("POST /servers/{ep}/upvote", func(w http.ResponseWriter, r *http.Request) { upvoteServer(w, r, r.PathValue("ep")) })
 	mux.HandleFunc("POST /servers/{ep}/feature", func(w http.ResponseWriter, r *http.Request) { featureServer(w, r, r.PathValue("ep")) })
 	mux.HandleFunc("POST /api/servers/upvote", func(w http.ResponseWriter, r *http.Request) { upvoteServer(w, r, "") })
