@@ -125,7 +125,8 @@ type hostingManager struct {
 	root     string
 	procs    map[string]*hostedProc
 	ftp      map[string]*ftpServer
-	firewall bool
+	firewall      bool
+	firewallNote  string
 	diskMemo map[string]diskMemo
 }
 
@@ -394,24 +395,60 @@ func (m *hostingManager) hostingFirewallOnce() {
 	}
 	m.firewall = true
 	rangeSpec := fmt.Sprintf("%d-%d", hostingPortFirst, hostingPortLast)
-	if _, err := exec.LookPath("netsh"); err != nil {
-		log.Printf("[hosting] netsh not available — open TCP and UDP %s in the firewall manually so hosted cities are joinable", rangeSpec)
-		return
-	}
-	ok := true
-	for _, proto := range []string{"TCP", "UDP"} {
-		args := []string{"advfirewall", "firewall", "add", "rule",
-			"name=NSM Hosting " + proto + " " + rangeSpec,
-			"dir=in", "action=allow", "protocol=" + proto, "localport=" + rangeSpec}
-		out, err := exec.Command("netsh", args...).CombinedOutput()
-		if err != nil {
-			ok = false
-			log.Printf("[hosting] firewall %s rule failed (%v): %s", proto, err, strings.TrimSpace(string(out)))
+	manual := "allow TCP and UDP " + rangeSpec + " through the Windows firewall AND your provider's firewall (VPS control panel), otherwise players see \"Failed to get info from server\" / connection timeouts"
+	if netsh := findWindowsTool("netsh.exe"); netsh != "" {
+		ok := true
+		for _, proto := range []string{"TCP", "UDP"} {
+			args := []string{"advfirewall", "firewall", "add", "rule",
+				"name=NSM Hosting " + proto + " " + rangeSpec,
+				"dir=in", "action=allow", "protocol=" + proto, "localport=" + rangeSpec}
+			out, err := exec.Command(netsh, args...).CombinedOutput()
+			if err != nil {
+				ok = false
+				log.Printf("[hosting] firewall %s rule failed (%v): %s", proto, err, strings.TrimSpace(string(out)))
+			}
+		}
+		if ok {
+			m.firewallNote = "this machine's firewall allows TCP and UDP " + rangeSpec + " for hosted cities. If players still cannot connect, also allow the range in your provider's firewall (VPS control panel)."
+			log.Printf("[hosting] firewall: allowed TCP and UDP %s (%d ports) for hosted cities", rangeSpec, hostingPortLast-hostingPortFirst+1)
+			return
 		}
 	}
-	if ok {
-		log.Printf("[hosting] firewall: allowed TCP and UDP %s (%d ports) for hosted cities", rangeSpec, hostingPortLast-hostingPortFirst+1)
+	if ps := findWindowsTool("powershell.exe"); ps != "" {
+		ok := true
+		for _, proto := range []string{"TCP", "UDP"} {
+			rule := fmt.Sprintf("New-NetFirewallRule -DisplayName 'NSM Hosting %s %s' -Direction Inbound -Action Allow -Protocol %s -LocalPort %s", proto, rangeSpec, proto, rangeSpec)
+			out, err := exec.Command(ps, "-NoProfile", "-NonInteractive", "-Command", rule).CombinedOutput()
+			if err != nil {
+				ok = false
+				log.Printf("[hosting] firewall %s rule via PowerShell failed (%v): %s", proto, err, strings.TrimSpace(string(out)))
+			}
+		}
+		if ok {
+			m.firewallNote = "this machine's firewall allows TCP and UDP " + rangeSpec + " for hosted cities (PowerShell rule). If players still cannot connect, also allow the range in your provider's firewall (VPS control panel)."
+			log.Printf("[hosting] firewall: allowed TCP and UDP %s via PowerShell", rangeSpec)
+			return
+		}
 	}
+	m.firewallNote = "could not open the firewall automatically - " + manual
+	log.Printf("[hosting] firewall: %s", m.firewallNote)
+}
+
+// findWindowsTool locates a system tool even when the service PATH is minimal.
+func findWindowsTool(name string) string {
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+	for _, base := range []string{os.Getenv("SystemRoot"), `C:\Windows`} {
+		if base == "" {
+			continue
+		}
+		p := filepath.Join(base, "System32", name)
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------------------
@@ -504,6 +541,7 @@ func (m *hostingManager) deploy(u *User, name, region, reqHost string) (*HostedS
 	s.Endpoint = fmt.Sprintf("%s:%d", host, s.GameUDPPort)
 	s.JoinCode = joinCodeForEndpoint(s.Endpoint)
 	m.logNL(s, "[system] provisioning city '"+name+"' ("+hostingPackage.Name+")")
+	m.logNL(s, "[system] network: "+m.firewallNote)
 	m.logNL(s, fmt.Sprintf("[system] ports reserved: game TCP %d, game UDP %d, files %d-%d, extra %v", s.GameTCPPort, s.GameUDPPort, s.FTPPort, s.PassivePort, s.ExtraPorts))
 	m.logNL(s, "[system] status: pending")
 	m.saveLocked()
@@ -1257,6 +1295,7 @@ func dashboardServerPage(w http.ResponseWriter, r *http.Request) {
 		"Tab": panelTab(r.URL.Query().Get("tab")), "Players": players,
 		"First": hostingPortFirst, "Last": hostingPortLast,
 		"Host": publicHostOf(snap), "JoinBase": joinBaseURL(r),
+		"Firewall": m.firewallNote, "PkgWarn": serverFilesWarning(),
 	})
 }
 

@@ -30,10 +30,46 @@ const (
 )
 
 var (
-	sfMu  sync.Mutex
-	sfDir string
-	sfOK  bool
+	sfMu   sync.Mutex
+	sfDir  string
+	sfOK   bool
+	sfWarn string // non-empty when the server files look foreign/stale
 )
+
+// serverFilesWarning returns a human warning when the server package does not
+// look like the official NSM build (which carries the connection fixes).
+func serverFilesWarning() string {
+	sfMu.Lock()
+	defer sfMu.Unlock()
+	return sfWarn
+}
+
+// looksLikeNSMArtifact reports whether dir contains the official NSM server
+// package (readme/START-SERVER markers written by the release pipeline).
+func looksLikeNSMArtifact(dir string) bool {
+	for _, sub := range []string{".", "NSM-Server"} {
+		d := filepath.Join(dir, sub)
+		entries, err := os.ReadDir(d)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			n := strings.ToLower(e.Name())
+			if e.IsDir() {
+				continue
+			}
+			if n == "start-server.bat" {
+				return true
+			}
+			if n == "readme-server.txt" {
+				if b, err := os.ReadFile(filepath.Join(d, e.Name())); err == nil && strings.Contains(string(b), "Powered by AFX") {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
 
 // ensureServerFiles returns the local template directory that holds the
 // official server files, downloading and verifying them once if needed.
@@ -61,12 +97,22 @@ func resolveOrDownloadServerFiles(logf func(string)) (string, error) {
 		}
 		logf("[warn] NSM_SERVER_EXE is set but not found: " + p)
 	}
-	// 2. An existing install / template cache.
-	for _, dir := range []string{serverFilesDir, "."} {
-		if exe := findServerExe(dir); exe != "" {
-			logf("[system] server files found: " + exe)
-			return dir, nil
+	// 2. An existing install / template cache (skipped with NSM_SERVER_REFRESH=1).
+	if os.Getenv("NSM_SERVER_REFRESH") != "1" {
+		for _, dir := range []string{serverFilesDir, "."} {
+			if exe := findServerExe(dir); exe != "" {
+				logf("[system] server files found: " + exe)
+				if dir == serverFilesDir && !looksLikeNSMArtifact(dir) {
+					sfWarn = "these server files do not look like the official NSM build - players may be rejected with \"No authentication ticket was specified\" and resources may be missing. Delete the server-files folder (or set NSM_SERVER_REFRESH=1) and press Start to download the real package."
+					logf("[system] WARNING: " + sfWarn)
+				} else {
+					sfWarn = ""
+				}
+				return dir, nil
+			}
 		}
+	} else {
+		logf("[system] NSM_SERVER_REFRESH=1 - ignoring the server-files cache, downloading fresh")
 	}
 	// 3. Download the official release package.
 	return downloadServerFiles(logf)
