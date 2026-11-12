@@ -1,46 +1,225 @@
 {{template "head" .}}
-  <section class="hero">
+  <section class="hero zx-hero">
     <div class="container">
-      <div class="spacer">
-        <div class="hero-seller">
-          <div class="hero-lead">
-            <p class="lead"><strong>NSM</strong> is a modification for Grand Theft Auto&nbsp;V enabling you to play multiplayer on customized dedicated servers, powered by <strong>AFX</strong>.</p>
+      <div class="zx-ticker">
+        <span class="zx-tick"><span class="live-dot"></span><strong data-stat="players">{{kfmt (index .Stats "Players")}}</strong> players online</span>
+        <span class="zx-tick"><strong data-stat="servers">{{index .Stats "Servers"}}</strong> cities live</span>
+        <span class="zx-tick zx-tick-ok">Client &amp; hosting tools — free</span>
+        <span class="zx-tick zx-tick-new">New: Grand Theft Auto V Enhanced support — <a href="/download">get the client</a></span>
+      </div>
+
+      <div class="zx-hero-grid">
+        <div class="zx-hero-lead">
+          <p class="zx-eyebrow">The NSM platform</p>
+          <h1 class="zx-h1">Every city starts here.<br><em>Yours is next.</em></h1>
+          <p class="zx-sub">Play on community cities, run your own, and manage everything from one platform — the desktop client, the live server list, and <strong>AFX&nbsp;Portal</strong>. Built on years of <strong>AFX</strong> framework development.</p>
+          <div class="zx-hero-cta">
+            <a id="dl" href="/download" data-no-spa="1" class="btn primary zx-btn-lg">
+              <span class="txt">DOWNLOAD CLIENT</span>
+              <span class="desc">Free &middot; Windows 10 &amp; 11</span>
+            </a>
+            <a class="btn zx-btn-ghost zx-btn-lg" href="/servers">
+              <span class="txt">BROWSE CITIES</span>
+              <span class="desc">Live server list</span>
+            </a>
           </div>
-          <div class="hero-cta">
-            <div class="players">
-              <span class="live-dot"></span>Join the <span class="current-players" data-stat="players">{{kfmt (index .Stats "Players")}}</span> people playing right now!
-            </div>
-            <div class="btnpadder" style="position:relative">
-              <a id="dl" href="/download" data-no-spa="1">
-                <span class="txt">DOWNLOAD CLIENT</span>
-                <span class="desc">NSM.exe</span>
-              </a>
-            </div>
-            <p class="plaText">By downloading, you agree to the <a href="/docs">NSM Terms of Service</a></p>
-            <div class="server">
-              <a class="btn block" href="/keymaster">Create your own server</a>
-            </div>
-            <div class="nsm-quick-links">
-              <a href="/servers">Server List</a>
-              <a href="/keymaster">Keymaster</a>
-              <a href="/forum">Forum</a>
-              <a href="/docs">Docs</a>
-              <a href="/support">Support</a>
-            </div>
+          <p class="zx-note">By downloading, you agree to the <a href="/docs">NSM Terms of Service</a>.</p>
+          <div class="zx-hero-links">
+            <a href="/keymaster">Create your own server</a>
+            <a href="/servers">Server List</a>
+            <a href="/forum">Forum</a>
+            <a href="/docs">Docs</a>
+            <a href="/support">Support</a>
           </div>
         </div>
+
+        <aside class="zx-hero-side">
+          <div class="zx-order">
+            <div class="zx-order-top"><span class="zx-pill zx-pill-green">Start</span> New here?</div>
+            <ol>
+              <li><b>01</b><span>Download the client — it's free.</span></li>
+              <li><b>02</b><span>Pick a city and connect in one click.</span></li>
+              <li><b>03</b><span>Run your own city whenever you're ready.</span></li>
+            </ol>
+            <a class="btn primary" href="/download"><span class="txt">DOWNLOAD CLIENT</span></a>
+          </div>
+        </aside>
+      </div>
+
+      <div class="zx-hero-strip">
+        <span>Across the platform:</span>
+        <span class="zx-pitem"><b>NSM Client</b> <span class="zx-free">free</span></span>
+        <span class="zx-pitem"><b>Host a city</b> <span class="zx-free">free</span></span>
+        <span class="zx-pitem"><b>AFX Portal</b> <span class="zx-free">free</span></span>
+        <span class="zx-pitem"><b>Join links</b> <span class="zx-free">free</span></span>
       </div>
     </div>
   </section>
 </div>
 <main>
 
+<section class="zx-facts">
+  <div class="container">
+    <div class="spacer">
+      <p class="zx-sec-eyebrow">Facts &amp; figures</p>
+      <h2>The platform, at a glance.</h2>
+      <p class="zx-sec-sub">Live numbers from the NSM network — updated as people join and leave.</p>
+      <div class="zx-fact-grid">
+        <div class="zx-fact"><span class="num"><span class="unit"></span><strong data-stat="players">{{kfmt (index .Stats "Players")}}</strong></span><span class="lbl">players online right now</span></div>
+        <div class="zx-fact"><span class="num"><strong data-stat="servers">{{index .Stats "Servers"}}</strong></span><span class="lbl">cities live on the list</span></div>
+        <div class="zx-fact"><span class="num">2048<span class="unit">+</span></span><span class="lbl">player slots per city</span></div>
+        <div class="zx-fact"><span class="num">100<span class="unit">%</span></span><span class="lbl">free client &amp; tools</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="zx-how">
+  <div class="container">
+    <div class="spacer">
+      <p class="zx-sec-eyebrow">How it works</p>
+      <h2 class="zx-sec-title">Live in 3 steps.</h2>
+      <p class="zx-sec-sub">From download to your first city in minutes — then make it yours.</p>
+      <div class="zx-how-grid">
+        <div class="zx-steps">
+          <div class="zx-step">
+            <span class="n">01</span>
+            <div><h3>Download the client</h3><p>NSM.exe installs in minutes on Windows 10 &amp; 11 and keeps itself up to date.</p></div>
+          </div>
+          <div class="zx-step">
+            <span class="n">02</span>
+            <div><h3>Pick your city</h3><p>Browse the live server list and join with one click — join links keep server addresses private.</p></div>
+          </div>
+          <div class="zx-step">
+            <span class="n">03</span>
+            <div><h3>Go live</h3><p>Create your own city with AFX Portal and <code>NSM-Server.exe</code> — scripts in Lua, C# and JavaScript.</p></div>
+          </div>
+        </div>
+        <div class="zx-console" aria-hidden="true">
+          <div class="zx-console-top"><span class="zx-dot"></span><span class="zx-dot"></span><span class="zx-dot g"></span>&nbsp; NSM — city deployment</div>
+          <div class="zx-console-body">
+            <div class="cmd">$ nsm deploy --city</div>
+            <div class="bar"><i></i></div>
+            <div><span class="ok">[OK]</span> Client ready</div>
+            <div><span class="ok">[OK]</span> Server key issued</div>
+            <div><span class="ok">[OK]</span> Listed on the live server list</div>
+            <div><span class="ok">[OK]</span> Join link created — IP hidden</div>
+            <div class="cmd">status — ready</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="zx-picks">
+  <div class="container">
+    <div class="spacer">
+      <p class="zx-sec-eyebrow">Top picks</p>
+      <h2 class="zx-sec-title">Start with the essentials.</h2>
+      <p class="zx-sec-sub">Everything you need to play and to host — no invoices, no trials.</p>
+      <div class="zx-pick-grid">
+        <div class="zx-pick zx-pick-hl">
+          <span class="zx-pill zx-pill-green zx-pick-tag">Most popular</span>
+          <h3>NSM Client</h3>
+          <div class="zx-price"><span class="zx-free">Free</span> <small>forever</small></div>
+          <ul class="zx-checks">
+            <li>Windows 10 &amp; 11</li>
+            <li>Automatic updates</li>
+            <li>One-click connect</li>
+            <li>Grand Theft Auto V Enhanced support</li>
+          </ul>
+          <a class="btn primary" href="/download"><span class="txt">DOWNLOAD CLIENT</span></a>
+        </div>
+        <div class="zx-pick">
+          <span class="zx-pill zx-pill-dark zx-pick-tag">Hosting</span>
+          <h3>Host a city</h3>
+          <div class="zx-price"><span class="zx-free">Free</span> <small>forever</small></div>
+          <ul class="zx-checks">
+            <li>Up to 2048 player slots</li>
+            <li>Lua, C# &amp; JavaScript runtimes</li>
+            <li>Dedicated server package</li>
+            <li>Join links that hide your IP</li>
+          </ul>
+          <a class="btn primary" href="/keymaster">CREATE A SERVER</a>
+        </div>
+        <div class="zx-pick">
+          <span class="zx-pill zx-pill-dark zx-pick-tag">Discover</span>
+          <h3>Live server list</h3>
+          <div class="zx-price"><span class="zx-free">Free</span> <small>forever</small></div>
+          <ul class="zx-checks">
+            <li>Live player counts</li>
+            <li>Private one-click join links</li>
+            <li>Upvotes &amp; community rankings</li>
+            <li>City profiles and showcases</li>
+          </ul>
+          <a class="btn primary" href="/servers">BROWSE CITIES</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="zx-cities">
+  <div class="container">
+    <div class="spacer">
+      <p class="zx-sec-eyebrow">Live on the platform</p>
+      <h2 class="zx-sec-title">Top cities right now.</h2>
+      <p class="zx-sec-sub">A glimpse of the network — the full list updates live as players join and leave.</p>
+      <div class="zx-city-grid">
+        <div class="zx-city">
+          <span class="zx-rank">#1 Most players</span>
+          <div class="zx-city-head">
+            <img src="/static/showcase/nopixel-v.png" alt="NoPixel V city icon">
+            <h3>NoPixel V</h3>
+          </div>
+          <p class="zx-city-meta">Whitelisted roleplay city.</p>
+          <div class="zx-tags"><span class="zx-pill zx-pill-dark">Roleplay</span><span class="zx-pill zx-pill-dark">Whitelisted</span><span class="zx-pill zx-pill-dark">US</span></div>
+          <a class="btn" href="/servers">View city</a>
+        </div>
+        <div class="zx-city">
+          <span class="zx-rank">#2 Trending</span>
+          <div class="zx-city-head">
+            <img src="/static/showcase/eclipse-rp.png" alt="Eclipse RP city icon">
+            <h3>Eclipse RP</h3>
+          </div>
+          <p class="zx-city-meta">Serious roleplay, custom economy.</p>
+          <div class="zx-tags"><span class="zx-pill zx-pill-dark">Roleplay</span><span class="zx-pill zx-pill-dark">Serious</span><span class="zx-pill zx-pill-dark">US</span></div>
+          <a class="btn" href="/servers">View city</a>
+        </div>
+        <div class="zx-city">
+          <span class="zx-rank">#3 Rising</span>
+          <div class="zx-city-head">
+            <img src="/static/showcase/harborline-rp.png" alt="Harborline RP city icon">
+            <h3>Harborline RP</h3>
+          </div>
+          <p class="zx-city-meta">Coastal city, new-player friendly.</p>
+          <div class="zx-tags"><span class="zx-pill zx-pill-dark">Roleplay</span><span class="zx-pill zx-pill-dark">Friendly</span><span class="zx-pill zx-pill-dark">US</span></div>
+          <a class="btn" href="/servers">View city</a>
+        </div>
+      </div>
+      <div class="zx-city-more">
+        <div class="zx-city-chips">
+          <img src="/static/showcase/x00.png" alt="City icon">
+          <img src="/static/showcase/x01.png" alt="City icon">
+          <img src="/static/showcase/x02.png" alt="City icon">
+          <img src="/static/showcase/x03.png" alt="City icon">
+          <img src="/static/showcase/x04.png" alt="City icon">
+          <img src="/static/showcase/x05.png" alt="City icon">
+          <img src="/static/showcase/x06.png" alt="City icon">
+          <img src="/static/showcase/x07.png" alt="City icon">
+          <span class="zx-pill zx-pill-dark">+ more cities</span>
+        </div>
+        <a class="btn primary" href="/servers">BROWSE ALL CITIES</a>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="features">
   <div class="container">
     <div class="spacer">
-      <div class="preamb">
-        <p>Building upon years of development on the <strong>AFX</strong> framework, which has played a giant role in the modding community, NSM offers a huge range of features:</p>
-      </div>
+      <p class="zx-sec-eyebrow">Why NSM</p>
       <h1>What we have for you</h1>
       <div class="fx">
         <div class="c-lg-3 c-md-6 c-sm-6 c-xs-12">
@@ -226,6 +405,18 @@
         <p>Like the classic modification runtime, NSM initializes Steam integrations under App ID <code>218</code> (<strong>Source SDK Base 2007</strong>) so your Steam overlay, friends list, and rich presence work cleanly without conflicting with the base game.</p>
       </div>
     </div>
+  </div>
+</section>
+
+<section class="zx-cta">
+  <div class="container">
+    <h2>Ready when you are.</h2>
+    <p>Your first city is minutes away — the client is free.</p>
+    <a class="btn primary zx-btn-lg" href="/download">
+      <span class="txt">DOWNLOAD CLIENT</span>
+      <span class="desc">Free &middot; Windows 10 &amp; 11</span>
+    </a>
+    <p class="zx-note">or <a href="/servers">browse the live server list</a> first &middot; <a href="/keymaster">create your own server</a></p>
   </div>
 </section>
 
