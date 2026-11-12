@@ -7,16 +7,77 @@ package main
 
 import (
 	"bufio"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io"
+	"log"
+	"math/big"
 	"net"
 	"os"
+	"sync"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// ftpTLSConfig returns the FTPS configuration (explicit TLS: AUTH TLS),
+// creating a self-signed certificate on first use. FileZilla accepts it after
+// its usual certificate prompt; Plain FTP also keeps working.
+var (
+	ftpTLSOnce sync.Once
+	ftpTLSConf *tls.Config
+)
+
+func ftpTLSConfig() *tls.Config {
+	ftpTLSOnce.Do(func() {
+		cert, err := loadOrCreateFTPCert()
+		if err != nil {
+			log.Printf("[hosting] FTPS certificate unavailable: %v — Plain FTP only", err)
+			return
+		}
+		ftpTLSConf = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+	})
+	return ftpTLSConf
+}
+
+func loadOrCreateFTPCert() (tls.Certificate, error) {
+	const certFile, keyFile = "ftp-tls.crt", "ftp-tls.key"
+	if c, err := tls.LoadX509KeyPair(certFile, keyFile); err == nil {
+		return c, nil
+	}
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	tmpl := x509.Certificate{
+		SerialNumber: big.NewInt(time.Now().UnixNano()),
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(3650 * 24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:     []string{"localhost", "nsm-hosting"},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &priv.PublicKey, priv)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyDER, err := x509.MarshalECPrivateKey(priv)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	_ = os.WriteFile(certFile, certPEM, 0o600)
+	_ = os.WriteFile(keyFile, keyPEM, 0o600)
+	return tls.X509KeyPair(certPEM, keyPEM)
+}
 
 type ftpServer struct {
 	ln           net.Listener
@@ -60,10 +121,28 @@ type ftpConn struct {
 	passive    net.Listener
 	renameFrom string
 	rest       int64
+	protP      bool // data connections use TLS (PROT P)
+}
+
+// upgradeTLS wraps the control connection in TLS (explicit FTPS).
+func (fc *ftpConn) upgradeTLS() error {
+	conf := ftpTLSConfig()
+	if conf == nil {
+		return fmt.Errorf("TLS unavailable")
+	}
+	tconn := tls.Server(fc.c, conf)
+	_ = tconn.SetDeadline(time.Now().Add(30 * time.Second))
+	if err := tconn.Handshake(); err != nil {
+		return err
+	}
+	_ = tconn.SetDeadline(time.Now().Add(10 * time.Minute))
+	fc.c = tconn
+	fc.r = bufio.NewReader(tconn)
+	return nil
 }
 
 func (fs *ftpServer) handle(c net.Conn) {
-	fc := &ftpConn{fs: fs, c: c, r: bufio.NewReader(c)}
+	fc := &ftpConn{fs: fs, c: c, r: bufio.NewReader(c), cwd: "/"}
 	defer func() {
 		if fc.passive != nil {
 			_ = fc.passive.Close()
@@ -91,6 +170,15 @@ func (fs *ftpServer) handle(c net.Conn) {
 		cmd := strings.ToUpper(verb)
 		if !fc.authed {
 			switch cmd {
+			case "AUTH":
+				if ftpTLSConfig() != nil && (strings.EqualFold(arg, "TLS") || strings.EqualFold(arg, "SSL")) {
+					fc.reply("234 AUTH TLS OK")
+					if err := fc.upgradeTLS(); err != nil {
+						return
+					}
+				} else {
+					fc.reply("502 AUTH not supported — use Plain FTP in FileZilla")
+				}
 			case "USER":
 				fc.user = arg
 				fc.reply("331 password required")
@@ -125,7 +213,7 @@ func (fs *ftpServer) handle(c net.Conn) {
 		case "SYST":
 			fc.reply("215 UNIX Type: L8")
 		case "FEAT":
-			fc.raw("211-Features:\r\n UTF8\r\n MLST type*;size*;modify*;\r\n PASV\r\n EPSV\r\n SIZE\r\n MDTM\r\n REST STREAM\r\n211 End\r\n")
+			fc.raw("211-Features:\r\n UTF8\r\n MLST type*;size*;modify*;\r\n AUTH TLS\r\n PBSZ\r\n PROT\r\n PASV\r\n EPSV\r\n SIZE\r\n MDTM\r\n REST STREAM\r\n211 End\r\n")
 		case "OPTS":
 			fc.reply("200 ok")
 		case "TYPE", "STRU", "MODE":
@@ -226,7 +314,26 @@ func (fs *ftpServer) handle(c net.Conn) {
 			fc.rest, _ = strconv.ParseInt(arg, 10, 64)
 			fc.reply("350 restarting at " + arg)
 		case "AUTH":
-			fc.reply("502 AUTH not supported — use Plain FTP in FileZilla")
+			if ftpTLSConfig() != nil && (strings.EqualFold(arg, "TLS") || strings.EqualFold(arg, "SSL")) {
+				fc.reply("234 AUTH TLS OK")
+				if err := fc.upgradeTLS(); err != nil {
+					return
+				}
+			} else {
+				fc.reply("502 AUTH not supported — use Plain FTP in FileZilla")
+			}
+		case "PBSZ":
+			fc.reply("200 OK")
+		case "PROT":
+			if strings.EqualFold(arg, "P") {
+				fc.protP = true
+				fc.reply("200 data connections will use TLS")
+			} else if strings.EqualFold(arg, "C") {
+				fc.protP = false
+				fc.reply("200 data connections are clear")
+			} else {
+				fc.reply("504 unsupported protection level")
+			}
 		default:
 			fc.reply("502 command not implemented")
 		}
@@ -308,6 +415,25 @@ func (fc *ftpConn) acceptData() net.Conn {
 	return c
 }
 
+// wrapData upgrades a data connection to TLS (PROT P). It must run AFTER the
+// 150 reply — clients start their side of the handshake only after that.
+func (fc *ftpConn) wrapData(d net.Conn) net.Conn {
+	if !fc.protP {
+		return d
+	}
+	conf := ftpTLSConfig()
+	if conf == nil {
+		return d
+	}
+	tconn := tls.Server(d, conf)
+	_ = tconn.SetDeadline(time.Now().Add(2 * time.Minute))
+	if err := tconn.Handshake(); err != nil {
+		_ = d.Close()
+		return nil
+	}
+	return tconn
+}
+
 func (fc *ftpConn) sendList(arg string, namesOnly bool) {
 	p, ok := fc.resolve(arg)
 	if !ok {
@@ -325,8 +451,12 @@ func (fc *ftpConn) sendList(arg string, namesOnly bool) {
 		fc.reply("425 cannot open data connection")
 		return
 	}
-	defer d.Close()
 	fc.reply("150 opening data connection")
+	if d = fc.wrapData(d); d == nil {
+		fc.reply("425 data TLS handshake failed")
+		return
+	}
+	defer d.Close()
 	var sb strings.Builder
 	for _, e := range entries {
 		if namesOnly {
@@ -371,8 +501,12 @@ func (fc *ftpConn) sendFile(arg string) {
 		fc.reply("425 cannot open data connection")
 		return
 	}
-	defer d.Close()
 	fc.reply("150 opening data connection")
+	if d = fc.wrapData(d); d == nil {
+		fc.reply("425 data TLS handshake failed")
+		return
+	}
+	defer d.Close()
 	_, _ = io.Copy(d, f)
 	fc.reply("226 transfer complete")
 }
@@ -399,8 +533,12 @@ func (fc *ftpConn) recvFile(arg string, appendMode bool) {
 		fc.reply("425 cannot open data connection")
 		return
 	}
-	defer d.Close()
 	fc.reply("150 opening data connection")
+	if d = fc.wrapData(d); d == nil {
+		fc.reply("425 data TLS handshake failed")
+		return
+	}
+	defer d.Close()
 	_, _ = io.Copy(f, d)
 	fc.reply("226 transfer complete")
 }

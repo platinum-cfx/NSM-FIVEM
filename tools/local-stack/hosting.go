@@ -454,6 +454,9 @@ func (m *hostingManager) deploy(u *User, name, region, reqHost string) (*HostedS
 	}
 	// register first so each allocation below sees the previous ones
 	m.st.Servers = append(m.st.Servers, s)
+	// the city's directory exists from this moment (files + FTP usable even
+	// while the server software is still installing)
+	_ = os.MkdirAll(m.dirOf(s), 0o755)
 	var err error
 	if s.GameTCPPort, err = m.allocPortLocked(); err != nil {
 		m.mu.Unlock()
