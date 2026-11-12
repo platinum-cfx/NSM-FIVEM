@@ -1,10 +1,17 @@
 {{template "head" .}}
-  <section class="hero">
+  <section class="hero zx-hero">
     <div class="container">
       <div class="spacer">
+        <div class="zx-eyebrow"><span class="live-dot"></span> NSM &times; AFX &mdash; THE MULTIPLAYER PLATFORM</div>
+        <h1 class="zx-hero-title">Join a city. Build a city. <em>Own it.</em></h1>
         <div class="hero-seller">
           <div class="hero-lead">
             <p class="lead"><strong>NSM</strong> is a modification for Grand Theft Auto&nbsp;V enabling you to play multiplayer on customized dedicated servers, powered by <strong>AFX</strong>.</p>
+            <div class="zx-hero-chips">
+              <span class="zx-pill zx-pill-green">Free client</span>
+              <span class="zx-pill zx-pill-dark">Up to 2048 players</span>
+              <span class="zx-pill zx-pill-dark">OneSync</span>
+            </div>
           </div>
           <div class="hero-cta">
             <div class="players">
@@ -28,6 +35,17 @@
               <a href="/support">Support</a>
             </div>
           </div>
+        </div>
+        <div class="zx-marquee" aria-hidden="true">
+          <div class="zx-marquee-track">
+            <img src="/img/showcase/nopixel-v.png" alt=""><img src="/img/showcase/eclipse-rp.png" alt=""><img src="/img/showcase/harborline-rp.png" alt=""><img src="/img/showcase/x00.png" alt=""><img src="/img/showcase/x01.png" alt=""><img src="/img/showcase/x02.png" alt=""><img src="/img/showcase/x03.png" alt=""><img src="/img/showcase/x04.png" alt=""><img src="/img/showcase/x05.png" alt=""><img src="/img/showcase/x06.png" alt=""><img src="/img/showcase/x07.png" alt=""><img src="/img/showcase/x08.png" alt=""><img src="/img/showcase/x09.png" alt=""><img src="/img/showcase/x10.png" alt=""><img src="/img/showcase/x11.png" alt=""><img src="/img/showcase/nopixel-v.png" alt=""><img src="/img/showcase/eclipse-rp.png" alt=""><img src="/img/showcase/harborline-rp.png" alt=""><img src="/img/showcase/x00.png" alt=""><img src="/img/showcase/x01.png" alt=""><img src="/img/showcase/x02.png" alt=""><img src="/img/showcase/x03.png" alt=""><img src="/img/showcase/x04.png" alt=""><img src="/img/showcase/x05.png" alt=""><img src="/img/showcase/x06.png" alt=""><img src="/img/showcase/x07.png" alt=""><img src="/img/showcase/x08.png" alt=""><img src="/img/showcase/x09.png" alt=""><img src="/img/showcase/x10.png" alt=""><img src="/img/showcase/x11.png" alt="">
+          </div>
+        </div>
+        <div class="zx-hero-strip">
+          <span class="zx-tick zx-tick-ok">Free forever</span>
+          <span class="zx-tick"><strong data-stat="servers">{{index .Stats "Servers"}}</strong>&nbsp;live servers</span>
+          <span class="zx-tick"><strong data-stat="players">{{kfmt (index .Stats "Players")}}</strong>&nbsp;players online</span>
+          <span class="zx-tick zx-tick-new">Online in minutes</span>
         </div>
       </div>
     </div>
@@ -224,6 +242,24 @@
       <div id="q4">
         <h3><a href="#q4">Why does Steam show me playing Source SDK Base 2007?</a></h3>
         <p>Like the classic modification runtime, NSM initializes Steam integrations under App ID <code>218</code> (<strong>Source SDK Base 2007</strong>) so your Steam overlay, friends list, and rich presence work cleanly without conflicting with the base game.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="zx-cta-band">
+  <div class="container">
+    <div class="spacer">
+      <h2>Ready to play?</h2>
+      <p>Download the client, pick a server from the live list, and you are in &mdash; free, in minutes.</p>
+      <div class="zx-hero-cta">
+        <a class="btn primary" href="/download" data-no-spa="1">DOWNLOAD CLIENT</a>
+        <a class="btn" href="/servers">Browse servers</a>
+      </div>
+      <div class="zx-hero-links">
+        <span class="zx-tick zx-tick-ok">Free forever</span>
+        <span class="zx-tick">Windows &middot; NSM.exe</span>
+        <span class="zx-tick zx-tick-new">Servers online in minutes</span>
       </div>
     </div>
   </div>

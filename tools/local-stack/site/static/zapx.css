@@ -770,3 +770,82 @@ blockquote {
   padding: 12px 18px;
   color: #c2d2e2;
 }
+
+
+/* ---------- ZAPX-style composition pieces ---------- */
+.zx-hero-title {
+  font-family: var(--font-header);
+  font-size: clamp(2.2rem, 5.2vw, 3.9rem);
+  font-weight: 800;
+  line-height: 1.04;
+  letter-spacing: -0.028em;
+  color: #fff;
+  margin: 18px 0 10px;
+  max-width: 20ch;
+}
+.zx-hero-title em {
+  font-style: normal;
+  color: var(--zx-green-hi);
+  text-shadow: 0 0 34px rgba(118, 192, 67, 0.35);
+}
+.zx-hero-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+
+.zx-marquee {
+  overflow: hidden;
+  margin: 36px -12px 0;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+}
+.zx-marquee-track {
+  display: flex;
+  gap: 16px;
+  width: max-content;
+  animation: zx-scroll 46s linear infinite;
+}
+.zx-marquee-track img {
+  height: 112px;
+  width: auto;
+  border-radius: 14px;
+  border: 1px solid var(--zx-line);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+  opacity: 0.9;
+}
+.zx-marquee-track img:hover { opacity: 1; border-color: rgba(118, 192, 67, 0.5); }
+.zx-marquee:hover .zx-marquee-track { animation-play-state: paused; }
+@keyframes zx-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .zx-marquee-track { animation: none; }
+}
+
+.zx-cta-band {
+  margin: 34px 0 46px;
+  padding: 56px 0 52px;
+  text-align: center;
+  background:
+    radial-gradient(760px 340px at 50% -110px, rgba(118, 192, 67, 0.2), transparent 62%),
+    linear-gradient(180deg, rgba(27, 42, 59, 0.75), rgba(13, 20, 30, 0.9));
+  border: 1px solid rgba(118, 192, 67, 0.25);
+  border-radius: 24px;
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.38);
+}
+.zx-cta-band h2 {
+  font-family: var(--font-header);
+  font-size: clamp(1.9rem, 3.6vw, 2.7rem);
+  font-weight: 800;
+  letter-spacing: -0.022em;
+  color: #fff;
+  margin: 0 0 10px;
+}
+.zx-cta-band p { color: #b6c6d8; max-width: 52ch; margin: 0 auto 24px; }
+.zx-cta-band .zx-hero-cta { justify-content: center; }
+.zx-cta-band .zx-hero-links { justify-content: center; margin-top: 22px; }
+
+.hero.zx-hero { position: relative; overflow: hidden; }
+.hero.zx-hero .zx-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
