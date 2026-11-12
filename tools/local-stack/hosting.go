@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -195,8 +196,33 @@ func (m *hostingManager) saveLocked() {
 	}
 }
 
+// stripANSI removes terminal color codes so the web console stays readable
+// (the text itself is preserved exactly).
+func stripANSI(line string) string {
+	var b strings.Builder
+	i := 0
+	for i < len(line) {
+		if line[i] == 0x1b && i+1 < len(line) && line[i+1] == '[' {
+			j := i + 2
+			for j < len(line) {
+				c := line[j]
+				j++
+				if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+					break
+				}
+			}
+			i = j
+			continue
+		}
+		b.WriteByte(line[i])
+		i++
+	}
+	return strings.TrimRight(b.String(), "\r")
+}
+
 // logNL appends a console line. Caller must hold m.mu.
 func (m *hostingManager) logNL(s *HostedServer, line string) {
+	line = stripANSI(line)
 	s.ConsoleSeq++
 	s.Console = append(s.Console, fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), line))
 	if len(s.Console) > 500 {
@@ -267,17 +293,95 @@ func (m *hostingManager) portsInUseLocked() map[int]string {
 	return used
 }
 
-// allocPortLocked reserves the lowest free port. Ports are released only when
-// a server is permanently deleted — never when it is stopped.
+// allocPortLocked reserves the lowest port that is free in the store AND
+// actually bindable on this machine (other services on the VPS may hold
+// ports inside the range). Ports are released only when a server is
+// permanently deleted — never when it is stopped.
 func (m *hostingManager) allocPortLocked() (int, error) {
 	used := m.portsInUseLocked()
 	for p := hostingPortFirst; p <= hostingPortLast; p++ {
-		if _, busy := used[p]; !busy {
-			return p, nil
+		if _, busy := used[p]; busy {
+			continue
 		}
+		if !portBindable(p) {
+			log.Printf("[hosting] port %d is held by another process on this machine — skipping it", p)
+			continue
+		}
+		return p, nil
 	}
 	return 0, fmt.Errorf("the hosting port pool (%d-%d) is fully allocated", hostingPortFirst, hostingPortLast)
 }
+
+// portBindable reports whether TCP and UDP on p are free right now.
+func portBindable(p int) bool {
+	addr := fmt.Sprintf(":%d", p)
+	tl, err := net.Listen("tcp", addr)
+	if err != nil {
+		return false
+	}
+	_ = tl.Close()
+	ul, err := net.ListenPacket("udp", addr)
+	if err != nil {
+		return false
+	}
+	_ = ul.Close()
+	return true
+}
+
+// killInstanceProcs terminates leftover processes that were started from this
+// city's directory (orphans from a previous panel run). Only processes whose
+// command line contains the city's own path are touched.
+func killInstanceProcs(instDir string) int {
+	abs, err := filepath.Abs(instDir)
+	if err != nil {
+		return 0
+	}
+	killed := 0
+	if runtime.GOOS == "linux" {
+		procs, _ := os.ReadDir("/proc")
+		for _, pe := range procs {
+			pid, err := strconv.Atoi(pe.Name())
+			if err != nil {
+				continue
+			}
+			b, err := os.ReadFile("/proc/" + pe.Name() + "/cmdline")
+			if err != nil {
+				continue
+			}
+			if strings.Contains(string(b), abs) {
+				if p, err := os.FindProcess(pid); err == nil {
+					_ = p.Kill()
+					killed++
+				}
+			}
+		}
+		return killed
+	}
+	out, err := exec.Command("wmic", "process", "get", "ProcessId,CommandLine", "/format:csv").Output()
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if !strings.Contains(line, abs) {
+			continue
+		}
+		parts := strings.SplitN(strings.TrimSpace(line), ",", 3)
+		if len(parts) < 2 {
+			continue
+		}
+		pid, err := strconv.Atoi(parts[1])
+		if err != nil {
+			continue
+		}
+		if p, err := os.FindProcess(pid); err == nil {
+			_ = p.Kill()
+			killed++
+		}
+	}
+	return killed
+}
+
+var errPortsBusy = errors.New("assigned ports are held by another process on this machine")
 
 // hostingFirewallOnce opens the hosting port range (TCP and UDP) in the VPS
 // firewall so players can reach hosted cities. Failure is logged, never
@@ -436,7 +540,7 @@ func (m *hostingManager) install(s *HostedServer) error {
 	m.mu.Unlock()
 
 	// server.cfg with the REAL allocated ports (overwrites any template copy)
-	cfg := m.generateCfg(s)
+	cfg := m.generateCfg(s, m.dirOf(s))
 	cfgPath := filepath.Join(m.dirOf(s), "server.cfg")
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
 		return err
@@ -447,7 +551,42 @@ func (m *hostingManager) install(s *HostedServer) error {
 
 func itoa(n int) string { return strconv.Itoa(n) }
 
-func (m *hostingManager) generateCfg(s *HostedServer) string {
+// discoverResources lists the resource names actually shipped in the city's
+// resources/ directory (resources/<name> and resources/[cat]/<name>).
+func discoverResources(instDir string) []string {
+	names := map[string]bool{}
+	base := filepath.Join(instDir, "resources")
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return nil
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(e.Name(), "[") {
+			sub, err := os.ReadDir(filepath.Join(base, e.Name()))
+			if err != nil {
+				continue
+			}
+			for _, se := range sub {
+				if se.IsDir() {
+					names[se.Name()] = true
+				}
+			}
+			continue
+		}
+		names[e.Name()] = true
+	}
+	out := []string{}
+	for n := range names {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (m *hostingManager) generateCfg(s *HostedServer, instDir string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s — generated by the NSM Hosting panel\n", s.Name)
 	fmt.Fprintf(&b, "# package: %s (%d slots, %d GB RAM allocation)\n", hostingPackage.Name, hostingPackage.Slots, hostingPackage.RAMGB)
@@ -459,8 +598,23 @@ func (m *hostingManager) generateCfg(s *HostedServer) string {
 	b.WriteString("sets sv_nsmHosted \"1\"\n")
 	b.WriteString("# paste the server key from AFX Portal (shown only when you create it):\n")
 	b.WriteString("# sets sv_nsmServerKey \"nsm_srv_...\"\n")
+	// only ensure resources that really exist in this server package
+	res := discoverResources(instDir)
+	if len(res) == 0 {
+		b.WriteString("# no resources found in resources/ yet — add yours and list them below\n")
+	}
+	// sessionmanager first when present (the server impl looks for it)
+	for _, name := range res {
+		if name == "sessionmanager" {
+			fmt.Fprintf(&b, "ensure %s\n", name)
+		}
+	}
+	for _, name := range res {
+		if name != "sessionmanager" {
+			fmt.Fprintf(&b, "ensure %s\n", name)
+		}
+	}
 	b.WriteString("# add your resources under resources/ and start them here\n")
-	b.WriteString("ensure chat\n")
 	return b.String()
 }
 
@@ -541,6 +695,23 @@ func (m *hostingManager) start(s *HostedServer) error {
 		return errBinaryMissing
 	}
 
+	if abs, err := filepath.Abs(exe); err == nil {
+		exe = abs
+	}
+	// preflight: the assigned ports must be free before we boot, otherwise the
+	// server reports EADDRINUSE. If a leftover process from a previous panel
+	// run is holding them, reap it (only processes from THIS city's directory).
+	if !portBindable(s.GameTCPPort) || !portBindable(s.GameUDPPort) {
+		reaped := killInstanceProcs(dir)
+		if reaped > 0 {
+			m.appendLog(s, fmt.Sprintf("[system] stopped %d leftover server process(es) from an earlier run", reaped))
+		}
+		if !portBindable(s.GameTCPPort) || !portBindable(s.GameUDPPort) {
+			m.setStatus(s, hostError)
+			m.appendLog(s, fmt.Sprintf("[error] ports %d/%d are held by another process on this machine — free them or delete and re-create the server to get new ports", s.GameTCPPort, s.GameUDPPort))
+			return errPortsBusy
+		}
+	}
 	if abs, err := filepath.Abs(exe); err == nil {
 		exe = abs
 	}
