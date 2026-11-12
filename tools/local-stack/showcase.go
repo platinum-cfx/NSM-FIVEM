@@ -195,7 +195,10 @@ func upsertShowcase() {
 			},
 			UpvotePower: s.Upvotes,
 		})
-		joinCodeForEndpoint(s.Ep)
+		// Mint the shareable join code through the accounts service (the
+		// accounts.json writer) so the join links exe can resolve it — the
+		// master's own view is read-only. Serve mode applies it directly.
+		bindHeartbeatAccounts("", s.Ep)
 	}
 }
 
