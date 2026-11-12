@@ -492,6 +492,21 @@ func apiServersLive(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// internalRestartHandler lets a freshly opened copy of the same exe take
+// over the port: the old instance closes its listener and exits. Served by
+// every service mode (it is how "open the exe again" replaces the old copy
+// without ever touching the other service exes).
+func internalRestartHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Connection", "close")
+	sendJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	go func() {
+		time.Sleep(40 * time.Millisecond)
+		log.Printf("[restart] New instance requested port takeover — exiting old instance.")
+		closeActiveServer()
+		os.Exit(0)
+	}()
+}
+
 // handleJoinRoute serves shareable /join/<code> links that hide the server
 // IP. Shared by the website front (serve mode) and the join links exe.
 func handleJoinRoute(w http.ResponseWriter, r *http.Request) {
@@ -668,16 +683,7 @@ func buildMux() *http.ServeMux {
 	mux.HandleFunc("POST /api/keymaster/issue", apiKeymasterIssue)
 	mux.HandleFunc("POST /api/keymaster/revoke", apiKeymasterRevoke)
 	mux.HandleFunc("POST /api/nsm/servers/register", apiServerRegister)
-	mux.HandleFunc("POST /api/nsm/internal-restart", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Connection", "close")
-		sendJSON(w, http.StatusOK, map[string]bool{"ok": true})
-		go func() {
-			time.Sleep(40 * time.Millisecond)
-			log.Printf("[restart] New NSM-Masterlist instance requested port takeover — exiting old instance.")
-			closeActiveServer()
-			os.Exit(0)
-		}()
-	})
+	mux.HandleFunc("POST /api/nsm/internal-restart", internalRestartHandler)
 
 	// updater: no updates in local mode
 	mux.HandleFunc("/updates/", func(w http.ResponseWriter, r *http.Request) {

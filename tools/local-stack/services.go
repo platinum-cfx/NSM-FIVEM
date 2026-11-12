@@ -520,24 +520,67 @@ func feedEntries() map[string]*entry {
 // proxies and per-mode handlers
 // ---------------------------------------------------------------------------
 
-func reverseProxy(target string) http.Handler {
+// defaultServicePort returns the default listener port for this exe's mode,
+// so double-clicking each service exe works with no arguments: the website
+// front (:80) talks to the others on their fixed ports out of the box.
+func defaultServicePort() int {
+	switch runMode {
+	case "master":
+		return 8081
+	case "feed":
+		return 8082
+	case "join":
+		return 8083
+	case "accounts":
+		return 8084
+	default:
+		return 80 // serve + website
+	}
+}
+
+// reverseProxyNamed proxies to a service and reports a clear message when
+// that service is not running instead of a bare connection error.
+func reverseProxyNamed(target, label string) http.Handler {
 	u, err := url.Parse(target)
 	if err != nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, http.StatusBadGateway, map[string]string{"error": "bad proxy target"})
 		})
 	}
-	return httputil.NewSingleHostReverseProxy(u)
+	p := httputil.NewSingleHostReverseProxy(u)
+	p.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		sendJSON(w, http.StatusBadGateway, map[string]string{
+			"error": label + " is not running — start it and try again",
+		})
+	}
+	return p
 }
 
-// rootHandler assembles the process handler for the selected mode.
+func reverseProxy(target string) http.Handler {
+	return reverseProxyNamed(target, "that service")
+}
+
+// rootHandler assembles the process handler for the selected mode. Every
+// mode answers the port-takeover route first so reopening an exe replaces
+// only its own previous copy.
 func rootHandler() http.Handler {
+	h := modeHandler()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/nsm/internal-restart" {
+			internalRestartHandler(w, r)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+func modeHandler() http.Handler {
 	switch runMode {
 	case "master":
 		mux := http.NewServeMux()
 		registerUIRoutes(mux) // /health, streamRedir (blocked below), ingress, counts
 		mux.HandleFunc("GET /api/servers/live", apiServersLive)
-		accountsProxy := reverseProxy(accountsBaseURL)
+		accountsProxy := reverseProxyNamed(accountsBaseURL, "the accounts service (NSM-Accounts.exe)")
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p := r.URL.Path
 			// account writes belong to the accounts service
@@ -594,10 +637,10 @@ func rootHandler() http.Handler {
 	case "website":
 		site := buildMux()
 		proxies := map[string]http.Handler{
-			"master":   reverseProxy(masterBaseURL),
-			"feed":     reverseProxy(feedBaseURL),
-			"join":     reverseProxy(joinBaseURL),
-			"accounts": reverseProxy(accountsBaseURL),
+			"master":   reverseProxyNamed(masterBaseURL, "the master list (NSM-Masterlist.exe)"),
+			"feed":     reverseProxyNamed(feedBaseURL, "the client feed (NSM-ClientFeed.exe)"),
+			"join":     reverseProxyNamed(joinBaseURL, "the join links service (NSM-JoinLinks.exe)"),
+			"accounts": reverseProxyNamed(accountsBaseURL, "the accounts service (NSM-Accounts.exe)"),
 		}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			owner := pathOwner(r.URL.Path)
