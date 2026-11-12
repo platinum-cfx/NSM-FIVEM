@@ -7,9 +7,8 @@
   <link rel="icon" type="image/png" href="/img/nsm-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;700&family=Rubik:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Material+Icons+Outlined&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;700&family=Rubik:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Material+Icons+Outlined&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css?v=078m">
-  <link rel="stylesheet" href="/css/zapx.css?v=1">
 </head>
 <body>
 
@@ -44,6 +43,7 @@
     <div class="burger-toggle" id="burger-open"><span class="material-icons-outlined">menu</span></div>
     <ul class="links hidden-xs hidden-sm">
       <li><a href="/servers" class="{{if eq .Page "/servers"}}active{{end}}">Server List</a></li>
+      <li><a href="/hosting" class="{{if or (eq .Page "/hosting") (eq .Page "/hosting/create") (eq .Page "/hosting/manage")}}active{{end}}">Hosting</a></li>
       <li><a href="/keymaster" class="{{if eq .Page "/keymaster"}}active{{end}}">Portal</a></li>
       <li><a href="/support" class="{{if eq .Page "/support"}}active{{end}}">Support</a></li>
       <li><a href="/forum" class="{{if eq .Page "/forum"}}active{{end}}">Forum</a></li>

@@ -1,20 +1,23 @@
 {{template "head" .}}
 {{$s := .S}}{{$tab := .Tab}}
+<link rel="stylesheet" href="/css/zapx.css?v=3">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <section class="zx-hero zx-host-hero" style="padding-bottom:20px">
   <div class="container">
     <div class="zx-ticker">
-      <a class="zx-tick" href="/dashboard">← Dashboard</a>
-      <span class="zx-tick {{if eq $s.Status "running"}}zx-tick-ok{{end}}"><span class="live-dot" style="background:{{if eq $s.Status "running"}}var(--zx-green){{else}}#6d7f92{{end}}"></span> {{$s.Status}}</span>
-      <span class="zx-tick">{{$s.Name}} &middot; {{$s.Tier}} &middot; {{$s.Region}}</span>
+      <a class="zx-tick" href="/hosting/manage" data-no-spa="1">← NSM Hosting</a>
+      <span class="zx-tick {{if eq $s.Status "online"}}zx-tick-ok{{end}}"><span class="live-dot" style="background:{{if eq $s.Status "online"}}var(--zx-green){{else}}#6d7f92{{end}}"></span> {{$s.Status}}</span>
+      <span class="zx-tick">{{$s.Name}} &middot; {{.PKG.Name}} &middot; {{$s.Region}}</span>
     </div>
     <div class="zx-hero-lead" style="max-width:none">
-      <p class="zx-eyebrow">City panel</p>
+      <p class="zx-eyebrow">Server dashboard</p>
       <h1 class="zx-h1" style="font-size:clamp(2rem,3.6vw,2.7rem)">{{$s.Name}}</h1>
       <div class="zx-hero-cta">
         <button class="btn primary" onclick="power('start')">START</button>
         <button class="btn zx-btn-ghost" onclick="power('stop')">STOP</button>
         <button class="btn zx-btn-ghost" onclick="power('restart')">RESTART</button>
-        <a class="btn zx-btn-ghost" href="/join/{{$s.JoinCode}}" target="_blank">OPEN JOIN LINK</a>
+        <a class="btn zx-btn-ghost" href="/join/{{$s.JoinCode}}" data-no-spa="1" target="_blank">OPEN JOIN LINK</a>
+        <button class="btn zx-btn-ghost" onclick="deleteServer()" style="color:#ff9c9c;border-color:rgba(231,80,80,.5)">DELETE</button>
       </div>
       {{if $s.Note}}<p class="zx-note" style="color:#e8b45c">{{$s.Note}}</p>{{end}}
     </div>
@@ -26,52 +29,54 @@
   <div class="zx-panel-wrap">
     <nav class="zx-side">
       <div class="zx-side-head">NSM Panel</div>
-      <a class="zx-side-item{{if eq $tab "console"}} zx-side-on{{end}}" href="?tab=console"><span class="zx-side-ic">></span> Console</a>
-      <a class="zx-side-item{{if eq $tab "overview"}} zx-side-on{{end}}" href="?tab=overview"><span class="zx-side-ic">◎</span> Overview</a>
-      <a class="zx-side-item{{if eq $tab "files"}} zx-side-on{{end}}" href="?tab=files"><span class="zx-side-ic">≡</span> Files</a>
-      <a class="zx-side-item{{if eq $tab "ports"}} zx-side-on{{end}}" href="?tab=ports"><span class="zx-side-ic">#</span> Ports</a>
-      <a class="zx-side-item" href="/dashboard"><span class="zx-side-ic">←</span> All cities</a>
+      <a class="zx-side-item{{if eq $tab "console"}} zx-side-on{{end}}" href="/dashboard/{{$s.ID}}?tab=console" data-no-spa="1"><span class="zx-side-ic">&gt;</span> Console</a>
+      <a class="zx-side-item{{if eq $tab "overview"}} zx-side-on{{end}}" href="/dashboard/{{$s.ID}}?tab=overview" data-no-spa="1"><span class="zx-side-ic">&#9678;</span> Overview</a>
+      <a class="zx-side-item{{if eq $tab "files"}} zx-side-on{{end}}" href="/dashboard/{{$s.ID}}?tab=files" data-no-spa="1"><span class="zx-side-ic">&#8801;</span> Files</a>
+      <a class="zx-side-item{{if eq $tab "ports"}} zx-side-on{{end}}" href="/dashboard/{{$s.ID}}?tab=ports" data-no-spa="1"><span class="zx-side-ic">#</span> Ports</a>
+      <a class="zx-side-item" href="/hosting/manage" data-no-spa="1"><span class="zx-side-ic">&#8592;</span> My server</a>
     </nav>
     <div class="zx-panel-main">
 
+  {{if eq $tab "console"}}
+    <div class="zx-order">
+      <div class="zx-order-top"><span class="zx-pill {{if eq $s.Status "online"}}zx-pill-green{{else}}zx-pill-dark{{end}}">{{$s.Status}}</span> Server console</div>
+      <div class="zx-console" style="margin:0">
+        <div class="zx-console-top"><span class="zx-dot g"></span>&nbsp; {{$s.Name}} — live output</div>
+        <div class="zx-console-body" id="conout" style="max-height:440px;overflow-y:auto">waiting for output…</div>
+      </div>
+      <form id="cmdform" style="display:flex;gap:10px;margin-top:14px">
+        <input id="cmdinput" style="flex:1" placeholder="type a server command and press Enter" autocomplete="off">
+        <button class="btn primary" type="submit">SEND</button>
+      </form>
+      <p class="zx-note">Commands run inside your server process. If the server is offline, press Start above.</p>
+    </div>
+  {{end}}
+
   {{if eq $tab "overview"}}
     <div class="zx-fact-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">
-      <div class="zx-fact"><span class="num">{{.Players}}</span><span class="lbl">players connected now</span></div>
-      <div class="zx-fact"><span class="num">{{$s.GamePort}}</span><span class="lbl">game port</span></div>
-      <div class="zx-fact"><span class="num">{{.Tier.Slots}}</span><span class="lbl">player slots</span></div>
-      <div class="zx-fact"><span class="num">{{$s.Status}}</span><span class="lbl">current state</span></div>
+      <div class="zx-fact"><span class="num" id="u-cpu">—</span><span class="lbl">CPU usage</span></div>
+      <div class="zx-fact"><span class="num" id="u-ram">—</span><span class="lbl">RAM usage</span></div>
+      <div class="zx-fact"><span class="num" id="u-disk">—</span><span class="lbl">disk usage</span></div>
+      <div class="zx-fact"><span class="num" id="u-uptime">—</span><span class="lbl">uptime</span></div>
     </div>
     <div class="zx-order" style="margin-top:22px">
+      <div class="zx-order-top"><span class="zx-pill {{if eq $s.Status "online"}}zx-pill-green{{else}}zx-pill-dark{{end}}">Status</span> Server details</div>
+      <ul class="zx-checks" style="margin:0">
+        <li>Name: <strong>{{$s.Name}}</strong> &nbsp;·&nbsp; Server ID: <code>{{$s.ID}}</code></li>
+        <li>Status: <strong id="u-status">{{$s.Status}}</strong> &nbsp;·&nbsp; Players online: {{.Players}}</li>
+        <li>Endpoint (players never see this): <code>{{$s.Endpoint}}</code></li>
+        <li>Game ports: TCP <code>{{$s.GameTCPPort}}</code> / UDP <code>{{$s.GameUDPPort}}</code></li>
+        <li>Server version: <code>{{if $s.ExeRel}}{{$s.ExeRel}}{{else}}—{{end}}</code></li>
+        <li>Package: {{.PKG.Name}} — {{.PKG.Slots}} slots, {{.PKG.RAMGB}} GB RAM allocation, {{.PKG.DiskGB}} GB storage</li>
+        {{if $s.LastStarted}}<li>Last started: <span class="zx-reltime" data-t="{{$s.LastStarted}}">{{$s.LastStarted}}</span></li>{{end}}
+      </ul>
+    </div>
+    <div class="zx-order" style="margin-top:18px">
       <div class="zx-order-top"><span class="zx-pill zx-pill-green">Join</span> Your private join link</div>
-      <p style="color:var(--zx-mut);margin:0 0 12px">Share this link — players connect in one click and your server address stays hidden.</p>
       <p style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <code id="joinurl" style="background:rgba(118,192,67,.12);color:var(--zx-green-hi);padding:10px 14px;border-radius:10px;font-size:.95rem">https://nsmultiplayer.com/join/{{$s.JoinCode}}</code>
         <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('joinurl').textContent)">COPY</button>
       </p>
-    </div>
-    <div class="zx-order" style="margin-top:18px">
-      <div class="zx-order-top"><span class="zx-pill zx-pill-dark">Info</span> Instance details</div>
-      <ul class="zx-checks" style="margin:0">
-        <li>Endpoint: <code>{{$s.Endpoint}}</code> (players never see this)</li>
-        <li>Package: {{.Tier.Name}} — {{.Tier.MemoryGB}} GB RAM, {{.Tier.Slots}} slots</li>
-        <li>Created: <span id="created">{{$s.CreatedAt}}</span></li>
-        <li>Files: <a href="?tab=files">FileZilla &amp; file manager</a></li>
-      </ul>
-    </div>
-  {{end}}
-
-  {{if eq $tab "console"}}
-    <div class="zx-order">
-      <div class="zx-order-top"><span class="zx-pill zx-pill-green">Live</span> Server console</div>
-      <div class="zx-console" style="margin:0">
-        <div class="zx-console-top"><span class="zx-dot g"></span>&nbsp; {{$s.Name}} — console</div>
-        <div class="zx-console-body" id="conout" style="max-height:420px;overflow-y:auto">waiting for output…</div>
-      </div>
-      <form id="cmdform" style="display:flex;gap:10px;margin-top:14px">
-        <input id="cmdinput" style="flex:1" placeholder="type a command and press Enter (e.g. status)" autocomplete="off">
-        <button class="btn primary" type="submit">SEND</button>
-      </form>
-      <p class="zx-note">Commands run inside your server process. If the server is stopped, press Start above.</p>
     </div>
   {{end}}
 
@@ -80,20 +85,20 @@
       <div class="zx-order-top"><span class="zx-pill zx-pill-green">Files</span> FileZilla access</div>
       <ul class="zx-checks" style="margin:0 0 16px">
         <li>Protocol: <strong>FTP — Plain (no TLS)</strong> in FileZilla's site manager</li>
-        <li>Host: <code>{{if .PublicIP}}{{.PublicIP}}{{else}}your-server-ip{{end}}</code> &nbsp; Port: <code>{{$s.FTPPort}}</code></li>
-        <li>User: <code>{{$s.FTPUser}}</code> &nbsp; Password: <code>{{$s.FTPPass}}</code></li>
+        <li>Host: <code>your-server-ip</code> &nbsp; Port: <code>{{$s.FTPPort}}</code></li>
+        <li>User: <code>{{$s.FTPUser}}</code> (your NSM name) &nbsp; Password: <code>{{$s.FTTPass}}</code></li>
         <li>Passive mode on &mdash; data port <code>{{$s.PassivePort}}</code></li>
       </ul>
-      <a class="btn primary" href="/api/host/{{$s.ID}}/filezilla.xml">DOWNLOAD FILEZILLA PROFILE</a>
+      <a class="btn primary" href="/api/host/{{$s.ID}}/filezilla.xml" data-no-spa="1">DOWNLOAD FILEZILLA PROFILE</a>
     </div>
     <div class="zx-order" style="margin-top:18px">
-      <div class="zx-order-top"><span class="zx-pill zx-pill-dark">Manager</span> Built-in file manager</div>
+      <div class="zx-order-top"><span class="zx-pill zx-pill-dark">Manager</span> Server files on the VPS</div>
       <p class="zx-note" style="margin:0 0 10px">Path: <code id="fpath">/</code></p>
       <div id="filetable" style="min-height:120px"></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
         <button class="btn" onclick="fmUp()">↑ Up</button>
         <button class="btn" onclick="fmMkdir()">New folder</button>
-        <form id="upform" method="post" action="/api/host/{{$s.ID}}/upload" enctype="multipart/form-data" style="display:flex;gap:8px">
+        <form id="upform" method="post" action="/api/host/{{$s.ID}}/upload" enctype="multipart/form-data" data-no-spa="1" style="display:flex;gap:8px">
           <input type="hidden" name="path" id="uppath" value="">
           <input type="file" name="file" required>
           <button class="btn primary" type="submit">Upload</button>
@@ -113,12 +118,13 @@
   {{if eq $tab "ports"}}
     <div class="zx-order">
       <div class="zx-order-top"><span class="zx-pill zx-pill-green">Network</span> Your ports</div>
-      <p style="color:var(--zx-mut)">This city draws from the hosting pool of <strong>{{.First}}–{{.Last}}</strong> (500 ports). Each port below is yours alone.</p>
+      <p style="color:var(--zx-mut)">Reserved from the NSM hosting pool <strong>{{.First}}–{{.Last}}</strong> (500 ports, TCP and UDP). Ports stay reserved while your server exists — even while it is stopped.</p>
       <table class="stat-table" style="width:100%;margin-top:8px">
-        <tr><td class="stat">Game</td><td>{{$s.GamePort}}</td><td>where players connect</td></tr>
+        <tr><td class="stat">Game TCP</td><td>{{$s.GameTCPPort}}</td><td>player connections &amp; query — written to server.cfg</td></tr>
+        <tr><td class="stat">Game UDP</td><td>{{$s.GameUDPPort}}</td><td>game traffic — written to server.cfg</td></tr>
         <tr><td class="stat">Files</td><td>{{$s.FTPPort}}</td><td>FileZilla control port</td></tr>
         <tr><td class="stat">Data</td><td>{{$s.PassivePort}}</td><td>FileZilla passive transfers</td></tr>
-        {{range $i, $p := $s.ExtraPorts}}
+        {{range $p := $s.ExtraPorts}}
         <tr><td class="stat">Extra</td><td>{{$p}}</td><td>reserved for your services</td></tr>
         {{end}}
       </table>
@@ -143,6 +149,10 @@
   window.power = function (a) {
     post('/api/host/' + ID + '/power/' + a).then(function () { location.reload(); });
   };
+  window.deleteServer = function () {
+    if (!confirm('Delete this server permanently? Its files and ports will be released.')) return;
+    post('/api/host/' + ID + '/delete').then(function () { window.location.href = '/hosting/manage'; });
+  };
   window.allocPort = function () {
     post('/api/host/' + ID + '/ports').then(function (r) { return r.json(); }).then(function (d) {
       if (d.port) { location.reload(); }
@@ -150,7 +160,7 @@
     });
   };
 
-  // ---- console ----
+  // ---- console (live, auto-refresh) ----
   var out = document.getElementById('conout');
   if (out) {
     var since = 0;
@@ -174,7 +184,28 @@
     });
   }
 
-  // ---- files ----
+  // ---- real metrics (overview) ----
+  if (document.getElementById('u-cpu')) {
+    function fmtUp(s) {
+      if (!s) return '—';
+      var d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+      return (d ? d + 'd ' : '') + h + 'h ' + m + 'm';
+    }
+    function usage() {
+      fetch('/api/host/' + ID + '/usage').then(function (r) { return r.json(); }).then(function (d) {
+        document.getElementById('u-cpu').textContent = d.cpu < 0 ? 'n/a' : Math.round(d.cpu) + '%';
+        document.getElementById('u-ram').textContent = d.ramMB < 0 ? 'n/a' : d.ramMB + ' MB';
+        document.getElementById('u-disk').textContent = d.diskMB + ' MB';
+        document.getElementById('u-uptime').textContent = d.online ? fmtUp(d.uptimeSec) : 'offline';
+      }).catch(function () {});
+    }
+    usage();
+    setInterval(usage, 5000);
+    var rt = document.querySelector('.zx-reltime');
+    if (rt) rt.textContent = new Date(parseInt(rt.getAttribute('data-t'), 10) * 1000).toLocaleString();
+  }
+
+  // ---- file manager (real server filesystem) ----
   var cur = '';
   window.fmList = function (p) {
     cur = p || '';
@@ -186,8 +217,11 @@
       var html = '<table class="stat-table" style="width:100%"><tr><td class="stat">Name</td><td class="stat">Size</td><td></td></tr>';
       d.entries.forEach(function (e) {
         var sz = e.dir ? '—' : e.size + ' B';
-        html += '<tr><td><a href="#" onclick="' + (e.dir ? 'fmList(&quot;' + e.path + '&quot;)' : 'fmEdit(&quot;' + e.path + '&quot;)') + ';return false">' + e.name + '</a></td><td>' + sz + '</td>' +
-          '<td><a href="#" onclick="fmDel(&quot;' + e.path + '&quot;)">delete</a></td></tr>';
+        var open = e.dir ? 'fmList(\'' + e.path + '\')' : 'fmEdit(\'' + e.path + '\')';
+        html += '<tr><td><a href="#" onclick="' + open + ';return false">' + e.name + '</a></td><td>' + sz + '</td>' +
+          '<td><a href="#" onclick="fmDownload(\'' + e.path + '\');return false">download</a> · ' +
+          '<a href="#" onclick="fmRename(\'' + e.path + '\');return false">rename</a> · ' +
+          '<a href="#" onclick="fmDel(\'' + e.path + '\');return false">delete</a></td></tr>';
       });
       html += '</table>';
       t.innerHTML = html;
@@ -208,6 +242,15 @@
     post('/api/host/' + ID + '/file/write', {path: document.getElementById('edname').textContent, content: document.getElementById('edtext').value})
       .then(function () { fmList(cur); });
   };
+  window.fmDownload = function (p) {
+    window.location.href = '/api/host/' + ID + '/file/download?path=' + encodeURIComponent(p);
+  };
+  window.fmRename = function (p) {
+    var n = prompt('Rename to:', p.split('/').pop());
+    if (!n) return;
+    var dir = p.indexOf('/') < 0 ? '' : p.substring(0, p.lastIndexOf('/') + 1);
+    post('/api/host/' + ID + '/file/op', {op: 'rename', path: p, to: dir + n}).then(function () { fmList(cur); });
+  };
   window.fmDel = function (p) {
     if (!confirm('Delete ' + p + '?')) return;
     post('/api/host/' + ID + '/file/op', {op: 'delete', path: p}).then(function () { fmList(cur); });
@@ -218,10 +261,6 @@
     post('/api/host/' + ID + '/file/op', {op: 'mkdir', path: (cur ? cur + '/' : '') + n}).then(function () { fmList(cur); });
   };
   if (document.getElementById('filetable')) fmList('');
-
-  // ---- misc ----
-  var cr = document.getElementById('created');
-  if (cr) cr.textContent = new Date(parseInt(cr.textContent, 10) * 1000).toLocaleString();
 })();
 </script>
 {{template "foot" .}}

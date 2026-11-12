@@ -932,7 +932,7 @@
       var action = form.getAttribute('action') || window.location.href;
       var method = (form.getAttribute('method') || 'GET').toUpperCase();
       try {
-        var actionUrl = new URL(action, window.location.origin);
+        var actionUrl = new URL(action, window.location.href);
         if (actionUrl.origin !== window.location.origin) return;
         if (actionUrl.pathname === '/logout') return;
         e.preventDefault();
@@ -1212,7 +1212,7 @@
           var rawHref = anchor.getAttribute('href') || '';
           if (rawHref && rawHref.charAt(0) !== '#' && rawHref.indexOf('javascript:') !== 0 && rawHref.indexOf('mailto:') !== 0 && rawHref.indexOf('fivem://') !== 0) {
             try {
-              var linkUrl = new URL(rawHref, window.location.origin);
+              var linkUrl = new URL(rawHref, window.location.href);
               if (linkUrl.origin === window.location.origin && linkUrl.pathname !== '/logout' && linkUrl.pathname !== '/download' && linkUrl.pathname !== '/NSM.exe' && linkUrl.pathname !== '/download-server' && linkUrl.pathname !== '/NSM-Server.zip' && linkUrl.pathname.indexOf('/api/') !== 0) {
                 e.preventDefault();
                 nsmNavigate(linkUrl.href, true);

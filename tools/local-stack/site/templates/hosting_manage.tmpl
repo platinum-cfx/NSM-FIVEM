@@ -1,0 +1,53 @@
+{{template "head" .}}
+<section class="hero">
+  <div class="container">
+    <div class="spacer">
+      <div class="copy">
+        <h1>My server</h1>
+        <p>Your NSM Hosting server — one per NSM account.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <div class="spacer">
+      {{if .S}}
+      <div class="fx">
+        <div class="c-lg-8 c-md-8 c-xs-12">
+          <article class="a1">
+            <h2>{{.S.Name}}</h2>
+            <span class="txt">Status: <strong>{{.S.Status}}</strong> &middot; Region: {{.S.Region}} &middot; {{.Players}} players online</span>
+            <table class="stat-table" style="margin-top:14px">
+              <tr><td class="stat">Server ID</td><td>{{.S.ID}}</td></tr>
+              <tr><td class="stat">Game ports</td><td>TCP {{.S.GameTCPPort}} / UDP {{.S.GameUDPPort}}</td></tr>
+              <tr><td class="stat">Join link</td><td><a href="/join/{{.S.JoinCode}}">/join/{{.S.JoinCode}}</a> — share this, your address stays hidden</td></tr>
+            </table>
+            <div class="btnpadder">
+              <a class="btn primary" href="/dashboard/{{.S.ID}}">Open dashboard</a>
+              <a class="btn" href="/dashboard/{{.S.ID}}?tab=console">Console</a>
+              <a class="btn" href="/dashboard/{{.S.ID}}?tab=files">Files</a>
+            </div>
+          </article>
+        </div>
+        <div class="c-lg-4 c-md-4 c-xs-12">
+          <article class="a2">
+            <h2>{{.PKG.Name}}</h2>
+            <span class="txt">{{.PKG.Slots}} slots &middot; {{.PKG.RAMGB}} GB RAM &middot; {{.PKG.DiskGB}} GB storage &middot; free</span>
+          </article>
+        </div>
+      </div>
+      {{else}}
+      <article class="a1" style="text-align:center;padding:48px 24px">
+        <h2>No server yet</h2>
+        <span class="txt">Create your one free NSM Hosting server — it installs automatically and is ready in moments.</span>
+        <div class="btnpadder" style="justify-content:center">
+          <a class="btn primary" href="/hosting/create">Create my server</a>
+        </div>
+      </article>
+      {{end}}
+    </div>
+  </div>
+</section>
+{{template "foot" .}}
