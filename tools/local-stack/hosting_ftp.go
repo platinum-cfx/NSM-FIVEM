@@ -12,6 +12,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -50,19 +51,34 @@ func ftpTLSConfig() *tls.Config {
 func loadOrCreateFTPCert() (tls.Certificate, error) {
 	const certFile, keyFile = "ftp-tls.crt", "ftp-tls.key"
 	if c, err := tls.LoadX509KeyPair(certFile, keyFile); err == nil {
-		return c, nil
+		// accept only certificates with a real subject — earlier builds wrote
+		// an empty-DN cert that GnuTLS (FileZilla) refuses to parse
+		if leaf, err := x509.ParseCertificate(c.Certificate[0]); err == nil && leaf.Subject.CommonName != "" {
+			return c, nil
+		}
 	}
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return tls.Certificate{}, err
 	}
+	sans := []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")}
+	if h := os.Getenv("NSM_PUBLIC_IP"); h != "" {
+		if ip := net.ParseIP(h); ip != nil {
+			sans = append(sans, ip)
+		}
+	}
 	tmpl := x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(3650 * 24 * time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     []string{"localhost", "nsm-hosting"},
+		Subject: pkix.Name{
+			CommonName:   "NSM Hosting FTP",
+			Organization: []string{"NSM"},
+		},
+		NotBefore:   time.Now().Add(-time.Hour),
+		NotAfter:    time.Now().Add(3650 * 24 * time.Hour),
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:    []string{"localhost", "nsm-hosting"},
+		IPAddresses: sans,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &priv.PublicKey, priv)
 	if err != nil {
