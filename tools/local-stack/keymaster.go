@@ -187,11 +187,13 @@ func issueServerKey(u *User, label, boundEndpoint string, ttl time.Duration) (st
 
 	accMu.Lock()
 	ensureAccountsInitializedLocked()
-	// One active server key per account: issuing revokes every prior key.
+	// Re-issuing the same label rotates that server's key: the prior key for
+	// this user+label is revoked and its registry entry dropped. Sibling keys
+	// (other labels) stay active - each key is its own server.
 	var revoked []string
 	for i := range acc.ServerKeys {
 		rec0 := &acc.ServerKeys[i]
-		if rec0.UserID == u.ID && !rec0.Revoked {
+		if rec0.UserID == u.ID && rec0.Label == rec.Label && !rec0.Revoked {
 			rec0.Revoked = true
 			revoked = append(revoked, rec0.ID)
 		}
