@@ -1,3 +1,5 @@
+//go:debug httpmuxgo121=0
+
 // NSM masterlist service v2
 // =========================
 // Standalone replacement for the Cfx masterlist endpoints used by NSM
