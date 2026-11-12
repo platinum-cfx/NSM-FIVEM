@@ -31,6 +31,7 @@
       <div class="zx-side-head">NSM Panel</div>
       <a class="zx-side-item{{if eq $tab "console"}} zx-side-on{{end}}" href="/dashboard/{{$s.ID}}?tab=console" data-no-spa="1"><span class="zx-side-ic">&gt;</span> Console</a>
       <a class="zx-side-item{{if eq $tab "overview"}} zx-side-on{{end}}" href="/dashboard/{{$s.ID}}?tab=overview" data-no-spa="1"><span class="zx-side-ic">&#9678;</span> Overview</a>
+      <a class="zx-side-item{{if eq $tab "config"}} zx-side-on{{end}}" href="/dashboard/{{$s.ID}}?tab=config" data-no-spa="1"><span class="zx-side-ic">&#9998;</span> Config</a>
       <a class="zx-side-item{{if eq $tab "files"}} zx-side-on{{end}}" href="/dashboard/{{$s.ID}}?tab=files" data-no-spa="1"><span class="zx-side-ic">&#8801;</span> Files</a>
       <a class="zx-side-item{{if eq $tab "ports"}} zx-side-on{{end}}" href="/dashboard/{{$s.ID}}?tab=ports" data-no-spa="1"><span class="zx-side-ic">#</span> Ports</a>
       <a class="zx-side-item" href="/hosting/manage" data-no-spa="1"><span class="zx-side-ic">&#8592;</span> My server</a>
@@ -80,10 +81,24 @@
     </div>
   {{end}}
 
+  {{if eq $tab "config"}}
+    <div class="zx-order">
+      <div class="zx-order-top"><span class="zx-pill zx-pill-green">Config</span> server.cfg — the configuration your server runs on</div>
+      <p class="zx-note" style="margin:0 0 12px">Everything your server loads lives here: its name, slots, resources (<code>ensure</code> lines) and connection settings. Edit below and press <strong>Save</strong>, then restart the server for changes to take effect. (FileZilla users: this same file is <code>/server.cfg</code> at the FTP root.)</p>
+      <textarea id="cfgtext" spellcheck="false" style="width:100%;min-height:420px;font:13px/1.5 ui-monospace,Consolas,monospace;background:rgba(10,14,22,.75);color:#d8e2f0;border:1px solid rgba(118,192,67,.25);border-radius:12px;padding:14px">loading…</textarea>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+        <button class="btn primary" onclick="cfgSave()">SAVE CONFIG</button>
+        <button class="btn" onclick="cfgSaveRestart()">SAVE &amp; RESTART SERVER</button>
+        <span id="cfgmsg" style="color:var(--zx-green-hi)"></span>
+      </div>
+    </div>
+  {{end}}
+
   {{if eq $tab "files"}}
     <div class="zx-order">
       <div class="zx-order-top"><span class="zx-pill zx-pill-green">Files</span> FileZilla access</div>
       <ul class="zx-checks" style="margin:0 0 16px">
+        <li>To edit your server configuration use the <strong>Config</strong> tab — or open <code>/server.cfg</code> right here in the Manager below / over FTP</li>
         <li>Protocol: <strong>FTP — Plain</strong> or <strong>FTP over explicit TLS</strong> (AUTH TLS) — both work</li>
         <li>Server: <code>{{.Host}}:{{$s.FTPPort}}</code> — use this exact port (NOT 21; port 21 is a different service)</li>
         <li>The root folder IS your server: <code>server.cfg</code>, <code>resources/</code> and the server files are right there — going up stays at the root</li>
@@ -263,6 +278,26 @@
     post('/api/host/' + ID + '/file/op', {op: 'mkdir', path: (cur ? cur + '/' : '') + n}).then(function () { fmList(cur); });
   };
   if (document.getElementById('filetable')) fmList('');
+
+  // ---- config editor (server.cfg) ----
+  if (document.getElementById('cfgtext')) {
+    fetch('/api/host/' + ID + '/file?path=server.cfg').then(function (r) { return r.json(); }).then(function (d) {
+      var ta = document.getElementById('cfgtext');
+      ta.value = d.content || d.error || '';
+    });
+    window.cfgSave = function () {
+      post('/api/host/' + ID + '/file/write', {path: 'server.cfg', content: document.getElementById('cfgtext').value})
+        .then(function (r) { return r.json(); }).then(function (d) {
+          document.getElementById('cfgmsg').textContent = d.ok ? 'Saved. Restart the server to apply changes.' : ('Save failed: ' + (d.error || ''));
+        });
+    };
+    window.cfgSaveRestart = function () {
+      document.getElementById('cfgmsg').textContent = 'Saving…';
+      post('/api/host/' + ID + '/file/write', {path: 'server.cfg', content: document.getElementById('cfgtext').value})
+        .then(function () { return post('/api/host/' + ID + '/power/restart'); })
+        .then(function () { document.getElementById('cfgmsg').textContent = 'Saved — restarting the server…'; });
+    };
+  }
 })();
 </script>
 {{template "foot" .}}

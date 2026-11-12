@@ -1222,7 +1222,7 @@ func hostingManagePage(w http.ResponseWriter, r *http.Request) {
 // panelTab defaults to the console — the console is the panel home.
 func panelTab(t string) string {
 	switch t {
-	case "overview", "files", "ports", "console":
+	case "overview", "files", "ports", "console", "config":
 		return t
 	}
 	return "console"
