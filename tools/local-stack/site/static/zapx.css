@@ -425,3 +425,33 @@ code { font-family: ui-monospace, Consolas, monospace; }
   .zx-fact-grid, .zx-pick-grid, .zx-city-grid { grid-template-columns: 1fr; }
   .zx-h1 { font-size: 2.35rem; }
 }
+
+/* ---------- hosting: product page + dashboard panel ---------- */
+.zx-host-hero { padding-bottom: 40px; }
+.zx-host-deploy {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 26px; align-items: start;
+}
+.zx-form-row { display: flex; flex-direction: column; gap: 6px; margin: 0 0 14px; }
+.zx-form-row label {
+  font-size: 0.8rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--zx-mut);
+}
+.zx-form-row input, .zx-form-row select {
+  width: 100%; background: var(--zx-ink-3); border: 1px solid var(--zx-line); border-radius: 10px;
+  color: #e8eef5; padding: 12px 14px; font-family: var(--font-body); font-size: 0.95rem;
+}
+.zx-panel-tabs {
+  display: flex; gap: 8px; margin-top: 26px; border-bottom: 1px solid var(--zx-line); flex-wrap: wrap;
+}
+.zx-tab {
+  padding: 11px 20px; border-radius: 12px 12px 0 0; color: var(--zx-mut);
+  font-family: var(--font-header); font-weight: 600; font-size: 0.92rem;
+  border: 1px solid transparent; border-bottom: none; margin-bottom: -1px;
+}
+.zx-tab:hover { color: #fff; }
+.zx-tab-on {
+  color: var(--zx-green); background: var(--zx-ink-2);
+  border-color: var(--zx-line); border-bottom: 1px solid var(--zx-ink-2);
+}
+@media (max-width: 960px) {
+  .zx-host-deploy { grid-template-columns: 1fr; }
+}

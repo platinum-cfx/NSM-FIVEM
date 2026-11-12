@@ -1,0 +1,221 @@
+{{template "head" .}}
+{{$s := .S}}{{$tab := .Tab}}
+<section class="zx-hero zx-host-hero" style="padding-bottom:20px">
+  <div class="container">
+    <div class="zx-ticker">
+      <a class="zx-tick" href="/dashboard">← Dashboard</a>
+      <span class="zx-tick {{if eq $s.Status "running"}}zx-tick-ok{{end}}"><span class="live-dot" style="background:{{if eq $s.Status "running"}}var(--zx-green){{else}}#6d7f92{{end}}"></span> {{$s.Status}}</span>
+      <span class="zx-tick">{{$s.Name}} &middot; {{$s.Tier}} &middot; {{$s.Region}}</span>
+    </div>
+    <div class="zx-hero-lead" style="max-width:none">
+      <p class="zx-eyebrow">City panel</p>
+      <h1 class="zx-h1" style="font-size:clamp(2rem,3.6vw,2.7rem)">{{$s.Name}}</h1>
+      <div class="zx-hero-cta">
+        <button class="btn primary" onclick="power('start')">START</button>
+        <button class="btn zx-btn-ghost" onclick="power('stop')">STOP</button>
+        <button class="btn zx-btn-ghost" onclick="power('restart')">RESTART</button>
+        <a class="btn zx-btn-ghost" href="/join/{{$s.JoinCode}}" target="_blank">OPEN JOIN LINK</a>
+      </div>
+      {{if $s.Note}}<p class="zx-note" style="color:#e8b45c">{{$s.Note}}</p>{{end}}
+    </div>
+    <div class="zx-panel-tabs">
+      <a class="zx-tab{{if or (eq $tab "") (eq $tab "overview")}} zx-tab-on{{end}}" href="?tab=overview">Overview</a>
+      <a class="zx-tab{{if eq $tab "console"}} zx-tab-on{{end}}" href="?tab=console">Console</a>
+      <a class="zx-tab{{if eq $tab "files"}} zx-tab-on{{end}}" href="?tab=files">Files</a>
+      <a class="zx-tab{{if eq $tab "ports"}} zx-tab-on{{end}}" href="?tab=ports">Ports</a>
+    </div>
+  </div>
+</section>
+
+<section class="zx-picks" style="padding-top:26px">
+  <div class="container">
+
+  {{if or (eq $tab "") (eq $tab "overview")}}
+    <div class="zx-fact-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+      <div class="zx-fact"><span class="num">{{.Players}}</span><span class="lbl">players connected now</span></div>
+      <div class="zx-fact"><span class="num">{{$s.GamePort}}</span><span class="lbl">game port</span></div>
+      <div class="zx-fact"><span class="num">{{.Tier.Slots}}</span><span class="lbl">player slots</span></div>
+      <div class="zx-fact"><span class="num">{{$s.Status}}</span><span class="lbl">current state</span></div>
+    </div>
+    <div class="zx-order" style="margin-top:22px">
+      <div class="zx-order-top"><span class="zx-pill zx-pill-green">Join</span> Your private join link</div>
+      <p style="color:var(--zx-mut);margin:0 0 12px">Share this link — players connect in one click and your server address stays hidden.</p>
+      <p style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <code id="joinurl" style="background:rgba(118,192,67,.12);color:var(--zx-green-hi);padding:10px 14px;border-radius:10px;font-size:.95rem">https://nsmultiplayer.com/join/{{$s.JoinCode}}</code>
+        <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('joinurl').textContent)">COPY</button>
+      </p>
+    </div>
+    <div class="zx-order" style="margin-top:18px">
+      <div class="zx-order-top"><span class="zx-pill zx-pill-dark">Info</span> Instance details</div>
+      <ul class="zx-checks" style="margin:0">
+        <li>Endpoint: <code>{{$s.Endpoint}}</code> (players never see this)</li>
+        <li>Package: {{.Tier.Name}} — {{.Tier.MemoryGB}} GB RAM, {{.Tier.Slots}} slots</li>
+        <li>Created: <span id="created">{{$s.CreatedAt}}</span></li>
+        <li>Files: <a href="?tab=files">FileZilla &amp; file manager</a></li>
+      </ul>
+    </div>
+  {{end}}
+
+  {{if eq $tab "console"}}
+    <div class="zx-order">
+      <div class="zx-order-top"><span class="zx-pill zx-pill-green">Live</span> Server console</div>
+      <div class="zx-console" style="margin:0">
+        <div class="zx-console-top"><span class="zx-dot g"></span>&nbsp; {{$s.Name}} — console</div>
+        <div class="zx-console-body" id="conout" style="max-height:420px;overflow-y:auto">waiting for output…</div>
+      </div>
+      <form id="cmdform" style="display:flex;gap:10px;margin-top:14px">
+        <input id="cmdinput" style="flex:1" placeholder="type a command and press Enter (e.g. status)" autocomplete="off">
+        <button class="btn primary" type="submit">SEND</button>
+      </form>
+      <p class="zx-note">Commands run inside your server process. If the server is stopped, press Start above.</p>
+    </div>
+  {{end}}
+
+  {{if eq $tab "files"}}
+    <div class="zx-order">
+      <div class="zx-order-top"><span class="zx-pill zx-pill-green">Files</span> FileZilla access</div>
+      <ul class="zx-checks" style="margin:0 0 16px">
+        <li>Protocol: <strong>FTP — Plain (no TLS)</strong> in FileZilla's site manager</li>
+        <li>Host: <code>{{if .PublicIP}}{{.PublicIP}}{{else}}your-server-ip{{end}}</code> &nbsp; Port: <code>{{$s.FTPPort}}</code></li>
+        <li>User: <code>{{$s.FTPUser}}</code> &nbsp; Password: <code>{{$s.FTPPass}}</code></li>
+        <li>Passive mode on &mdash; data port <code>{{$s.PassivePort}}</code></li>
+      </ul>
+      <a class="btn primary" href="/api/host/{{$s.ID}}/filezilla.xml">DOWNLOAD FILEZILLA PROFILE</a>
+    </div>
+    <div class="zx-order" style="margin-top:18px">
+      <div class="zx-order-top"><span class="zx-pill zx-pill-dark">Manager</span> Built-in file manager</div>
+      <p class="zx-note" style="margin:0 0 10px">Path: <code id="fpath">/</code></p>
+      <div id="filetable" style="min-height:120px"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+        <button class="btn" onclick="fmUp()">↑ Up</button>
+        <button class="btn" onclick="fmMkdir()">New folder</button>
+        <form id="upform" method="post" action="/api/host/{{$s.ID}}/upload" enctype="multipart/form-data" style="display:flex;gap:8px">
+          <input type="hidden" name="path" id="uppath" value="">
+          <input type="file" name="file" required>
+          <button class="btn primary" type="submit">Upload</button>
+        </form>
+      </div>
+    </div>
+    <div class="zx-order" id="editor" style="margin-top:18px;display:none">
+      <div class="zx-order-top"><span class="zx-pill zx-pill-dark">Edit</span> <span id="edname"></span></div>
+      <textarea id="edtext" rows="14" style="width:100%;font-family:ui-monospace,Consolas,monospace"></textarea>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn primary" onclick="fmSave()">Save file</button>
+        <button class="btn" onclick="document.getElementById('editor').style.display='none'">Close</button>
+      </div>
+    </div>
+  {{end}}
+
+  {{if eq $tab "ports"}}
+    <div class="zx-order">
+      <div class="zx-order-top"><span class="zx-pill zx-pill-green">Network</span> Your ports</div>
+      <p style="color:var(--zx-mut)">This city draws from the hosting pool of <strong>{{.First}}–{{.Last}}</strong> (500 ports). Each port below is yours alone.</p>
+      <table class="stat-table" style="width:100%;margin-top:8px">
+        <tr><td class="stat">Game</td><td>{{$s.GamePort}}</td><td>where players connect</td></tr>
+        <tr><td class="stat">Files</td><td>{{$s.FTPPort}}</td><td>FileZilla control port</td></tr>
+        <tr><td class="stat">Data</td><td>{{$s.PassivePort}}</td><td>FileZilla passive transfers</td></tr>
+        {{range $i, $p := $s.ExtraPorts}}
+        <tr><td class="stat">Extra</td><td>{{$p}}</td><td>reserved for your services</td></tr>
+        {{end}}
+      </table>
+      <div style="display:flex;gap:10px;margin-top:16px;align-items:center">
+        <button class="btn primary" onclick="allocPort()">ALLOCATE ANOTHER PORT</button>
+        <span class="zx-note" id="portmsg" style="margin:0"></span>
+      </div>
+    </div>
+  {{end}}
+
+  </div>
+</section>
+
+<script>
+(function () {
+  var ID = "{{$s.ID}}";
+  function post(url, body) {
+    return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})});
+  }
+  window.power = function (a) {
+    post('/api/host/' + ID + '/power/' + a).then(function () { location.reload(); });
+  };
+  window.allocPort = function () {
+    post('/api/host/' + ID + '/ports').then(function (r) { return r.json(); }).then(function (d) {
+      if (d.port) { location.reload(); }
+      else { document.getElementById('portmsg').textContent = d.error || 'failed'; }
+    });
+  };
+
+  // ---- console ----
+  var out = document.getElementById('conout');
+  if (out) {
+    var since = 0;
+    function poll() {
+      fetch('/api/host/' + ID + '/console?since=' + since).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.lines && d.lines.length) {
+          if (out.textContent.indexOf('waiting for output') === 0) out.textContent = '';
+          d.lines.forEach(function (l) { out.textContent += l.line + '\n'; });
+          since = d.seq;
+          out.scrollTop = out.scrollHeight;
+        }
+      }).catch(function () {});
+    }
+    poll();
+    setInterval(poll, 2000);
+    document.getElementById('cmdform').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var v = document.getElementById('cmdinput').value.trim();
+      if (!v) return;
+      post('/api/host/' + ID + '/command', {cmd: v}).then(function () { document.getElementById('cmdinput').value = ''; poll(); });
+    });
+  }
+
+  // ---- files ----
+  var cur = '';
+  window.fmList = function (p) {
+    cur = p || '';
+    fetch('/api/host/' + ID + '/files?path=' + encodeURIComponent(cur)).then(function (r) { return r.json(); }).then(function (d) {
+      document.getElementById('fpath').textContent = '/' + (d.path || '');
+      document.getElementById('uppath').value = d.path || '';
+      var t = document.getElementById('filetable');
+      if (!d.entries || !d.entries.length) { t.innerHTML = '<p class="zx-note">empty folder</p>'; return; }
+      var html = '<table class="stat-table" style="width:100%"><tr><td class="stat">Name</td><td class="stat">Size</td><td></td></tr>';
+      d.entries.forEach(function (e) {
+        var sz = e.dir ? '—' : e.size + ' B';
+        html += '<tr><td><a href="#" onclick="' + (e.dir ? 'fmList(&quot;' + e.path + '&quot;)' : 'fmEdit(&quot;' + e.path + '&quot;)') + ';return false">' + e.name + '</a></td><td>' + sz + '</td>' +
+          '<td><a href="#" onclick="fmDel(&quot;' + e.path + '&quot;)">delete</a></td></tr>';
+      });
+      html += '</table>';
+      t.innerHTML = html;
+    });
+  };
+  window.fmUp = function () {
+    var i = cur.lastIndexOf('/');
+    fmList(i < 0 ? '' : cur.substring(0, i));
+  };
+  window.fmEdit = function (p) {
+    fetch('/api/host/' + ID + '/file?path=' + encodeURIComponent(p)).then(function (r) { return r.json(); }).then(function (d) {
+      document.getElementById('editor').style.display = 'block';
+      document.getElementById('edname').textContent = p;
+      document.getElementById('edtext').value = d.content || '';
+    });
+  };
+  window.fmSave = function () {
+    post('/api/host/' + ID + '/file/write', {path: document.getElementById('edname').textContent, content: document.getElementById('edtext').value})
+      .then(function () { fmList(cur); });
+  };
+  window.fmDel = function (p) {
+    if (!confirm('Delete ' + p + '?')) return;
+    post('/api/host/' + ID + '/file/op', {op: 'delete', path: p}).then(function () { fmList(cur); });
+  };
+  window.fmMkdir = function () {
+    var n = prompt('Folder name:');
+    if (!n) return;
+    post('/api/host/' + ID + '/file/op', {op: 'mkdir', path: (cur ? cur + '/' : '') + n}).then(function () { fmList(cur); });
+  };
+  if (document.getElementById('filetable')) fmList('');
+
+  // ---- misc ----
+  var cr = document.getElementById('created');
+  if (cr) cr.textContent = new Date(parseInt(cr.textContent, 10) * 1000).toLocaleString();
+})();
+</script>
+{{template "foot" .}}

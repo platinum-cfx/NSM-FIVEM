@@ -1,0 +1,127 @@
+{{template "head" .}}
+<section class="zx-hero zx-host-hero">
+  <div class="container">
+    <div class="zx-ticker">
+      <span class="zx-tick zx-tick-ok">Free forever — no trials, no invoices</span>
+      <span class="zx-tick"><strong>{{.Count}}</strong> ports ready for hosted cities</span>
+      <span class="zx-tick zx-tick-new">Includes web console, FileZilla file access &amp; join links</span>
+    </div>
+    <div class="zx-hero-grid">
+      <div class="zx-hero-lead">
+        <p class="zx-eyebrow">NSM hosting</p>
+        <h1 class="zx-h1">Your city goes live here.<br><em>In under a minute.</em></h1>
+        <p class="zx-sub">Deploy a free NSM server straight from the website: pre-configured, joinable in one click, with a web console and FileZilla file access built in. We run it — you build it.</p>
+        <div class="zx-hero-cta">
+          <a class="btn primary zx-btn-lg" href="#deploy"><span class="txt">DEPLOY A FREE SERVER</span><span class="desc">Live in under 60 seconds</span></a>
+          <a class="btn zx-btn-ghost zx-btn-lg" href="/dashboard"><span class="txt">OPEN DASHBOARD</span><span class="desc">Manage your cities</span></a>
+        </div>
+        <p class="zx-note">Every tier is free &middot; 500 ports allocated to the hosting pool &middot; cancel by just deleting the server.</p>
+      </div>
+      <aside class="zx-hero-side">
+        <div class="zx-order">
+          <div class="zx-order-top"><span class="zx-pill zx-pill-green">Included</span> What you get</div>
+          <ol>
+            <li><b>01</b><span>Pre-configured <code>server.cfg</code> — your name, your slots.</span></li>
+            <li><b>02</b><span>Web console — start, stop and run commands.</span></li>
+            <li><b>03</b><span>FileZilla access + file manager for your resources.</span></li>
+            <li><b>04</b><span>Private join link that hides the server address.</span></li>
+          </ol>
+          <a class="btn primary" href="#deploy">CONFIGURE NOW</a>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+{{if .Error}}
+<section class="zx-picks"><div class="container"><div class="zx-order" style="border-color:rgba(231,80,80,.5)">
+  <div class="zx-order-top"><span class="zx-pill" style="background:rgba(231,80,80,.2);color:#ff9c9c">Error</span> {{.Error}}</div>
+</div></div></section>
+{{end}}
+
+<section class="zx-picks" id="tiers">
+  <div class="container">
+    <div class="spacer">
+      <p class="zx-sec-eyebrow">Choose your package</p>
+      <h2 class="zx-sec-title">Free tiers, real specs.</h2>
+      <p class="zx-sec-sub">Same ZAPX-style packages — every one of them free on NSM.</p>
+      <div class="zx-pick-grid">
+        {{range .Tiers}}
+        <div class="zx-pick{{if eq .ID "enforcer"}} zx-pick-hl{{end}}">
+          {{if eq .ID "enforcer"}}<span class="zx-pill zx-pill-green zx-pick-tag">Most popular</span>{{else}}<span class="zx-pill zx-pill-dark zx-pick-tag">Free</span>{{end}}
+          <h3>{{.Name}}</h3>
+          <div class="zx-price"><span class="zx-free">Free</span> <small>forever</small></div>
+          <ul class="zx-checks">
+            <li>{{.Slots}} player slots</li>
+            <li>{{.MemoryGB}} GB RAM</li>
+            <li>{{.Ports}} ports from the pool</li>
+            <li>Web console &amp; FileZilla access</li>
+            <li>{{.Blurb}}</li>
+          </ul>
+          <a class="btn primary" href="#deploy" onclick="document.getElementById('tier').value='{{.ID}}'">DEPLOY {{.Name}}</a>
+        </div>
+        {{end}}
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="zx-how" id="deploy">
+  <div class="container">
+    <div class="spacer">
+      <p class="zx-sec-eyebrow">Configure &amp; deploy</p>
+      <h2 class="zx-sec-title">Server live in 3 steps.</h2>
+      <p class="zx-sec-sub">Deploying creates your instance, writes the config, allocates the ports and opens your console.</p>
+      <div class="zx-host-deploy">
+        <form class="zx-order" method="post" action="/hosting/deploy">
+          <div class="zx-order-top"><span class="zx-pill zx-pill-green">New</span> Deploy a city</div>
+          <p class="zx-form-row"><label>City name</label><input name="name" placeholder="my-awesome-city" maxlength="40"></p>
+          <p class="zx-form-row"><label>Package</label>
+            <select name="tier" id="tier">
+              {{range .Tiers}}<option value="{{.ID}}">{{.Name}} — {{.Slots}} slots, {{.MemoryGB}} GB</option>{{end}}
+            </select>
+          </p>
+          <p class="zx-form-row"><label>Region</label>
+            <select name="region">
+              <option value="us-east">US East</option>
+              <option value="us-west">US West</option>
+              <option value="eu-central">EU Central</option>
+            </select>
+          </p>
+          <button class="btn primary" type="submit" style="width:100%">DEPLOY FREE SERVER</button>
+          <p class="zx-note">You need an NSM account — <a href="/register">create one free</a>.</p>
+        </form>
+        <div class="zx-steps">
+          <div class="zx-step"><span class="n">01</span><div><h3>Deploy here</h3><p>Pick a package and name — the panel provisions your instance instantly.</p></div></div>
+          <div class="zx-step"><span class="n">02</span><div><h3>Manage in the dashboard</h3><p>Web console, files over FileZilla, ports and join links in one panel.</p></div></div>
+          <div class="zx-step"><span class="n">03</span><div><h3>Share your join link</h3><p>Players connect in one click — your server address stays hidden.</p></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="zx-cities">
+  <div class="container">
+    <div class="spacer">
+      <p class="zx-sec-eyebrow">The panel</p>
+      <h2 class="zx-sec-title">Everything in one dashboard.</h2>
+      <div class="zx-fact-grid">
+        <div class="zx-fact"><span class="num">Console</span><span class="lbl">Live server output and commands, right in the browser</span></div>
+        <div class="zx-fact"><span class="num">Files</span><span class="lbl">FileZilla access and a built-in file manager for your resources</span></div>
+        <div class="zx-fact"><span class="num">Ports</span><span class="lbl">Your own ports from the 500-port hosting pool</span></div>
+        <div class="zx-fact"><span class="num">Join</span><span class="lbl">Private join links that keep your server address hidden</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="zx-cta">
+  <div class="container">
+    <h2>Ready when you are.</h2>
+    <p>Your free city deploys in seconds.</p>
+    <a class="btn primary zx-btn-lg" href="#deploy"><span class="txt">DEPLOY A FREE SERVER</span><span class="desc">Free forever</span></a>
+    <p class="zx-note">or <a href="/servers">browse the live server list</a> &middot; <a href="/docs">read the docs</a></p>
+  </div>
+</section>
+{{template "foot" .}}

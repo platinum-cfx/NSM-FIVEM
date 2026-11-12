@@ -1,0 +1,49 @@
+{{template "head" .}}
+<section class="zx-hero zx-host-hero" style="padding-bottom:26px">
+  <div class="container">
+    <div class="zx-ticker">
+      <span class="zx-tick zx-tick-ok">Dashboard</span>
+      <span class="zx-tick">Your hosted cities and their live status</span>
+    </div>
+    <div class="zx-hero-lead" style="max-width:none">
+      <p class="zx-eyebrow">NSM hosting</p>
+      <h1 class="zx-h1" style="font-size:clamp(2.1rem,4vw,3rem)">Your cities.</h1>
+      <p class="zx-sub">Deploy, manage, and share — everything in one panel.</p>
+      <div class="zx-hero-cta">
+        <a class="btn primary" href="/hosting#deploy">DEPLOY A FREE SERVER</a>
+        <a class="btn zx-btn-ghost" href="/servers">BROWSE THE LIST</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="zx-picks">
+  <div class="container">
+    <div class="spacer">
+      {{if not .Servers}}
+      <div class="zx-order" style="text-align:center;padding:48px 24px">
+        <div class="zx-order-top" style="justify-content:center"><span class="zx-pill zx-pill-green">Empty</span> No cities yet</div>
+        <p style="color:var(--zx-mut);margin:8px 0 22px">Deploy your first free NSM server and it shows up here with console, files and a join link.</p>
+        <a class="btn primary" href="/hosting#deploy">DEPLOY YOUR FIRST CITY</a>
+      </div>
+      {{else}}
+      <div class="zx-pick-grid">
+        {{range .Servers}}
+        <div class="zx-pick">
+          <span class="zx-pill {{if eq .Status "running"}}zx-pill-green{{else}}zx-pill-dark{{end}} zx-pick-tag">{{.Status}}</span>
+          <h3>{{.Name}}</h3>
+          <div class="zx-price"><small>{{.Tier}} &middot; {{.Region}} &middot; port {{.GamePort}}</small></div>
+          <ul class="zx-checks">
+            <li>Join link ready</li>
+            <li>Web console</li>
+            <li>FileZilla file access</li>
+          </ul>
+          <a class="btn primary" href="/dashboard/{{.ID}}">MANAGE</a>
+        </div>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+  </div>
+</section>
+{{template "foot" .}}

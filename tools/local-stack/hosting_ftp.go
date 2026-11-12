@@ -1,0 +1,411 @@
+// hosting_ftp.go — a minimal FTP service for hosted city instances so users
+// can manage their server files with FileZilla. Each instance gets its own
+// control port from the hosting pool and one passive data port; the session
+// is sandboxed to the instance directory. Plain FTP (no TLS) — FileZilla's
+// "Plain FTP" site type connects directly.
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+)
+
+type ftpServer struct {
+	ln           net.Listener
+	port         int
+	passivePort  int
+	user, pass   string
+	root         string
+	logf         func(string)
+}
+
+// startFTPServer binds the control port and serves connections until Close.
+func startFTPServer(port int, passivePort int, user, pass, root string, logf func(string)) (*ftpServer, error) {
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return nil, err
+	}
+	fs := &ftpServer{ln: ln, port: port, passivePort: passivePort, user: user, pass: pass, root: filepath.Clean(root), logf: logf}
+	go fs.acceptLoop()
+	return fs, nil
+}
+
+func (fs *ftpServer) Close() { _ = fs.ln.Close() }
+
+func (fs *ftpServer) acceptLoop() {
+	for {
+		conn, err := fs.ln.Accept()
+		if err != nil {
+			return
+		}
+		go fs.handle(conn)
+	}
+}
+
+type ftpConn struct {
+	fs         *ftpServer
+	c          net.Conn
+	r          *bufio.Reader
+	user       string
+	authed     bool
+	cwd        string
+	passive    net.Listener
+	renameFrom string
+	rest       int64
+}
+
+func (fs *ftpServer) handle(c net.Conn) {
+	fc := &ftpConn{fs: fs, c: c, r: bufio.NewReader(c)}
+	defer func() {
+		if fc.passive != nil {
+			_ = fc.passive.Close()
+		}
+		_ = c.Close()
+	}()
+	_ = c.SetDeadline(time.Now().Add(10 * time.Minute))
+	fc.reply("220 NSM Hosting FTP ready")
+	for {
+		_ = c.SetDeadline(time.Now().Add(10 * time.Minute))
+		line, err := fc.r.ReadString('\n')
+		if err != nil {
+			return
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			continue
+		}
+		verb := line
+		arg := ""
+		if i := strings.IndexByte(line, ' '); i >= 0 {
+			verb = line[:i]
+			arg = line[i+1:]
+		}
+		cmd := strings.ToUpper(verb)
+		if !fc.authed {
+			switch cmd {
+			case "USER":
+				fc.user = arg
+				fc.reply("331 password required")
+			case "PASS":
+				if fc.user == fc.fs.user && arg == fc.fs.pass {
+					fc.authed = true
+					fc.reply("230 logged in")
+					if fc.fs.logf != nil {
+						fc.fs.logf("FileZilla session opened for " + fc.user)
+					}
+				} else {
+					fc.reply("530 login incorrect")
+				}
+			case "QUIT":
+				fc.reply("221 goodbye")
+				return
+			default:
+				fc.reply("530 please log in")
+			}
+			continue
+		}
+		switch cmd {
+		case "USER":
+			fc.reply("331 password required")
+		case "PASS":
+			fc.reply("230 logged in")
+		case "QUIT":
+			fc.reply("221 goodbye")
+			return
+		case "NOOP", "CLNT":
+			fc.reply("200 ok")
+		case "SYST":
+			fc.reply("215 UNIX Type: L8")
+		case "FEAT":
+			fc.raw("211-Features:\r\n UTF8\r\n MLST type*;size*;modify*;\r\n PASV\r\n EPSV\r\n SIZE\r\n MDTM\r\n REST STREAM\r\n211 End\r\n")
+		case "OPTS":
+			fc.reply("200 ok")
+		case "TYPE", "STRU", "MODE":
+			fc.reply("200 ok")
+		case "PWD", "XPWD":
+			fc.reply(fmt.Sprintf("257 \"%s\" is current directory", fc.cwd))
+		case "CWD", "XCWD":
+			if fc.chdir(arg) {
+				fc.reply("250 changed directory")
+			} else {
+				fc.reply("550 no such directory")
+			}
+		case "CDUP":
+			fc.chdir("..")
+			fc.reply("250 changed directory")
+		case "PASV":
+			if fc.openPassive() {
+				ip := fc.pasvIP()
+				p := fc.fs.passivePort
+				fc.reply(fmt.Sprintf("227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)", ip[0], ip[1], ip[2], ip[3], p/256, p%256))
+			} else {
+				fc.reply("425 cannot open data connection")
+			}
+		case "EPSV":
+			if fc.openPassive() {
+				fc.reply(fmt.Sprintf("229 Entering Extended Passive Mode (|||%d|)", fc.fs.passivePort))
+			} else {
+				fc.reply("425 cannot open data connection")
+			}
+		case "LIST":
+			fc.sendList(arg, false)
+		case "NLST":
+			fc.sendList(arg, true)
+		case "MLSD":
+			fc.sendList(arg, false)
+		case "MLST":
+			name := filepath.Base(strings.Trim(fc.cwd, "/"))
+			fc.raw(fmt.Sprintf("250-Listing %s\r\n type=file;size=0; %s\r\n250 End\r\n", name, name))
+		case "RETR":
+			fc.sendFile(arg)
+		case "STOR":
+			fc.recvFile(arg, false)
+		case "APPE":
+			fc.recvFile(arg, true)
+		case "DELE":
+			if p, ok := fc.resolve(arg); ok && fileExists(p) && os.Remove(p) == nil {
+				fc.reply("250 deleted")
+			} else {
+				fc.reply("550 cannot delete")
+			}
+		case "MKD", "XMKD":
+			if p, ok := fc.resolve(arg); ok && os.MkdirAll(p, 0o755) == nil {
+				fc.reply(fmt.Sprintf("257 \"%s\" created", arg))
+			} else {
+				fc.reply("550 cannot create")
+			}
+		case "RMD", "XRMD":
+			if p, ok := fc.resolve(arg); ok && os.Remove(p) == nil {
+				fc.reply("250 removed")
+			} else {
+				fc.reply("550 cannot remove")
+			}
+		case "RNFR":
+			if p, ok := fc.resolve(arg); ok && fileExists(p) {
+				fc.renameFrom = p
+				fc.reply("350 ready for RNTO")
+			} else {
+				fc.reply("550 not found")
+			}
+		case "RNTO":
+			if fc.renameFrom != "" {
+				if p, ok := fc.resolve(arg); ok && os.Rename(fc.renameFrom, p) == nil {
+					fc.reply("250 renamed")
+				} else {
+					fc.reply("550 rename failed")
+				}
+				fc.renameFrom = ""
+			} else {
+				fc.reply("503 RNFR first")
+			}
+		case "SIZE":
+			if p, ok := fc.resolve(arg); ok {
+				if st, err := os.Stat(p); err == nil && !st.IsDir() {
+					fc.reply(fmt.Sprintf("213 %d", st.Size()))
+					continue
+				}
+			}
+			fc.reply("550 not a file")
+		case "MDTM":
+			if p, ok := fc.resolve(arg); ok {
+				if st, err := os.Stat(p); err == nil {
+					fc.reply("213 " + st.ModTime().UTC().Format("20060102150405"))
+					continue
+				}
+			}
+			fc.reply("550 not found")
+		case "REST":
+			fc.rest, _ = strconv.ParseInt(arg, 10, 64)
+			fc.reply("350 restarting at " + arg)
+		case "AUTH":
+			fc.reply("502 AUTH not supported — use Plain FTP in FileZilla")
+		default:
+			fc.reply("502 command not implemented")
+		}
+	}
+}
+
+func (fc *ftpConn) reply(s string)  { fc.raw(s + "\r\n") }
+func (fc *ftpConn) raw(s string)    { _, _ = io.WriteString(fc.c, s) }
+
+func (fc *ftpConn) resolve(rel string) (string, bool) {
+	rel = strings.ReplaceAll(rel, "\\", "/")
+	base := filepath.Join(fc.fs.root, filepath.FromSlash(strings.Trim(fc.cwd, "/")))
+	full := filepath.Clean(filepath.Join(base, filepath.FromSlash(rel)))
+	root := fc.fs.root
+	if full != root && !strings.HasPrefix(full, root+string(os.PathSeparator)) {
+		return "", false
+	}
+	return full, true
+}
+
+func (fc *ftpConn) chdir(rel string) bool {
+	p, ok := fc.resolve(rel)
+	if !ok {
+		return false
+	}
+	st, err := os.Stat(p)
+	if err != nil || !st.IsDir() {
+		return false
+	}
+	rel2 := strings.Trim(strings.TrimPrefix(p, fc.fs.root), string(os.PathSeparator))
+	fc.cwd = "/" + filepath.ToSlash(rel2)
+	if fc.cwd == "/" {
+		fc.cwd = "/"
+	}
+	return true
+}
+
+func (fc *ftpConn) pasvIP() [4]byte {
+	var out [4]byte
+	host, _, err := net.SplitHostPort(fc.c.LocalAddr().String())
+	if err == nil {
+		if ip := net.ParseIP(host); ip != nil {
+			if v4 := ip.To4(); v4 != nil {
+				copy(out[:], v4)
+				return out
+			}
+		}
+	}
+	out = [4]byte{127, 0, 0, 1}
+	return out
+}
+
+func (fc *ftpConn) openPassive() bool {
+	if fc.passive != nil {
+		_ = fc.passive.Close()
+		fc.passive = nil
+	}
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", fc.fs.passivePort))
+	if err != nil {
+		return false
+	}
+	fc.passive = ln
+	return true
+}
+
+func (fc *ftpConn) acceptData() net.Conn {
+	if fc.passive == nil {
+		return nil
+	}
+	ln := fc.passive
+	fc.passive = nil
+	_ = ln.(*net.TCPListener).SetDeadline(time.Now().Add(30 * time.Second))
+	c, err := ln.Accept()
+	_ = ln.Close()
+	if err != nil {
+		return nil
+	}
+	_ = c.SetDeadline(time.Now().Add(2 * time.Minute))
+	return c
+}
+
+func (fc *ftpConn) sendList(arg string, namesOnly bool) {
+	p, ok := fc.resolve(arg)
+	if !ok {
+		fc.reply("550 bad path")
+		return
+	}
+	entries, err := os.ReadDir(p)
+	if err != nil {
+		fc.reply("550 cannot list")
+		return
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	d := fc.acceptData()
+	if d == nil {
+		fc.reply("425 cannot open data connection")
+		return
+	}
+	defer d.Close()
+	fc.reply("150 opening data connection")
+	var sb strings.Builder
+	for _, e := range entries {
+		if namesOnly {
+			sb.WriteString(e.Name() + "\r\n")
+			continue
+		}
+		info, _ := e.Info()
+		var size int64
+		var mt = time.Now()
+		if info != nil {
+			size = info.Size()
+			mt = info.ModTime()
+		}
+		typ := "file"
+		if e.IsDir() {
+			typ = "dir"
+		}
+		sb.WriteString(fmt.Sprintf("type=%s;size=%d;modify=%s; %s\r\n", typ, size, mt.UTC().Format("20060102150405"), e.Name()))
+	}
+	_, _ = io.WriteString(d, sb.String())
+	fc.reply("226 transfer complete")
+}
+
+func (fc *ftpConn) sendFile(arg string) {
+	p, ok := fc.resolve(arg)
+	if !ok {
+		fc.reply("550 bad path")
+		return
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		fc.reply("550 cannot open file")
+		return
+	}
+	defer f.Close()
+	if fc.rest > 0 {
+		_, _ = f.Seek(fc.rest, io.SeekStart)
+		fc.rest = 0
+	}
+	d := fc.acceptData()
+	if d == nil {
+		fc.reply("425 cannot open data connection")
+		return
+	}
+	defer d.Close()
+	fc.reply("150 opening data connection")
+	_, _ = io.Copy(d, f)
+	fc.reply("226 transfer complete")
+}
+
+func (fc *ftpConn) recvFile(arg string, appendMode bool) {
+	p, ok := fc.resolve(arg)
+	if !ok {
+		fc.reply("550 bad path")
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(p), 0o755)
+	flag := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
+	if appendMode {
+		flag = os.O_CREATE | os.O_WRONLY | os.O_APPEND
+	}
+	f, err := os.OpenFile(p, flag, 0o600)
+	if err != nil {
+		fc.reply("550 cannot write file")
+		return
+	}
+	defer f.Close()
+	d := fc.acceptData()
+	if d == nil {
+		fc.reply("425 cannot open data connection")
+		return
+	}
+	defer d.Close()
+	fc.reply("150 opening data connection")
+	_, _ = io.Copy(f, d)
+	fc.reply("226 transfer complete")
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
