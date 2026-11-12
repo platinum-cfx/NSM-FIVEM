@@ -1,7 +1,7 @@
 {{template "head" .}}
 {{$s := .S}}{{$tab := .Tab}}
-<link rel="stylesheet" href="/css/zapx.css?v=85">
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/zapx.css?v=9">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <section class="zx-hero zx-host-hero" style="padding-bottom:20px">
   <div class="container">
     <div class="zx-ticker">
@@ -12,12 +12,17 @@
     <div class="zx-hero-lead" style="max-width:none">
       <p class="zx-eyebrow">Server dashboard</p>
       <h1 class="zx-h1" style="font-size:clamp(2rem,3.6vw,2.7rem)">{{$s.Name}}</h1>
+      <div class="zx-connect">
+        <span class="lbl">CONNECT</span>
+        <code id="joinurltop">{{.JoinBase}}/join/{{$s.JoinCode}}</code>
+        <button class="zx-copy" onclick="navigator.clipboard.writeText(document.getElementById('joinurltop').textContent)">COPY</button>
+      </div>
       <div class="zx-hero-cta">
-        <button class="btn primary" onclick="power('start')">START</button>
+        <button class="btn zx-act-green" onclick="power('start')">START</button>
         <button class="btn zx-btn-ghost" onclick="power('stop')">STOP</button>
-        <button class="btn zx-btn-ghost" onclick="power('restart')">RESTART</button>
-        <a class="btn zx-btn-ghost" href="/join/{{$s.JoinCode}}" data-no-spa="1" target="_blank">OPEN JOIN LINK</a>
-        <button class="btn zx-btn-ghost" onclick="deleteServer()" style="color:#ff9c9c;border-color:rgba(231,80,80,.5)">DELETE</button>
+        <button class="btn zx-act-orange" onclick="power('restart')">RESTART</button>
+        <a class="btn zx-act-blue" href="/join/{{$s.JoinCode}}" data-no-spa="1" target="_blank">OPEN JOIN LINK</a>
+        <button class="btn zx-act-red" onclick="deleteServer()">DELETE</button>
       </div>
       {{if $s.Note}}<p class="zx-note" style="color:#e8b45c">{{$s.Note}}</p>{{end}}
     </div>
@@ -92,14 +97,29 @@
   {{end}}
 
   {{if eq $tab "config"}}
+    <div class="zx-note-banner"><span class="material-icons-outlined">info</span> Saved changes take effect when the server is restarted.</div>
     <div class="zx-order">
       <div class="zx-order-top"><span class="zx-pill zx-pill-green">Config</span> server.cfg — the configuration your server runs on</div>
       <p class="zx-note" style="margin:0 0 12px">Everything your server loads lives here: its name, slots, resources (<code>ensure</code> lines) and connection settings. Edit below and press <strong>Save</strong>, then restart the server for changes to take effect. (FileZilla users: this same file is <code>/server.cfg</code> at the FTP root.)</p>
-      <textarea id="cfgtext" spellcheck="false" style="width:100%;min-height:420px;font:13px/1.5 ui-monospace,Consolas,monospace;background:rgba(10,14,22,.75);color:#d8e2f0;border:1px solid rgba(118,192,67,.25);border-radius:12px;padding:14px">loading…</textarea>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
-        <button class="btn primary" onclick="cfgSave()">SAVE CONFIG</button>
-        <button class="btn" onclick="cfgSaveRestart()">SAVE &amp; RESTART SERVER</button>
-        <span id="cfgmsg" style="color:var(--zx-green-hi)"></span>
+      <div class="zx-cfg-wrap">
+        <aside class="zx-cfg-rail">
+          <div class="zx-cfg-search"><span class="material-icons-outlined">search</span> server.cfg</div>
+          <div class="zx-cfg-grp">Files</div>
+          <div class="zx-cfg-file zx-cfg-on"><span class="material-icons-outlined">description</span> server.cfg</div>
+          <div class="zx-cfg-grp">Parameters</div>
+          <div class="zx-cfg-file"><span class="material-icons-outlined">badge</span> sv_hostname</div>
+          <div class="zx-cfg-file"><span class="material-icons-outlined">groups</span> sv_maxclients</div>
+          <div class="zx-cfg-file"><span class="material-icons-outlined">lan</span> endpoints</div>
+          <div class="zx-cfg-file"><span class="material-icons-outlined">folder</span> ensure lines</div>
+        </aside>
+        <div class="zx-cfg-main">
+      <textarea id="cfgtext" spellcheck="false" style="width:100%;min-height:420px;font:13px/1.5 'JetBrains Mono',ui-monospace,Consolas,monospace;background:rgba(10,13,19,.8);color:#e6f2ec;border:1px solid rgba(24,232,136,.3);border-radius:12px;padding:14px">loading…</textarea>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+            <button class="btn primary" onclick="cfgSave()">SAVE CONFIG</button>
+            <button class="btn" onclick="cfgSaveRestart()">SAVE &amp; RESTART SERVER</button>
+            <span id="cfgmsg" style="color:var(--zx-green-hi)"></span>
+          </div>
+        </div>
       </div>
     </div>
   {{end}}
@@ -134,7 +154,7 @@
     </div>
     <div class="zx-order" id="editor" style="margin-top:18px;display:none">
       <div class="zx-order-top"><span class="zx-pill zx-pill-dark">Edit</span> <span id="edname"></span></div>
-      <textarea id="edtext" rows="14" style="width:100%;font-family:ui-monospace,Consolas,monospace"></textarea>
+      <textarea id="edtext" rows="14" style="width:100%;font-family:'JetBrains Mono',ui-monospace,Consolas,monospace;background:rgba(10,13,19,.8);color:#e6f2ec;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px"></textarea>
       <div style="display:flex;gap:10px;margin-top:12px">
         <button class="btn primary" onclick="fmSave()">Save file</button>
         <button class="btn" onclick="document.getElementById('editor').style.display='none'">Close</button>
