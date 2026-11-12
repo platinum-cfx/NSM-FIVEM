@@ -762,6 +762,9 @@ jobs:
               if "NSM-Client/citizen/ui.zip" in zin.namelist():
                   patched_ui = patch_ui_archive(zin.read("NSM-Client/citizen/ui.zip"))
                   overlay["NSM-Client/AxiomFX/ui.zip"] = patched_ui
+                  _chk = zipfile.ZipFile(io.BytesIO(patched_ui))
+                  assert any(b"data-nsm" in _chk.read(n) for n in _chk.namelist() if n.lower().endswith((".html", ".htm", ".css"))), "NSM boot logo fixer missing from patched ui.zip - logo patch did not apply"
+                  assert all(_chk.read(n)[:8] == b"\x89PNG\r\n\x1a\n" for n in _chk.namelist() if "logo" in n.lower() and n.lower().endswith((".png", ".svg", ".jpg", ".jpeg", ".webp", ".gif"))), "NSM logo image replacement missing from patched ui.zip"
                   Path("/tmp/patched-ui.zip").write_bytes(patched_ui)
               if "NSM-Client/citizen/ui-big.zip" in zin.namelist():
                   patched_big = patch_ui_archive(zin.read("NSM-Client/citizen/ui-big.zip"))
