@@ -92,10 +92,21 @@ func renderPage(w http.ResponseWriter, r *http.Request, name string, data map[st
 
 // liveServers returns the current masterlist registry entries for the site and JSON API.
 func liveServers() []map[string]interface{} {
+	if runMode == "web" {
+		return fetchRemoteRows()
+	}
 	out := []map[string]interface{}{}
 	for ep, e := range reg.live() {
 		d := e.data
 		applyMods(ep, &d)
+		owner := ""
+		if e.ownerID != 0 {
+			accMu.Lock()
+			if ou := userByID(e.ownerID); ou != nil {
+				owner = ou.Username
+			}
+			accMu.Unlock()
+		}
 		clean := cleanHostname(d.Hostname)
 		initial := "S"
 		if len(clean) > 0 {
@@ -141,6 +152,7 @@ func liveServers() []map[string]interface{} {
 			// Template fields
 			"EndPoint":         ep,
 			"JoinCode":         joinCode,
+			"OwnerUsername":    owner,
 			"Hostname":         d.Hostname,
 			"CleanName":        clean,
 			"Initial":          initial,
@@ -220,6 +232,12 @@ func liveServers() []map[string]interface{} {
 
 func totalPlayers() int64 {
 	var n int64
+	if runMode == "web" {
+		for _, row := range fetchRemoteRows() {
+			n += rowInt64(row, "Clients")
+		}
+		return n
+	}
 	for _, e := range reg.live() {
 		d := e.data
 		applyMods("", &d)
@@ -307,8 +325,8 @@ func serverDetailPage(w http.ResponseWriter, r *http.Request) {
 // the opaque share code shown instead of the raw endpoint so public pages
 // never display server IPs.
 func renderServerDetail(w http.ResponseWriter, r *http.Request, ep, joinCode string) {
-	d := reg.get(ep)
-	if d == nil {
+	d, ownerUsername, ok := serverView(ep)
+	if !ok {
 		missDisplay := ep
 		if joinCode != "" {
 			missDisplay = joinCode
@@ -316,7 +334,6 @@ func renderServerDetail(w http.ResponseWriter, r *http.Request, ep, joinCode str
 		renderPage(w, r, "server_missing.tmpl", map[string]interface{}{"Title": "Server Offline - NSM", "EndPoint": missDisplay, "JoinCode": joinCode, "JoinID": missDisplay})
 		return
 	}
-	applyMods(ep, d)
 	u := currentUser(r)
 	voted := false
 	if u != nil {
@@ -328,17 +345,6 @@ func renderServerDetail(w http.ResponseWriter, r *http.Request, ep, joinCode str
 		}
 		accMu.Unlock()
 	}
-	var ownerUsername string
-	reg.mu.RLock()
-	if ent, ok := reg.servers[ep]; ok && ent.ownerID != 0 {
-		accMu.Lock()
-		if ou := userByID(ent.ownerID); ou != nil {
-			ownerUsername = ou.Username
-		}
-		accMu.Unlock()
-	}
-	reg.mu.RUnlock()
-
 	joinID := joinCode
 	if joinID == "" {
 		joinID = ep

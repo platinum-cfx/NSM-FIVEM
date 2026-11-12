@@ -67,22 +67,40 @@ type statusProbe struct {
 	path           string
 	accept         []int  // HTTP statuses counted as healthy
 	bodyNeed       string // optional substring that must appear
+	target         string // service that owns the path: "master" | "web"
 }
 
 var statusProbeList = []statusProbe{
-	{"website", "Website & Dashboard", "The NSM website, pages and downloads", "/", []int{200}, ""},
-	{"list-api", "Server List API", "Live server list data for the website and apps", "/api/servers/live", []int{200}, `"servers"`},
-	{"client-feed", "NSM.exe Client Feed", "The binary list feed the NSM.exe browser reads", "/api/servers/streamRedir/", []int{200}, ""},
-	{"ingest", "Server Ingestion", "Game server heartbeats and listing updates", "/api/serverlist/ingress", []int{405}, ""}, // GET must be 405: route mounted, POST-only
-	{"join", "Join Links", "Shareable /join/ connect links", "/join/status-check", []int{200, 301, 302, 404}, ""},
-	{"auth", "Accounts & Sign-In", "Login, registration and account sessions", "/login", []int{200}, ""},
+	{"website", "Website & Dashboard", "The NSM website, pages and downloads", "/", []int{200}, "", "web"},
+	{"list-api", "Server List API", "Live server list data for the website and apps", "/api/servers/live", []int{200}, `"servers"`, "master"},
+	{"client-feed", "NSM.exe Client Feed", "The binary list feed the NSM.exe browser reads", "/api/servers/streamRedir/", []int{200}, "", "master"},
+	{"ingest", "Server Ingestion", "Game server heartbeats and listing updates", "/api/serverlist/ingress", []int{405}, "", "master"}, // GET must be 405: route mounted, POST-only
+	{"join", "Join Links", "Shareable /join/ connect links", "/join/status-check", []int{200, 301, 302, 404}, "", "web"},
+	{"auth", "Accounts & Sign-In", "Login, registration and account sessions", "/login", []int{200}, "", "web"},
 }
 
 // statusDoRequest performs one probe request and returns (statusCode, body).
 // The default talks to the live listener over loopback; tests swap it for an
 // in-process handler.
+// statusBaseFor resolves the service a probe path belongs to. In serve mode
+// every target maps to the same in-process base; in status mode the monitor
+// watches the web and master processes independently — that is the point of
+// running the status page in its own command.
+func statusBaseFor(path string) string {
+	target := "web"
+	for _, p := range statusProbeList {
+		if p.path == path {
+			target = p.target
+		}
+	}
+	if b := statusTargetBases[target]; b != "" {
+		return b
+	}
+	return statusProbeBase
+}
+
 var statusDoRequest = func(path string) (int, string, error) {
-	base := strings.TrimRight(statusProbeBase, "/")
+	base := strings.TrimRight(statusBaseFor(path), "/")
 	resp, err := statusHTTPClient.Get(base + path)
 	if err != nil {
 		return 0, "", err
@@ -94,6 +112,7 @@ var statusDoRequest = func(path string) (int, string, error) {
 
 var statusHTTPClient = &http.Client{Timeout: 5 * time.Second}
 var statusProbeBase = "http://127.0.0.1:80"
+var statusTargetBases = map[string]string{} // "master" / "web" -> base URL
 
 // ---------------------------------------------------------------------------
 // state
@@ -269,8 +288,9 @@ func statusAddUpdateLocked(id, name, state, text string) {
 
 // startStatusMonitor loads history and runs check cycles forever.
 // Only called from main(); tests drive runStatusCycle directly.
-func startStatusMonitor(probeBase string) {
-	statusProbeBase = probeBase
+func startStatusMonitor(masterBase, webBase string) {
+	statusProbeBase = webBase
+	statusTargetBases = map[string]string{"master": masterBase, "web": webBase}
 	loadStatus()
 	go func() {
 		// give the HTTP listener a moment to come up before the first probe
@@ -317,28 +337,31 @@ type statusView struct {
 	Incidents   []statusIncident      `json:"incidents"`
 }
 
-// statusHealthLabel classifies a component from its recent samples.
+// statusHealthLabel classifies a component from its most recent samples.
+// Health reflects the last few probes (a minute-scale view that recovers as
+// fast as the incident lifecycle); the 90-day bars and uptime percentages
+// carry the long-term history.
 func statusHealthLabel(c *statusComponent) string {
 	n := len(c.Recent)
 	if n == 0 {
 		return "operational"
 	}
-	window := 30
-	if n < window {
-		window = n
+	look := 3
+	if n < look {
+		look = n
 	}
 	fails := 0
-	for _, s := range c.Recent[n-window:] {
+	for _, s := range c.Recent[n-look:] {
 		if !s.OK {
 			fails++
 		}
 	}
-	switch {
-	case fails == 0:
+	switch fails {
+	case 0:
 		return "operational"
-	case fails <= 2:
+	case 1:
 		return "degraded"
-	case fails < window/2:
+	case 2:
 		return "partial-outage"
 	default:
 		return "major-outage"
@@ -365,6 +388,8 @@ func statusDayPct(d *statusDay) int {
 
 func statusUptime(c *statusComponent, days int) float64 {
 	since := time.Now().UTC().AddDate(0, 0, -days+1)
+	// day keys are UTC midnights; include today and every full day back
+	since = time.Date(since.Year(), since.Month(), since.Day(), 0, 0, 0, 0, time.UTC)
 	up, total := 0, 0
 	for k, d := range c.Days {
 		t, err := time.Parse("2006-01-02", k)

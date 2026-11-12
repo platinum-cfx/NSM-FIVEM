@@ -1066,10 +1066,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Keep join codes (shareable /join/<code> links that hide the IP)
 		// pointed at this server's live endpoint. Every listed server gets
 		// its own unique code; a key's code additionally follows its server.
-		if keyID != "" {
-			bindJoinCodeEndpoint(keyID, endPoint)
-		}
-		joinCodeForEndpoint(endPoint)
+		bindHeartbeatAccounts(keyID, endPoint)
 		log.Printf("[heartbeat] %s clients=%d", endPoint, data.Clients)
 		sendJSON(w, 200, map[string]interface{}{})
 
@@ -1400,6 +1397,12 @@ func main() {
 	opass := flag.String("owner-pass", os.Getenv("OWNER_PASS"), "set a new password for the owner account at startup")
 	keyPath := flag.String("ticket-public-key", "", "optional trusted RSA public key PEM; no tickets are issued")
 	reqKeys := flag.Bool("require-keys", os.Getenv("NSM_REQUIRE_KEYS") == "1", "require a valid NSM keymaster server key on /api/serverlist/ingress")
+	// Split-mode service URLs (see services.go). env NSM_MASTER_URL /
+	// NSM_WEB_URL / NSM_STATUS_URL work too.
+	flag.StringVar(&masterBaseURL, "master-url", envOr("NSM_MASTER_URL", "http://127.0.0.1:8081"), "master service URL (web/status modes)")
+	flag.StringVar(&webBaseURL, "web-url", envOr("NSM_WEB_URL", "http://127.0.0.1:8080"), "web service URL (master/status modes)")
+	flag.StringVar(&statusBaseURL, "status-url", envOr("NSM_STATUS_URL", "http://127.0.0.1:8090"), "status service URL (web mode)")
+	parseRunMode()
 	flag.Parse()
 	requireKeys = *reqKeys
 	parsedBind := net.ParseIP(*bind)
@@ -1478,12 +1481,11 @@ func main() {
 	loadForum()
 	initSite()
 	patchLocalUIBundlesOnDisk()
-	startShowcaseServers()
-	startStatusMonitor("http://" + probeAddr)
+	startModeServices(probeAddr)
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           publicAwareHandler(localHandler()),
+		Handler:           publicAwareHandler(rootHandler()),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       60 * time.Second,
