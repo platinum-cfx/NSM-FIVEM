@@ -76,7 +76,7 @@
         <li>Name: <strong>{{$s.Name}}</strong> &nbsp;·&nbsp; Server ID: <code>{{$s.ID}}</code></li>
         <li>Status: <strong id="u-status">{{$s.Status}}</strong> &nbsp;·&nbsp; Players online: {{.Players}}</li>
         <li>Endpoint (players never see this): <code>{{$s.Endpoint}}</code></li>
-        <li>Game ports: TCP <code>{{$s.GameTCPPort}}</code> / UDP <code>{{$s.GameUDPPort}}</code></li>
+        <li>Game port (TCP + UDP): <code>{{$s.GameUDPPort}}</code></li>
         <li>Server version: <code>{{if $s.ExeRel}}{{$s.ExeRel}}{{else}}—{{end}}</code></li>
         <li>Package: {{.PKG.Name}} — {{.PKG.Slots}} slots, {{.PKG.RAMGB}} GB RAM allocation, {{.PKG.DiskGB}} GB storage</li>
         {{if $s.LastStarted}}<li>Last started: <span class="zx-reltime" data-t="{{$s.LastStarted}}">{{$s.LastStarted}}</span></li>{{end}}
