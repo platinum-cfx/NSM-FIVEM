@@ -18,11 +18,11 @@
         <button class="zx-copy" onclick="navigator.clipboard.writeText(document.getElementById('joinurltop').textContent)">COPY</button>
       </div>
       <div class="zx-hero-cta">
-        <button class="btn primary" onclick="power('start')">START</button>
+        <button class="btn zx-act-green" onclick="power('start')">START</button>
         <button class="btn zx-btn-ghost" onclick="power('stop')">STOP</button>
-        <button class="btn zx-btn-ghost" onclick="power('restart')">RESTART</button>
-        <a class="btn zx-btn-ghost" href="/join/{{$s.JoinCode}}" data-no-spa="1" target="_blank">OPEN JOIN LINK</a>
-        <button class="btn zx-btn-ghost" onclick="deleteServer()" style="color:#ff9c9c;border-color:rgba(231,80,80,.5)">DELETE</button>
+        <button class="btn zx-act-orange" onclick="power('restart')">RESTART</button>
+        <a class="btn zx-act-blue" href="/join/{{$s.JoinCode}}" data-no-spa="1" target="_blank">OPEN JOIN LINK</a>
+        <button class="btn zx-act-red" onclick="deleteServer()">DELETE</button>
       </div>
       {{if $s.Note}}<p class="zx-note" style="color:#e8b45c">{{$s.Note}}</p>{{end}}
     </div>
