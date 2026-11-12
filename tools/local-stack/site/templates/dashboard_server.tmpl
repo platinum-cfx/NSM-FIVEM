@@ -85,7 +85,8 @@
       <div class="zx-order-top"><span class="zx-pill zx-pill-green">Files</span> FileZilla access</div>
       <ul class="zx-checks" style="margin:0 0 16px">
         <li>Protocol: <strong>FTP — Plain (no TLS)</strong> in FileZilla's site manager</li>
-        <li>Host: <code>your-server-ip</code> &nbsp; Port: <code>{{$s.FTPPort}}</code></li>
+        <li>Server: <code>{{.Host}}:{{$s.FTPPort}}</code> — use this exact port (NOT 21; port 21 is a different service)</li>
+        <li>The FTP greeting must say <code>220 NSM Hosting FTP ready</code> — if it does not, you are on the wrong service</li>
         <li>User: <code>{{$s.FTPUser}}</code> (your NSM name) &nbsp; Password: <code>{{$s.FTPPass}}</code></li>
         <li>Passive mode on &mdash; data port <code>{{$s.PassivePort}}</code></li>
       </ul>

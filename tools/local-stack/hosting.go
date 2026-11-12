@@ -1150,6 +1150,7 @@ func dashboardServerPage(w http.ResponseWriter, r *http.Request) {
 		"Title": snap.Name + " - NSM Hosting", "S": snap, "PKG": hostingPackage,
 		"Tab": panelTab(r.URL.Query().Get("tab")), "Players": players,
 		"First": hostingPortFirst, "Last": hostingPortLast,
+		"Host": publicHostOf(snap),
 	})
 }
 
@@ -1539,10 +1540,7 @@ func apiHostFilezilla(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	host := os.Getenv("NSM_PUBLIC_IP")
-	if host == "" {
-		host = "127.0.0.1"
-	}
+	host := publicHostOf(snap)
 	xml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <FileZilla3 version="3.65.0" platform="windows">
   <Servers>
@@ -1594,6 +1592,20 @@ func apiHostPorts(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "port": p, "extra": s.ExtraPorts})
 }
 
+// publicHostOf returns the host this server is reachable at: NSM_PUBLIC_IP
+// when set, otherwise the host derived at deploy time (the site's own host).
+func publicHostOf(s *HostedServer) string {
+	if h := os.Getenv("NSM_PUBLIC_IP"); h != "" {
+		return h
+	}
+	if s.Endpoint != "" {
+		if host, _, err := net.SplitHostPort(s.Endpoint); err == nil && host != "" {
+			return host
+		}
+	}
+	return "127.0.0.1"
+}
+
 // startFTP brings up the FileZilla endpoint for an instance. Callers hold
 // m.mu (same convention as logNL).
 func (m *hostingManager) startFTP(s *HostedServer) {
@@ -1608,11 +1620,7 @@ func (m *hostingManager) startFTP(s *HostedServer) {
 		return
 	}
 	m.ftp[s.ID] = fs
-	host := os.Getenv("NSM_PUBLIC_IP")
-	if host == "" {
-		host = "127.0.0.1"
-	}
-	m.logNL(s, fmt.Sprintf("FileZilla: ftp://%s:%d (user %s) — see the Files tab", host, s.FTPPort, s.FTPUser))
+	m.logNL(s, fmt.Sprintf("FileZilla: ftp://%s:%d (user %s) — full address on the Files tab", publicHostOf(s), s.FTPPort, s.FTPUser))
 }
 
 // ---------------------------------------------------------------------------
