@@ -558,6 +558,32 @@ func (m *hostingManager) ensureServerKey(s *HostedServer) {
 	m.mu.Unlock()
 }
 
+// healCfg upgrades configs written by older panel versions in place: sv_lan 1
+// (stock auth tickets off - players were rejected with "No authentication
+// ticket was specified") and the server's own keymaster key for heartbeats.
+// Never rewrites user content, only appends what is missing.
+func (m *hostingManager) healCfg(s *HostedServer) {
+	p := filepath.Join(m.serverRoot(s), "server.cfg")
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return
+	}
+	text := string(b)
+	add := ""
+	if !strings.Contains(text, "sv_lan") {
+		add += "\n# added by the NSM Hosting panel: accept players without stock auth tickets\nsv_lan 1\n"
+	}
+	if s.KeyRaw != "" && !strings.Contains(text, "sv_nsmServerKey \""+s.KeyRaw+"\"") {
+		add += "sets sv_nsmServerKey \"" + s.KeyRaw + "\"\n"
+	}
+	if add == "" {
+		return
+	}
+	if err := os.WriteFile(p, []byte(text+add), 0o600); err == nil {
+		m.appendLog(s, "[system] server.cfg updated with connection settings (sv_lan / server key)")
+	}
+}
+
 // hostingPublicHostForPort maps a game port to the public host recorded for
 // the hosted server that owns it, so heartbeats arriving over loopback still
 // publish a reachable endpoint.
@@ -805,6 +831,7 @@ func (m *hostingManager) start(s *HostedServer) error {
 	if abs, err := filepath.Abs(exe); err == nil {
 		exe = abs
 	}
+	m.healCfg(s)
 	cmd := exec.Command(exe, "+exec", "server.cfg")
 	cmd.Dir = filepath.Dir(exe)
 	stdout, _ := cmd.StdoutPipe()
