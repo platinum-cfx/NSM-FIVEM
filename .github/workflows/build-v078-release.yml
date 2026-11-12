@@ -647,6 +647,7 @@ jobs:
           fix();if(document.readyState!=='loading'){fix();}else{document.addEventListener('DOMContentLoaded',fix);}setTimeout(fix,250);setTimeout(fix,900);setTimeout(fix,2000);try{var mo=new MutationObserver(function(){fix();});var at=function(){if(document.body)mo.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class','src','style']});};if(document.body)at();else document.addEventListener('DOMContentLoaded',at);}catch(e){})();
           </script>""").replace("LOGO_B64", _logo_b64).encode("utf-8")
           CSS_FORCE = ("/* NSM logo force */[class*=\"logo\" i],[id*=\"logo\" i],[class*=\"wordmark\" i],[id*=\"wordmark\" i]{background-image:url('data:image/png;base64,LOGO_B64')!important;background-size:contain!important;background-repeat:no-repeat!important;background-position:center!important}").replace("LOGO_B64", _logo_b64).encode("utf-8")
+          CSS_TAG = b'<style data-nsm="1">' + CSS_FORCE + b'</style>'
           def patch_ui_archive(raw_bytes):
               buf = io.BytesIO()
               with zipfile.ZipFile(io.BytesIO(raw_bytes), "r") as zin, zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zout:
@@ -696,7 +697,7 @@ jobs:
                           body = NSM_LOGO_PNG
                       if lower.endswith((".html", ".htm")) and b'data-nsm="1"' not in body:
                           if b"</head>" in body:
-                              body = body.replace(b"</head>", CSS_FORCE + b"</head>", 1)
+                              body = body.replace(b"</head>", CSS_TAG + b"</head>", 1)
                           if b"</body>" in body:
                               body = body.replace(b"</body>", BOOT_FIXER + b"</body>", 1)
                       elif lower.endswith(".css"):

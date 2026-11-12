@@ -151,7 +151,7 @@ try {
                 $content = $content -replace '(?is)<title>[^<]*</title>', '<title>NSM</title>'
                 $content = $content -replace '(?i)alt="[^"]*(fivem|cfx|citizen)[^"]*"', 'alt="NSM"'
                 if ($content -match '</head>') {
-                    $content = $content -replace '</head>', ($cssLayer + '</head>')
+                    $content = $content -replace '</head>', ('<style data-nsm="1">' + $cssLayer + '</style>' + '</head>')
                 }
                 if ($content -match '</body>') {
                     $content = $content -replace '</body>', ($bootScript + '</body>')
