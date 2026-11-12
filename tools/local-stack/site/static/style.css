@@ -3357,6 +3357,7 @@ body.dc-ember-body {
   --header_primary: #e5e8ee;
   --content-border-color: #262a34;
   --love: #fa6c8d;
+}
 body.dc-ember-body {
   display: block !important;
   width: 100% !important;
