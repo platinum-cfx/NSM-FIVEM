@@ -1313,3 +1313,197 @@ main a { transition: color var(--zx-fast) var(--zx-ease); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+
+/* ================= ZAPX 2026 BRAND SYSTEM (from brand toolkit) =================
+   ZAP Green #18E888 | ZAP Aqua #00FFFF | gradient(90deg,#18E888,#00FFFF)
+   Midnight #0C0E14 | Caribbean #00C48B (hover) | Turquoise #39F1B3
+   Figtree (all) + JetBrains Mono (code/console/technical)                     */
+:root {
+  --zx-green: #18E888;
+  --zx-green-hi: #39F1B3;
+  --zx-green-dark: #00C48B;
+  --zx-green-ink: #05291c;
+  --zx-aqua: #00FFFF;
+  --zx-grad: linear-gradient(90deg, #18E888 0%, #00FFFF 100%);
+  --zx-ink: #0C0E14;
+  --zx-ink-2: #12151D;
+  --zx-ink-3: #171C28;
+  --zx-card: #141824;
+  --zx-line: rgba(255, 255, 255, 0.08);
+  --zx-mut: #8B98AA;
+
+  --font-header: "Figtree", "Montserrat", sans-serif;
+  --font-body: "Figtree", "Rubik", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", monospace;
+
+  /* legacy shared tokens */
+  --color-bg: #0C0E14;
+  --color-bg-0: #0C0E14;
+  --color-bg-1: #12151D;
+  --color-bg-2: #171C28;
+  --bg: #0C0E14;
+  --bg2: #12151D;
+  --bg3: #171C28;
+  --card: rgba(20, 24, 36, 0.92);
+  --card-hover: rgba(26, 32, 47, 0.97);
+  --color-accent-1: #18E888;
+  --color-accent-1-10: rgba(24, 232, 136, 0.12);
+  --color-accent-1-50: rgba(24, 232, 136, 0.45);
+  --green: #18E888;
+}
+
+body { background: #0C0E14; }
+h1, h2, h3, h4 { font-family: var(--font-header); }
+
+/* signature gradient treatments */
+.zx-hero-title em, .zx-band-head h2 em, .zx-band-head h2 strong {
+  background: var(--zx-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 0 26px rgba(24, 232, 136, 0.35));
+}
+.zx-hero, .zx-cta-band {
+  border-color: transparent;
+  background:
+    linear-gradient(#0C0E14ee, #0C0E14ee) padding-box,
+    var(--zx-grad) border-box;
+  border: 1px solid transparent;
+}
+.hero.zx-hero {
+  background:
+    radial-gradient(1100px 460px at 78% -140px, rgba(0, 255, 255, 0.1), transparent 60%),
+    radial-gradient(900px 420px at 12% -80px, rgba(24, 232, 136, 0.16), transparent 62%),
+    linear-gradient(#10141ce6, #0c0e14f2) padding-box,
+    var(--zx-grad) border-box;
+}
+.zx-cta-band {
+  background:
+    radial-gradient(820px 360px at 50% -120px, rgba(24, 232, 136, 0.2), transparent 62%),
+    linear-gradient(#131926f2, #0c0e14fa) padding-box,
+    var(--zx-grad) border-box;
+}
+
+/* mono for code, console, technical values (ZAPX rule) */
+code, pre, kbd, samp, textarea.cfgedit,
+.stat-table .stat, .zx-tour-stat b, .zx-step-no, .zx-counter .num,
+.zx-connect code, .zx-price {
+  font-family: var(--font-mono);
+}
+input, textarea, select { font-family: var(--font-mono); }
+.zx-tour-stat b, .zx-counter .num { letter-spacing: -0.01em; }
+
+/* buttons: solid ZAP Green; gradient variant */
+.btn.primary {
+  background: var(--zx-green);
+  color: var(--zx-green-ink);
+  border-color: var(--zx-green);
+}
+.btn.primary:hover { background: var(--zx-green-dark); border-color: var(--zx-green-dark); color: #fff; }
+.btn.grad {
+  background: var(--zx-grad);
+  color: #04231a;
+  border: 0;
+  font-weight: 700;
+  box-shadow: 0 10px 30px rgba(24, 232, 136, 0.3);
+}
+.btn.grad:hover { filter: brightness(1.07); transform: translateY(-1px); }
+.nav-dl { background: var(--zx-green); box-shadow: 0 6px 22px rgba(24, 232, 136, 0.3); }
+
+/* pills + chips on brand */
+.zx-pill-green { background: var(--zx-green); color: var(--zx-green-ink); }
+.zx-tick-ok { border-color: rgba(24, 232, 136, 0.45); color: var(--zx-green); }
+.zx-eyebrow { color: var(--zx-green); }
+.live-dot { background: var(--zx-green); box-shadow: 0 0 10px rgba(24, 232, 136, 0.8); }
+.zx-pill-dark { border-color: rgba(24, 232, 136, 0.25); }
+
+/* ZAPX panel: connect line, note banner, grouped sidebar */
+.zx-connect {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 6px;
+  padding: 10px 12px;
+  background: rgba(12, 14, 20, 0.7);
+  border: 1px solid var(--zx-line);
+  border-radius: 12px;
+}
+.zx-connect .lbl {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  color: var(--zx-green);
+  font-weight: 700;
+}
+.zx-connect code {
+  color: #d8fcef;
+  font-size: 0.92rem;
+  background: rgba(24, 232, 136, 0.1);
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(24, 232, 136, 0.25);
+}
+.zx-copy {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  color: var(--zx-green-ink);
+  background: var(--zx-green);
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background var(--zx-fast) var(--zx-ease);
+}
+.zx-copy:hover { background: var(--zx-green-hi); }
+
+.zx-note-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 13px 16px;
+  background: rgba(24, 232, 136, 0.08);
+  border: 1px solid rgba(24, 232, 136, 0.3);
+  border-radius: 12px;
+  color: #b9ecd6;
+  font-size: 0.92rem;
+}
+.zx-note-banner .material-icons-outlined { color: var(--zx-green); }
+
+.zx-side {
+  background: rgba(12, 14, 20, 0.6);
+  border: 1px solid var(--zx-line);
+  border-radius: 16px;
+}
+.zx-side-item { font-family: var(--font-body); font-weight: 500; }
+.zx-side-on, .zx-side-on:hover {
+  background: rgba(24, 232, 136, 0.16);
+  color: var(--zx-green);
+}
+.zx-side-item:hover { background: rgba(24, 232, 136, 0.08); }
+
+/* inputs/textarea on brand */
+input, textarea, select {
+  background: rgba(10, 13, 19, 0.8);
+  border: 1px solid var(--zx-line);
+  color: #e6f2ec;
+  transition: border-color var(--zx-fast) var(--zx-ease), box-shadow var(--zx-fast) var(--zx-ease);
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--zx-green);
+  box-shadow: 0 0 0 3px rgba(24, 232, 136, 0.18);
+}
+
+/* surfaces */
+.zx-order, .zx-counter, .zx-step, .zx-tour-card {
+  background: var(--zx-card);
+  border-color: var(--zx-line);
+}
+a { color: var(--zx-green); }
+a:hover { color: var(--zx-green-hi); }
+header.nsm-top-header { background: rgba(12, 14, 20, 0.78); }
+header.nsm-top-header ul.links a.active, .drop-trigger.active { color: var(--zx-green-ink); background: var(--zx-green); }
