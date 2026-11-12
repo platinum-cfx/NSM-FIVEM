@@ -2,48 +2,50 @@
   <section class="hero zx-hero">
     <div class="container">
       <div class="spacer">
-        <div class="zx-ticker">
-          <span><b>&#9679;</b> Roleplay</span><span><b>&#9679;</b> Racing</span><span><b>&#9679;</b> Freeroam</span><span><b>&#9679;</b> Custom maps</span><span><b>&#9679;</b> OneSync</span><span><b>&#9679;</b> 2048 slots</span><span><b>&#9679;</b> Free forever</span>
-        </div>
         <div class="zx-eyebrow"><span class="live-dot"></span> NSM &times; AFX &mdash; THE MULTIPLAYER PLATFORM</div>
-        <h1 class="zx-hero-title" style="max-width:100%;text-align:center">Cities go live here. <em>Build yours.</em></h1>
-        <p class="lead" style="max-width:62ch;margin:0 auto 6px;text-align:center">Play on thousands of custom cities &mdash; or deploy your own in minutes. The map shows where NSM is alive right now.</p>
-        <div class="zx-hero-cta" style="justify-content:center">
-          <div class="btnpadder" style="position:relative">
-            <a id="dl" href="/download" data-no-spa="1">
-              <span class="txt">DOWNLOAD CLIENT</span>
-              <span class="desc">NSM.exe</span>
-            </a>
+        <h1 class="zx-hero-title">Join a city. Build a city. <em>Own it.</em></h1>
+        <div class="hero-seller">
+          <div class="hero-lead">
+            <p class="lead"><strong>NSM</strong> is a modification for Grand Theft Auto&nbsp;V enabling you to play multiplayer on customized dedicated servers, powered by <strong>AFX</strong>.</p>
+            <div class="zx-hero-chips">
+              <span class="zx-pill zx-pill-green">Free client</span>
+              <span class="zx-pill zx-pill-dark">Up to 2048 players</span>
+              <span class="zx-pill zx-pill-dark">OneSync</span>
+            </div>
           </div>
-          <a class="btn" href="/servers">Browse servers</a>
-          <a class="btn" href="/hosting/create">Create a server</a>
+          <div class="hero-cta">
+            <div class="players">
+              <span class="live-dot"></span>Join the <span class="current-players" data-stat="players">{{kfmt (index .Stats "Players")}}</span> people playing right now!
+            </div>
+            <div class="btnpadder" style="position:relative">
+              <a id="dl" href="/download" data-no-spa="1">
+                <span class="txt">DOWNLOAD CLIENT</span>
+                <span class="desc">NSM.exe</span>
+              </a>
+            </div>
+            <p class="plaText">By downloading, you agree to the <a href="/docs">NSM Terms of Service</a></p>
+            <div class="server">
+              <a class="btn block" href="/hosting/create">Create your own server</a>
+            </div>
+            <div class="nsm-quick-links">
+              <a href="/servers">Server List</a>
+              <a href="/keymaster">Keymaster</a>
+              <a href="/forum">Forum</a>
+              <a href="/docs">Docs</a>
+              <a href="/support">Support</a>
+            </div>
+          </div>
         </div>
-        <div class="zx-hero-links" style="justify-content:center">
+        <div class="zx-marquee" aria-hidden="true">
+          <div class="zx-marquee-track">
+            <img src="/img/showcase/nopixel-v.png" alt=""><img src="/img/showcase/eclipse-rp.png" alt=""><img src="/img/showcase/harborline-rp.png" alt=""><img src="/img/showcase/x00.png" alt=""><img src="/img/showcase/x01.png" alt=""><img src="/img/showcase/x02.png" alt=""><img src="/img/showcase/x03.png" alt=""><img src="/img/showcase/x04.png" alt=""><img src="/img/showcase/x05.png" alt=""><img src="/img/showcase/x06.png" alt=""><img src="/img/showcase/x07.png" alt=""><img src="/img/showcase/x08.png" alt=""><img src="/img/showcase/x09.png" alt=""><img src="/img/showcase/x10.png" alt=""><img src="/img/showcase/x11.png" alt=""><img src="/img/showcase/nopixel-v.png" alt=""><img src="/img/showcase/eclipse-rp.png" alt=""><img src="/img/showcase/harborline-rp.png" alt=""><img src="/img/showcase/x00.png" alt=""><img src="/img/showcase/x01.png" alt=""><img src="/img/showcase/x02.png" alt=""><img src="/img/showcase/x03.png" alt=""><img src="/img/showcase/x04.png" alt=""><img src="/img/showcase/x05.png" alt=""><img src="/img/showcase/x06.png" alt=""><img src="/img/showcase/x07.png" alt=""><img src="/img/showcase/x08.png" alt=""><img src="/img/showcase/x09.png" alt=""><img src="/img/showcase/x10.png" alt=""><img src="/img/showcase/x11.png" alt="">
+          </div>
+        </div>
+        <div class="zx-hero-strip">
           <span class="zx-tick zx-tick-ok">Free forever</span>
-          <span class="zx-tick">Cancel anytime &mdash; there is nothing to cancel</span>
+          <span class="zx-tick"><strong data-stat="servers">{{index .Stats "Servers"}}</strong>&nbsp;live servers</span>
+          <span class="zx-tick"><strong data-stat="players">{{kfmt (index .Stats "Players")}}</strong>&nbsp;players online</span>
           <span class="zx-tick zx-tick-new">Online in minutes</span>
-        </div>
-        <div class="zx-mapwrap">
-          <img src="/img/zx-worldmap.png" alt="World map of live NSM cities">
-          <div class="zx-live-card zx-live-a">
-            <img src="/img/showcase/nopixel-v.png" alt="">
-            <div class="t"><b>NoPixel V</b><span>650 PLAYING NOW</span></div>
-          </div>
-          <div class="zx-live-card zx-live-b">
-            <img src="/img/showcase/eclipse-rp.png" alt="">
-            <div class="t"><b>Eclipse RP</b><span>300 PLAYING NOW</span></div>
-          </div>
-        </div>
-        <div class="zx-strip">
-          <a class="zx-strip-item" href="/download" data-no-spa="1"><span class="nm">NSM Client</span><span class="pr">free &middot; NSM.exe</span><span class="arrow">&#8594;</span></a>
-          <a class="zx-strip-item" href="/hosting"><span class="nm">Server hosting</span><span class="pr">free &middot; 2048 slots</span><span class="arrow">&#8594;</span></a>
-          <a class="zx-strip-item" href="/keymaster"><span class="nm">AFX Portal</span><span class="pr">free &middot; keys</span><span class="arrow">&#8594;</span></a>
-        </div>
-        <div class="zx-trust">
-          <span><b>1,000,000+</b> community upvotes</span>
-          <span><b data-stat="players">{{kfmt (index .Stats "Players")}}</b> players online</span>
-          <span><b data-stat="servers">{{index .Stats "Servers"}}</b> live servers</span>
-          <span><b>2048</b> slots per server</span>
         </div>
       </div>
     </div>
@@ -56,7 +58,6 @@
     <div class="spacer">
       <div class="zx-band-head">
         <div>
-          <p class="zx-eyebrow">Facts &amp; Figures</p>
           <h2>A platform with <em>substance.</em></h2>
           <p>Gamers and communities worldwide play on NSM &mdash; powered by AFX.</p>
         </div>
@@ -76,88 +77,35 @@
     <div class="spacer">
       <div class="zx-band-head">
         <div>
-          <p class="zx-eyebrow">How it works</p>
-          <h2>City live in <em>3 steps.</em></h2>
-          <p>From your account to a running city &mdash; fully automated.</p>
-        </div>
-      </div>
-      <div class="zx-visual">
-        <div class="zx-vis-deploy">
-          <div class="zx-vis-row"><span class="zx-pill zx-pill-green">Deploy</span> city &middot; NSM Standard</div>
-          <div class="zx-vis-bar"><i style="width:87%"></i></div>
-          <div class="zx-vis-log">
-            <div>[OK] Server files installed</div>
-            <div>[OK] Network configured</div>
-            <div class="dim">&hellip; starting city instance</div>
-          </div>
-        </div>
-        <div class="zx-vis-panel">
-          <div class="zx-vis-row"><span class="zx-pill zx-pill-green">Online</span> NSM Panel</div>
-          <div class="zx-vis-meter"><span>CPU</span><div class="m"><i style="width:12%"></i></div></div>
-          <div class="zx-vis-meter"><span>RAM</span><div class="m"><i style="width:68%"></i></div></div>
-          <div class="zx-vis-meter"><span>Slots</span><div class="m"><i style="width:32%"></i></div></div>
-          <div class="zx-vis-log"><div>$ status &mdash; ready</div></div>
-        </div>
-      </div>
-      <div class="zx-steps">
-        <div class="zx-step">
-          <span class="zx-step-no">01</span>
-          <h3>Create your server</h3>
-          <p>Sign in and deploy &mdash; one free server per account, live in minutes.</p>
-        </div>
-        <div class="zx-step">
-          <span class="zx-step-no">02</span>
-          <h3>Server starts automatically</h3>
-          <p>Files install and ports configure themselves &mdash; no terminal needed.</p>
-        </div>
-        <div class="zx-step">
-          <span class="zx-step-no">03</span>
-          <h3>Manage in the NSM Panel</h3>
-          <p>Dashboard, console, config and files in one place.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="zx-band">
-  <div class="container">
-    <div class="spacer">
-      <div class="zx-band-head">
-        <div>
-          <p class="zx-eyebrow">Top products</p>
           <h2>Start with our <em>most popular picks.</em></h2>
           <p>Everything you need to play, host and build &mdash; free, in minutes.</p>
         </div>
       </div>
       <div class="zx-card-row">
         <div class="zx-order">
+          <div class="zx-order-top"><span class="zx-pill zx-pill-green">Live</span> Server Browser</div>
+          <div class="zx-price">Thousands <span>/ of cities</span></div>
+          <ul class="zx-checks">
+            <li>Real-time player counts</li>
+            <li>Filter by name, region and tags</li>
+            <li>One-click connect from NSM.exe</li>
+            <li>Private join links that hide IPs</li>
+          </ul>
+          <a class="btn primary" href="/servers">Browse live servers</a>
+        </div>
+        <div class="zx-order">
           <div class="zx-order-top"><span class="zx-pill zx-pill-green">Free</span> NSM Client</div>
-          <div class="zx-tierchips"><span class="zx-tierchip on">NSM.exe</span><span class="zx-tierchip">Windows</span><span class="zx-tierchip">OneSync</span><span class="zx-tierchip">2048 slots</span></div>
-          <div class="zx-price">€0 <span>/ forever</span></div>
+          <div class="zx-price">€0 <span>/ NSM.exe</span></div>
           <ul class="zx-checks">
             <li>Play on thousands of custom cities</li>
             <li>Live server browser</li>
+            <li>OneSync &mdash; up to 2048 players</li>
             <li>Custom cars, maps, weapons &amp; more</li>
-            <li>One-click connect via join links</li>
           </ul>
           <a class="btn primary" href="/download" data-no-spa="1">DOWNLOAD CLIENT</a>
         </div>
         <div class="zx-order">
-          <div class="zx-order-top"><span class="zx-pill zx-pill-green">Free</span> Server Hosting</div>
-          <div class="zx-tierchips"><span class="zx-tierchip on">2048 slots</span><span class="zx-tierchip">8 GB RAM</span><span class="zx-tierchip">50 GB</span><span class="zx-tierchip">5 ports</span></div>
-          <div class="zx-price">€0 <span>/ forever</span></div>
-          <ul class="zx-checks">
-            <li>Live console and command input</li>
-            <li>File manager &amp; FileZilla access</li>
-            <li>Dedicated Config tab for <code>server.cfg</code></li>
-            <li>Private join link that hides your IP</li>
-          </ul>
-          <a class="btn primary" href="/hosting/create">Create a server</a>
-        </div>
-        <div class="zx-order">
           <div class="zx-order-top"><span class="zx-pill zx-pill-dark">Portal</span> AFX Keymaster</div>
-          <div class="zx-tierchips"><span class="zx-tierchip on">Keys</span><span class="zx-tierchip">Heartbeats</span><span class="zx-tierchip">Join codes</span><span class="zx-tierchip">2FA</span></div>
           <div class="zx-price">Free <span>/ with account</span></div>
           <ul class="zx-checks">
             <li>Issue and revoke server keys</li>
@@ -177,8 +125,7 @@
     <div class="spacer">
       <div class="zx-band-head">
         <div>
-          <p class="zx-eyebrow">Top 3 cities</p>
-          <h2>The most played cities &mdash; <em>unlimited slots.</em></h2>
+          <h2>Live from the <em>server list.</em></h2>
           <p>Hand-picked communities playing right now &mdash; open the full live list on the web or inside NSM.exe.</p>
         </div>
       </div>
@@ -213,34 +160,6 @@
           </ul>
           <a class="btn" href="/servers">Open server list</a>
         </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="zx-band">
-  <div class="container">
-    <div class="spacer">
-      <div class="zx-band-head">
-        <div>
-          <p class="zx-eyebrow">Popular cities</p>
-          <h2>Jump into a community <em>tonight.</em></h2>
-        </div>
-        <a class="btn" href="/servers">Browse all cities</a>
-      </div>
-      <div class="zx-games">
-        <a class="zx-game" href="/servers"><img src="/img/showcase/nopixel-v.png" alt=""><span>NoPixel V</span></a>
-        <a class="zx-game" href="/servers"><img src="/img/showcase/eclipse-rp.png" alt=""><span>Eclipse RP</span></a>
-        <a class="zx-game" href="/servers"><img src="/img/showcase/harborline-rp.png" alt=""><span>Harborline RP</span></a>
-        <a class="zx-game" href="/servers"><img src="/img/showcase/x00.png" alt=""><span>City one</span></a>
-        <a class="zx-game" href="/servers"><img src="/img/showcase/x01.png" alt=""><span>City two</span></a>
-        <a class="zx-game" href="/servers"><img src="/img/showcase/x02.png" alt=""><span>City three</span></a>
-        <a class="zx-game" href="/servers"><img src="/img/showcase/x03.png" alt=""><span>City four</span></a>
-        <a class="zx-game" href="/servers"><img src="/img/showcase/x04.png" alt=""><span>City five</span></a>
-        <a class="zx-game" href="/servers"><img src="/img/showcase/x05.png" alt=""><span>City six</span></a>
-        <a class="zx-game" href="/servers"><img src="/img/showcase/x06.png" alt=""><span>City seven</span></a>
-        <a class="zx-game" href="/servers"><img src="/img/showcase/x07.png" alt=""><span>City eight</span></a>
-        <a class="zx-game" href="/servers"><img src="/img/showcase/x08.png" alt=""><span>City nine</span></a>
       </div>
     </div>
   </div>
@@ -443,7 +362,7 @@
 <section class="zx-cta-band">
   <div class="container">
     <div class="spacer">
-      <h2>Ready? Your city is next.</h2>
+      <h2>Ready to play?</h2>
       <p>Download the client, pick a server from the live list, and you are in &mdash; free, in minutes.</p>
       <div class="zx-hero-cta">
         <a class="btn primary" href="/download" data-no-spa="1">DOWNLOAD CLIENT</a>
