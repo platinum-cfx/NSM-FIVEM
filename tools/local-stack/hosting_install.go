@@ -30,18 +30,26 @@ const (
 )
 
 var (
-	sfOnce sync.Once
-	sfDir  string
-	sfErr  error
+	sfMu  sync.Mutex
+	sfDir string
+	sfOK  bool
 )
 
 // ensureServerFiles returns the local template directory that holds the
 // official server files, downloading and verifying them once if needed.
+// Failures are NOT cached — a later retry (Start button) tries again.
 func ensureServerFiles(logf func(string)) (string, error) {
-	sfOnce.Do(func() {
-		sfDir, sfErr = resolveOrDownloadServerFiles(logf)
-	})
-	return sfDir, sfErr
+	sfMu.Lock()
+	defer sfMu.Unlock()
+	if sfOK {
+		return sfDir, nil
+	}
+	dir, err := resolveOrDownloadServerFiles(logf)
+	if err != nil {
+		return "", err
+	}
+	sfDir, sfOK = dir, true
+	return sfDir, nil
 }
 
 func resolveOrDownloadServerFiles(logf func(string)) (string, error) {

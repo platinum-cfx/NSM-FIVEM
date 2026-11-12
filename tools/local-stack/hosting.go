@@ -425,7 +425,7 @@ func (m *hostingManager) dirOf(s *HostedServer) string {
 // deploy provisions a new city for the signed-in user. It is safe against
 // double-clicks and simultaneous requests: the one-server-per-account check
 // and the record creation happen atomically under the manager lock.
-func (m *hostingManager) deploy(u *User, name, region string) (*HostedServer, error) {
+func (m *hostingManager) deploy(u *User, name, region, reqHost string) (*HostedServer, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = u.Username + "-city"
@@ -477,6 +477,12 @@ func (m *hostingManager) deploy(u *User, name, region string) (*HostedServer, er
 	}
 	host := os.Getenv("NSM_PUBLIC_IP")
 	if host == "" {
+		host = reqHost
+		if h, _, err := net.SplitHostPort(reqHost); err == nil {
+			host = h
+		}
+	}
+	if host == "" || host == "localhost" {
 		host = "127.0.0.1"
 	}
 	s.Endpoint = fmt.Sprintf("%s:%d", host, s.GameUDPPort)
@@ -539,13 +545,18 @@ func (m *hostingManager) install(s *HostedServer) error {
 	}
 	m.mu.Unlock()
 
-	// server.cfg with the REAL allocated ports (overwrites any template copy)
-	cfg := m.generateCfg(s, m.dirOf(s))
-	cfgPath := filepath.Join(m.dirOf(s), "server.cfg")
-	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
+	// server.cfg with the REAL allocated ports, written into the server's own
+	// directory (where the binary looks for it) and mirrored at instance root
+	serverRoot := filepath.Dir(filepath.Join(m.dirOf(s), relExe))
+	cfg := m.generateCfg(s, serverRoot)
+	if err := os.WriteFile(filepath.Join(serverRoot, "server.cfg"), []byte(cfg), 0o600); err != nil {
 		return err
 	}
+	if serverRoot != m.dirOf(s) {
+		_ = os.WriteFile(filepath.Join(m.dirOf(s), "server.cfg"), []byte(cfg), 0o600)
+	}
 	m.appendLog(s, "[system] server.cfg generated with this server's ports (TCP "+itoa(s.GameTCPPort)+", UDP "+itoa(s.GameUDPPort)+")")
+	m.appendLog(s, "[system] config installed at "+filepath.ToSlash(filepath.Join(filepath.Base(serverRoot), "server.cfg")))
 	return nil
 }
 
@@ -716,7 +727,7 @@ func (m *hostingManager) start(s *HostedServer) error {
 		exe = abs
 	}
 	cmd := exec.Command(exe, "+exec", "server.cfg")
-	cmd.Dir = dir
+	cmd.Dir = filepath.Dir(exe)
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
 	stdin, _ := cmd.StdinPipe()
@@ -1058,7 +1069,7 @@ func hostingCreateSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = r.ParseForm()
-	s, err := hostMgr().deploy(u, r.FormValue("name"), r.FormValue("region"))
+	s, err := hostMgr().deploy(u, r.FormValue("name"), r.FormValue("region"), r.Host)
 	if s != nil && s.Owner == u.ID {
 		// one-per-account double-click protection: always land on their city
 		http.Redirect(w, r, "/dashboard/"+s.ID, http.StatusSeeOther)
