@@ -75,17 +75,13 @@ jobs:
             trap - EXIT
           )
 
-      - name: Cross-compile Windows x64 service exes (master list, website, feed, join, accounts) & Bootstrapper
+      - name: Cross-compile Windows x64 NSM-Masterlist.exe & NSM AppData Installer Bootstrapper
         run: |
-          (cd tools/local-stack && GOOS=windows GOARCH=amd64 go build -ldflags "-X main.defaultRunMode=master" -o /tmp/NSM-Masterlist.exe .)
-          (cd tools/local-stack && GOOS=windows GOARCH=amd64 go build -ldflags "-X main.defaultRunMode=website" -o /tmp/NSM-Website.exe .)
-          (cd tools/local-stack && GOOS=windows GOARCH=amd64 go build -ldflags "-X main.defaultRunMode=feed" -o /tmp/NSM-ClientFeed.exe .)
-          (cd tools/local-stack && GOOS=windows GOARCH=amd64 go build -ldflags "-X main.defaultRunMode=join" -o /tmp/NSM-JoinLinks.exe .)
-          (cd tools/local-stack && GOOS=windows GOARCH=amd64 go build -ldflags "-X main.defaultRunMode=accounts" -o /tmp/NSM-Accounts.exe .)
+          (cd tools/local-stack && GOOS=windows GOARCH=amd64 go build -o /tmp/NSM-Masterlist.exe .)
           python3 tools/nsm-installer/gen_syso.py
           (cd tools/nsm-installer && GOOS=windows GOARCH=amd64 go vet ./... && GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -H=windowsgui" -o /tmp/NSM-Bootstrapper.exe .)
-          ls -lh /tmp/NSM-Masterlist.exe /tmp/NSM-Website.exe /tmp/NSM-ClientFeed.exe /tmp/NSM-JoinLinks.exe /tmp/NSM-Accounts.exe /tmp/NSM-Bootstrapper.exe
-          sha256sum /tmp/NSM-Masterlist.exe /tmp/NSM-Website.exe /tmp/NSM-ClientFeed.exe /tmp/NSM-JoinLinks.exe /tmp/NSM-Accounts.exe /tmp/NSM-Bootstrapper.exe
+          ls -lh /tmp/NSM-Masterlist.exe /tmp/NSM-Bootstrapper.exe
+          sha256sum /tmp/NSM-Masterlist.exe /tmp/NSM-Bootstrapper.exe
 
       - name: Assemble clean NSM-client-v0.7.8-candidate.zip and single-file AppData installer NSM.exe
         env:
@@ -870,7 +866,7 @@ jobs:
             /tmp/cfx-server-data \
             /tmp/v078-dist/NSM-Server.zip
 
-      - name: Upload clean release assets (NSM.exe, NSM-Server.zip, NSM-client zip, the five service exes) to nsm-v0.8.0-candidate
+      - name: Upload clean release assets (NSM.exe, NSM-Server.zip, NSM-client-v0.8.0-candidate.zip, NSM-Masterlist.exe) to nsm-v0.8.0-candidate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -883,8 +879,4 @@ jobs:
             /tmp/v078-dist/NSM-Server.zip \
             /tmp/v078-dist/NSM-client-v0.8.0-candidate.zip \
             /tmp/NSM-Masterlist.exe \
-            /tmp/NSM-Website.exe \
-            /tmp/NSM-ClientFeed.exe \
-            /tmp/NSM-JoinLinks.exe \
-            /tmp/NSM-Accounts.exe \
             --clobber

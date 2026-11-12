@@ -92,21 +92,10 @@ func renderPage(w http.ResponseWriter, r *http.Request, name string, data map[st
 
 // liveServers returns the current masterlist registry entries for the site and JSON API.
 func liveServers() []map[string]interface{} {
-	if remoteRowsMode() {
-		return fetchRemoteRows()
-	}
 	out := []map[string]interface{}{}
 	for ep, e := range reg.live() {
 		d := e.data
 		applyMods(ep, &d)
-		owner := ""
-		if e.ownerID != 0 {
-			accMu.Lock()
-			if ou := userByID(e.ownerID); ou != nil {
-				owner = ou.Username
-			}
-			accMu.Unlock()
-		}
 		clean := cleanHostname(d.Hostname)
 		initial := "S"
 		if len(clean) > 0 {
@@ -152,7 +141,6 @@ func liveServers() []map[string]interface{} {
 			// Template fields
 			"EndPoint":         ep,
 			"JoinCode":         joinCode,
-			"OwnerUsername":    owner,
 			"Hostname":         d.Hostname,
 			"CleanName":        clean,
 			"Initial":          initial,
@@ -232,12 +220,6 @@ func liveServers() []map[string]interface{} {
 
 func totalPlayers() int64 {
 	var n int64
-	if remoteRowsMode() {
-		for _, row := range fetchRemoteRows() {
-			n += rowInt64(row, "Clients")
-		}
-		return n
-	}
 	for _, e := range reg.live() {
 		d := e.data
 		applyMods("", &d)
@@ -325,8 +307,8 @@ func serverDetailPage(w http.ResponseWriter, r *http.Request) {
 // the opaque share code shown instead of the raw endpoint so public pages
 // never display server IPs.
 func renderServerDetail(w http.ResponseWriter, r *http.Request, ep, joinCode string) {
-	d, ownerUsername, ok := serverView(ep)
-	if !ok {
+	d := reg.get(ep)
+	if d == nil {
 		missDisplay := ep
 		if joinCode != "" {
 			missDisplay = joinCode
@@ -334,6 +316,7 @@ func renderServerDetail(w http.ResponseWriter, r *http.Request, ep, joinCode str
 		renderPage(w, r, "server_missing.tmpl", map[string]interface{}{"Title": "Server Offline - NSM", "EndPoint": missDisplay, "JoinCode": joinCode, "JoinID": missDisplay})
 		return
 	}
+	applyMods(ep, d)
 	u := currentUser(r)
 	voted := false
 	if u != nil {
@@ -345,6 +328,17 @@ func renderServerDetail(w http.ResponseWriter, r *http.Request, ep, joinCode str
 		}
 		accMu.Unlock()
 	}
+	var ownerUsername string
+	reg.mu.RLock()
+	if ent, ok := reg.servers[ep]; ok && ent.ownerID != 0 {
+		accMu.Lock()
+		if ou := userByID(ent.ownerID); ou != nil {
+			ownerUsername = ou.Username
+		}
+		accMu.Unlock()
+	}
+	reg.mu.RUnlock()
+
 	joinID := joinCode
 	if joinID == "" {
 		joinID = ep
@@ -492,51 +486,6 @@ func apiServersLive(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// internalRestartHandler lets a freshly opened copy of the same exe take
-// over the port: the old instance closes its listener and exits. Served by
-// every service mode (it is how "open the exe again" replaces the old copy
-// without ever touching the other service exes).
-func internalRestartHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Connection", "close")
-	sendJSON(w, http.StatusOK, map[string]bool{"ok": true})
-	go func() {
-		time.Sleep(40 * time.Millisecond)
-		log.Printf("[restart] New instance requested port takeover — exiting old instance.")
-		closeActiveServer()
-		os.Exit(0)
-	}()
-}
-
-// handleJoinRoute serves shareable /join/<code> links that hide the server
-// IP. Shared by the website front (serve mode) and the join links exe.
-func handleJoinRoute(w http.ResponseWriter, r *http.Request) {
-	raw := strings.TrimSpace(r.PathValue("ep"))
-	if unesc, err := url.PathUnescape(raw); err == nil && unesc != "" {
-		raw = strings.TrimSpace(unesc)
-	}
-	// Opaque join codes (like cfx.re/join/zjjkkky) hide the server IP.
-	code := strings.ToLower(raw)
-	if isJoinCode(code) {
-		ep, ok := resolveJoinCode(code)
-		if !ok {
-			w.WriteHeader(http.StatusNotFound)
-			renderPage(w, r, "server_missing.tmpl", map[string]interface{}{"Title": "Server Not Found - NSM", "EndPoint": code})
-			return
-		}
-		w.Header().Set("X-CitizenFX-Url", "http://"+ep+"/")
-		w.Header().Set("Location", "https://nsmultiplayer.com/join/"+code)
-		renderServerDetail(w, r, ep, code)
-		return
-	}
-	// Legacy /join/<ip:port> form — kept for compatibility.
-	ep := raw
-	if ep != "" {
-		w.Header().Set("X-CitizenFX-Url", "http://"+ep+"/")
-		w.Header().Set("Location", "https://nsmultiplayer.com/join/"+ep)
-	}
-	renderServerDetail(w, r, ep, joinCodeForEndpointLookup(ep))
-}
-
 // ---- router assembly (Go 1.22 patterns) ----
 
 func buildMux() *http.ServeMux {
@@ -556,7 +505,33 @@ func buildMux() *http.ServeMux {
 	mux.HandleFunc("GET /api/status", apiStatus)
 	mux.HandleFunc("GET /servers", serversPage)
 	mux.HandleFunc("GET /servers/{ep}", serverDetailPage)
-	mux.HandleFunc("GET /join/{ep}", handleJoinRoute)
+	mux.HandleFunc("GET /join/{ep}", func(w http.ResponseWriter, r *http.Request) {
+		raw := strings.TrimSpace(r.PathValue("ep"))
+		if unesc, err := url.PathUnescape(raw); err == nil && unesc != "" {
+			raw = strings.TrimSpace(unesc)
+		}
+		// Opaque join codes (like cfx.re/join/zjjkkky) hide the server IP.
+		code := strings.ToLower(raw)
+		if isJoinCode(code) {
+			ep, ok := resolveJoinCode(code)
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				renderPage(w, r, "server_missing.tmpl", map[string]interface{}{"Title": "Server Not Found - NSM", "EndPoint": code})
+				return
+			}
+			w.Header().Set("X-CitizenFX-Url", "http://"+ep+"/")
+			w.Header().Set("Location", "https://nsmultiplayer.com/join/"+code)
+			renderServerDetail(w, r, ep, code)
+			return
+		}
+		// Legacy /join/<ip:port> form — kept for compatibility.
+		ep := raw
+		if ep != "" {
+			w.Header().Set("X-CitizenFX-Url", "http://"+ep+"/")
+			w.Header().Set("Location", "https://nsmultiplayer.com/join/"+ep)
+		}
+		renderServerDetail(w, r, ep, joinCodeForEndpointLookup(ep))
+	})
 	mux.HandleFunc("POST /servers/{ep}/upvote", func(w http.ResponseWriter, r *http.Request) { upvoteServer(w, r, r.PathValue("ep")) })
 	mux.HandleFunc("POST /servers/{ep}/feature", func(w http.ResponseWriter, r *http.Request) { featureServer(w, r, r.PathValue("ep")) })
 	mux.HandleFunc("POST /api/servers/upvote", func(w http.ResponseWriter, r *http.Request) { upvoteServer(w, r, "") })
@@ -683,7 +658,16 @@ func buildMux() *http.ServeMux {
 	mux.HandleFunc("POST /api/keymaster/issue", apiKeymasterIssue)
 	mux.HandleFunc("POST /api/keymaster/revoke", apiKeymasterRevoke)
 	mux.HandleFunc("POST /api/nsm/servers/register", apiServerRegister)
-	mux.HandleFunc("POST /api/nsm/internal-restart", internalRestartHandler)
+	mux.HandleFunc("POST /api/nsm/internal-restart", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Connection", "close")
+		sendJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		go func() {
+			time.Sleep(40 * time.Millisecond)
+			log.Printf("[restart] New NSM-Masterlist instance requested port takeover — exiting old instance.")
+			closeActiveServer()
+			os.Exit(0)
+		}()
+	})
 
 	// updater: no updates in local mode
 	mux.HandleFunc("/updates/", func(w http.ResponseWriter, r *http.Request) {

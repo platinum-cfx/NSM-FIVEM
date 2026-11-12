@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 )
 
 // TestStatusPage drives the monitor against the real site handler in-process:
@@ -142,15 +141,5 @@ func TestStatusPage(t *testing.T) {
 	page = request(h, "GET", "/status", "").Body.String()
 	if !strings.Contains(page, "Resolved") {
 		t.Fatalf("/status missing Resolved badge")
-	}
-}
-
-func TestStatusUptimeWindow(t *testing.T) {
-	c := &statusComponent{Days: map[string]*statusDay{
-		time.Now().UTC().Format("2006-01-02"): {Up: 7, Total: 11},
-	}}
-	got := statusUptime(c, 1)
-	if got < 63 || got > 64 {
-		t.Fatalf("today uptime = %v, want ~63.6 — the window must include today's samples", got)
 	}
 }

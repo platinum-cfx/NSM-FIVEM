@@ -555,16 +555,6 @@ func decorateListVars(ep string, d *ServerData) {
 	d.Vars = vars
 }
 
-// serveStreamRedir writes the binary list feed the NSM.exe browser reads.
-// In the client feed exe it is built from rows cached off the master list.
-func serveStreamRedir(w http.ResponseWriter, r *http.Request) {
-	body := streamBytes(feedEntries())
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
-	w.WriteHeader(http.StatusOK)
-	w.Write(body)
-}
-
 // ---------------------------------------------------------------------------
 // heartbeat -> ServerData mapping
 // ---------------------------------------------------------------------------
@@ -897,7 +887,19 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, body)
 
 	case path == "/api/servers/streamRedir/" || path == "/api/servers/streamRedir":
-		serveStreamRedir(w, r)
+		live := reg.live()
+		out := make(map[string]*entry, len(live))
+		for ep, e := range live {
+			d := e.data
+			applyMods(ep, &d)
+			decorateListVars(ep, &d)
+			out[ep] = &entry{data: d, last: e.last}
+		}
+		body := streamBytes(out)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		w.WriteHeader(http.StatusOK)
+		w.Write(body)
 
 	case strings.HasPrefix(path, "/api/servers/single/"):
 		ep := strings.TrimPrefix(path, "/api/servers/single/")
@@ -1064,7 +1066,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Keep join codes (shareable /join/<code> links that hide the IP)
 		// pointed at this server's live endpoint. Every listed server gets
 		// its own unique code; a key's code additionally follows its server.
-		bindHeartbeatAccounts(keyID, endPoint)
+		if keyID != "" {
+			bindJoinCodeEndpoint(keyID, endPoint)
+		}
+		joinCodeForEndpoint(endPoint)
 		log.Printf("[heartbeat] %s clients=%d", endPoint, data.Clients)
 		sendJSON(w, 200, map[string]interface{}{})
 
@@ -1308,13 +1313,6 @@ func findListeningPIDsOnPort(port int) []int {
 
 func stopPreviousMasterlistInstances(addr string, port int) {
 	pid := os.Getpid()
-	// Only replace previous copies of THIS exe. The five service exes
-	// (NSM-Masterlist/Website/ClientFeed/JoinLinks/Accounts) must never
-	// close each other — each runs its own listener.
-	selfName := strings.ToLower(filepath.Base(os.Args[0]))
-	if exe, err := os.Executable(); err == nil {
-		selfName = strings.ToLower(filepath.Base(exe))
-	}
 	// 1. Politely ask any running NSM-Masterlist on this address to close its listener and exit
 	tr := &http.Transport{DisableKeepAlives: true}
 	cl := &http.Client{Timeout: 350 * time.Millisecond, Transport: tr}
@@ -1346,7 +1344,7 @@ func stopPreviousMasterlistInstances(addr string, port int) {
 		_ = exec.Command(taskkillBin, "/F", "/T", "/PID", strconv.Itoa(targetPID)).Run()
 	}
 
-	// 2. Find any previous copy of this same exe via tasklist CSV output and terminate it without touching the console window
+	// 2. Find any NSM-Masterlist*.exe process via tasklist CSV output and terminate it without touching the console window
 	if out, err := exec.Command(tasklistBin, "/FO", "CSV", "/NH").Output(); err == nil {
 		for _, line := range strings.Split(string(out), "\n") {
 			line = strings.TrimSpace(line)
@@ -1357,7 +1355,7 @@ func stopPreviousMasterlistInstances(addr string, port int) {
 			if len(parts) >= 2 {
 				imgName := strings.ToLower(strings.Trim(parts[0], `"`))
 				pidStr := strings.Trim(parts[1], `"`)
-				if imgName == selfName {
+				if strings.Contains(imgName, "nsm-masterlist") {
 					if otherPID, err := strconv.Atoi(pidStr); err == nil {
 						killPID(otherPID)
 					}
@@ -1393,13 +1391,8 @@ func main() {
 	if defaultPubURL == "" {
 		defaultPubURL = "https://nsmultiplayer.com"
 	}
-	// Resolve the service mode (subcommand or baked default) first — the
-	// default port depends on which service this exe runs, so that opening
-	// each of the five exes works without arguments and they never fight
-	// over one port.
-	parseRunMode()
 	bind := flag.String("bind", "0.0.0.0", "bind IP address (0.0.0.0 for VPS/Cloudflare/LAN, 127.0.0.1 for local-only)")
-	port := flag.Int("port", defaultServicePort(), "port to listen on (service defaults: 80 website/serve, 8081 master, 8082 feed, 8083 join, 8084 accounts)")
+	port := flag.Int("port", 80, "port to listen on")
 	pubURL := flag.String("public-url", defaultPubURL, "optional public base URL (e.g. https://nsmultiplayer.com)")
 	pubIP := flag.String("public-ip", os.Getenv("NSM_PUBLIC_IP"), "optional public IPv4 for local server heartbeats")
 	owner := flag.String("owner-token", os.Getenv("OWNER_TOKEN"), "owner admin API bearer token")
@@ -1407,12 +1400,6 @@ func main() {
 	opass := flag.String("owner-pass", os.Getenv("OWNER_PASS"), "set a new password for the owner account at startup")
 	keyPath := flag.String("ticket-public-key", "", "optional trusted RSA public key PEM; no tickets are issued")
 	reqKeys := flag.Bool("require-keys", os.Getenv("NSM_REQUIRE_KEYS") == "1", "require a valid NSM keymaster server key on /api/serverlist/ingress")
-	// Service URLs for split deploys (see services.go). env NSM_MASTER_URL /
-	// NSM_FEED_URL / NSM_JOIN_URL / NSM_ACCOUNTS_URL work too.
-	flag.StringVar(&masterBaseURL, "master-url", envOr("NSM_MASTER_URL", "http://127.0.0.1:8081"), "master list service URL")
-	flag.StringVar(&feedBaseURL, "feed-url", envOr("NSM_FEED_URL", "http://127.0.0.1:8082"), "client feed service URL")
-	flag.StringVar(&joinBaseURL, "join-url", envOr("NSM_JOIN_URL", "http://127.0.0.1:8083"), "join links service URL")
-	flag.StringVar(&accountsBaseURL, "accounts-url", envOr("NSM_ACCOUNTS_URL", "http://127.0.0.1:8084"), "accounts service URL")
 	flag.Parse()
 	requireKeys = *reqKeys
 	parsedBind := net.ParseIP(*bind)
@@ -1491,11 +1478,12 @@ func main() {
 	loadForum()
 	initSite()
 	patchLocalUIBundlesOnDisk()
-	startModeServices(probeAddr)
+	startShowcaseServers()
+	startStatusMonitor("http://" + probeAddr)
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           publicAwareHandler(rootHandler()),
+		Handler:           publicAwareHandler(localHandler()),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       60 * time.Second,

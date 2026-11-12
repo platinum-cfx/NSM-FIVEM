@@ -1,31 +1,33 @@
 {{template "head" .}}
-  <section class="sud-hero">
-    <div class="sud-hero-bg"></div>
-    <div class="sud-hero-grid"></div>
+  <section class="hero">
     <div class="container">
       <div class="spacer">
-        <p class="sud-eyebrow"><span class="dot"></span>THE NSM EXPERIENCE &nbsp;·&nbsp; MADE FOR YOUR CITY</p>
-        <h1 class="sud-h1">Your city.<br><span class="grad">Your way.</span></h1>
-        <p class="sud-lead">A more personal Grand Theft Auto V multiplayer. Custom dedicated servers, shareable join links and fair Keymaster slots, powered by <strong>AFX</strong> — all in one place.</p>
-        <div class="players sud-live"><span class="live-dot"></span>Join the <strong><span class="current-players" data-stat="players">{{kfmt (index .Stats "Players")}}</span></strong>&nbsp;people playing right now</div>
-        <div class="sud-btn-row">
-          <div class="btnpadder" style="position:relative">
-            <a id="dl" href="/download" data-no-spa="1">
-              <span class="txt">DOWNLOAD CLIENT</span>
-              <span class="desc">NSM.exe &nbsp;·&nbsp; Windows 10 &amp; 11</span>
-            </a>
+        <div class="hero-seller">
+          <div class="hero-lead">
+            <p class="lead"><strong>NSM</strong> is a modification for Grand Theft Auto&nbsp;V enabling you to play multiplayer on customized dedicated servers, powered by <strong>AFX</strong>.</p>
           </div>
-          <a class="sud-ghost" href="/servers">Browse the server list <span aria-hidden="true">→</span></a>
-        </div>
-        <p class="plaText">By downloading, you agree to the <a href="/docs">NSM Terms of Service</a></p>
-        <p class="sud-meta">Windows 10 &amp; 11 &nbsp;·&nbsp; 64-bit &nbsp;·&nbsp; 8 GB RAM minimum &nbsp;·&nbsp; Free to play</p>
-        <div class="sud-quick">
-          <a href="/servers">Server List</a>
-          <a href="/keymaster">Keymaster</a>
-          <a href="/forum">Forum</a>
-          <a href="/docs">Docs</a>
-          <a href="/support">Support</a>
-          <a href="/status">Status</a>
+          <div class="hero-cta">
+            <div class="players">
+              <span class="live-dot"></span>Join the <span class="current-players" data-stat="players">{{kfmt (index .Stats "Players")}}</span> people playing right now!
+            </div>
+            <div class="btnpadder" style="position:relative">
+              <a id="dl" href="/download" data-no-spa="1">
+                <span class="txt">DOWNLOAD CLIENT</span>
+                <span class="desc">NSM.exe</span>
+              </a>
+            </div>
+            <p class="plaText">By downloading, you agree to the <a href="/docs">NSM Terms of Service</a></p>
+            <div class="server">
+              <a class="btn block" href="/keymaster">Create your own server</a>
+            </div>
+            <div class="nsm-quick-links">
+              <a href="/servers">Server List</a>
+              <a href="/keymaster">Keymaster</a>
+              <a href="/forum">Forum</a>
+              <a href="/docs">Docs</a>
+              <a href="/support">Support</a>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -33,237 +35,196 @@
 </div>
 <main>
 
-<section class="sud-section">
+<section class="features">
   <div class="container">
     <div class="spacer">
-      <p class="sud-eyebrow"><span class="dot"></span>THE NSM PLATFORM</p>
-      <h2 class="sud-h2">A familiar place.<br><span class="grad">A different feeling.</span></h2>
-      <p class="sud-lead">Everything you need to find a server, join your friends and run your own city — designed around the way you actually play.</p>
-      <div class="sud-grid cols-3">
-        <article class="sud-card">
-          <span class="sud-tag">Live list</span>
-          <h3>Find your people.</h3>
-          <p>Browse and filter community servers live on the web or inside NSM.exe, with real player counts and instant one-click connection.</p>
-          <a class="sud-card-link" href="/servers">Open the server list <span class="arrow">→</span></a>
-        </article>
-        <article class="sud-card">
-          <span class="sud-tag">Join links</span>
-          <h3>Share without the IP.</h3>
-          <p>Every listed server gets a short, shareable <code>/join/</code> link that hides the raw address. Connections stay clean and private.</p>
-          <a class="sud-card-link" href="/docs">How join links work <span class="arrow">→</span></a>
-        </article>
-        <article class="sud-card">
-          <span class="sud-tag">AFX Portal</span>
-          <h3>Your server, your keys.</h3>
-          <p>Issue license keys, watch live heartbeats and manage upvotes from the Keymaster. 2,048 slots are free without a key.</p>
-          <a class="sud-card-link" href="/keymaster">Open AFX Portal <span class="arrow">→</span></a>
-        </article>
+      <div class="preamb">
+        <p>Building upon years of development on the <strong>AFX</strong> framework, which has played a giant role in the modding community, NSM offers a huge range of features:</p>
       </div>
-    </div>
-  </div>
-</section>
-
-<section class="sud-section tight">
-  <div class="container">
-    <div class="spacer">
-      <p class="sud-sublabel">the numbers</p>
-      <div class="sud-grid cols-4">
-        <article class="sud-card">
-          <span class="num" data-stat="players">{{kfmt (index .Stats "Players")}}</span>
-          <h3>playing right now</h3>
-          <p>Live across every listed NSM server, updating as people join and leave.</p>
-        </article>
-        <article class="sud-card">
-          <span class="num" data-stat="servers">{{index .Stats "Servers"}}</span>
-          <h3>live servers</h3>
-          <p>Whitelisted roleplay, freeroam and everything in between.</p>
-        </article>
-        <article class="sud-card">
-          <span class="num">2,048</span>
-          <h3>slots per server</h3>
-          <p>Full OneSync entity and population sync, free with no key required.</p>
-        </article>
-        <article class="sud-card">
-          <span class="num">10</span>
-          <h3>free upvotes</h3>
-          <p>Every account gets ten free upvotes to boost the servers you love.</p>
-        </article>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="sud-section">
-  <div class="container">
-    <div class="spacer">
-      <p class="sud-eyebrow"><span class="dot"></span>BUILT ON AFX &nbsp;·&nbsp; POWERED BY THE COMMUNITY</p>
-      <h2 class="sud-h2">Built around <span class="grad">the way you play.</span></h2>
-      <p class="sud-lead">Years of development on the <strong>AFX</strong> framework, which has played a giant role in the modding community — NSM offers a huge range of features:</p>
-      <div class="sud-grid cols-4">
-        <article class="sud-card">
-          <span class="material-icons-outlined">cloud_download</span>
-          <h3>Streaming</h3>
-          <p>NSM allows servers to use custom cars, maps, weapons, and more dynamically.</p>
-        </article>
-        <article class="sud-card">
-          <span class="material-icons-outlined">sync_alt</span>
-          <h3>Sync quality</h3>
-          <p>NSM uses the original network code, improved upon by AFX OneSync, so you'll have the best sync around.</p>
-        </article>
-        <article class="sud-card">
-          <span class="material-icons-outlined">groups</span>
-          <h3>OneSync</h3>
-          <p>Play with up to 2048 players on a single dedicated server with full entity and population synchronization.</p>
-        </article>
-        <article class="sud-card">
-          <span class="material-icons-outlined">shield</span>
-          <h3>Standalone</h3>
-          <p>NSM does not interact with the Rockstar Online Services other than to validate your game copy when you first launch it.</p>
-        </article>
-        <article class="sud-card">
-          <span class="material-icons-outlined">dns</span>
-          <h3>Dedicated servers</h3>
-          <p>Browse and filter community servers live in NSM.exe or on the web, with instant one-click connection.</p>
-        </article>
-        <article class="sud-card">
-          <span class="material-icons-outlined">vpn_key</span>
-          <h3>AFX Portal</h3>
-          <p>Issue and manage server license keys, view active heartbeats, and link your AFX account directly in NSM.exe.</p>
-        </article>
-        <article class="sud-card">
-          <span class="material-icons-outlined">code</span>
-          <h3>Lua, C# &amp; JS</h3>
-          <p>Build rich gamemodes, NUI interfaces, and custom gameplay systems using Lua, C#, or JavaScript runtimes.</p>
-        </article>
-        <article class="sud-card">
-          <span class="material-icons-outlined">forum</span>
-          <h3>Community</h3>
-          <p>Share releases, discuss scripts, and discover resources on the AFX Forum and AFX Marketplace.</p>
-        </article>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="sud-section tight">
-  <div class="container">
-    <div class="spacer">
-      <p class="sud-eyebrow"><span class="dot"></span>NOW AVAILABLE</p>
-      <div class="sud-card" style="padding:2.25rem 2.1rem">
-        <span class="ea-badge">Now Available</span>
-        <h2 class="sud-h2" style="margin-top:1rem">Now supporting Grand Theft Auto V Enhanced</h2>
-        <p class="sud-lead" style="margin-bottom:1.35rem">Jump into customized dedicated servers with the NSM desktop client, browse the live server list, and manage your server keys in AFX Portal.</p>
-        <div class="sud-btn-row" style="margin-bottom:0">
-          <a class="sud-ghost" href="/servers">Open Live Server List <span aria-hidden="true">→</span></a>
-          <span class="dl-text"><strong data-stat="servers">{{index .Stats "Servers"}}</strong> live servers &middot; <strong data-stat="players">{{kfmt (index .Stats "Players")}}</strong> players online</span>
+      <h1>What we have for you</h1>
+      <div class="fx">
+        <div class="c-lg-3 c-md-6 c-sm-6 c-xs-12">
+          <article class="a1">
+            <div class="icon-wrap"><span class="material-icons-outlined">cloud_download</span></div>
+            <h2>Streaming</h2>
+            <span class="txt">NSM allows servers to use custom cars, maps, weapons, and more dynamically.</span>
+          </article>
+        </div>
+        <div class="c-lg-3 c-md-6 c-sm-6 c-xs-12">
+          <article class="a2">
+            <div class="icon-wrap"><span class="material-icons-outlined">sync_alt</span></div>
+            <h2>Sync quality</h2>
+            <span class="txt">NSM uses the original network code, improved upon by AFX OneSync, so you'll have the best sync around.</span>
+          </article>
+        </div>
+        <div class="c-lg-3 c-md-6 c-sm-6 c-xs-12">
+          <article class="a3">
+            <div class="icon-wrap"><span class="material-icons-outlined">groups</span></div>
+            <h2>OneSync</h2>
+            <span class="txt">Play with up to 2048 players on a single dedicated server with full entity and population synchronization.</span>
+          </article>
+        </div>
+        <div class="c-lg-3 c-md-6 c-sm-6 c-xs-12">
+          <article class="a4">
+            <div class="icon-wrap"><span class="material-icons-outlined">shield</span></div>
+            <h2>Standalone</h2>
+            <span class="txt">NSM does not interact with the Rockstar Online Services other than to validate your game copy when you first launch it.</span>
+          </article>
+        </div>
+        <div class="c-lg-3 c-md-6 c-sm-6 c-xs-12">
+          <article class="a1">
+            <div class="icon-wrap"><span class="material-icons-outlined">dns</span></div>
+            <h2>Dedicated servers</h2>
+            <span class="txt">Browse and filter community servers live in NSM.exe or on the web, with instant one-click connection.</span>
+          </article>
+        </div>
+        <div class="c-lg-3 c-md-6 c-sm-6 c-xs-12">
+          <article class="a2">
+            <div class="icon-wrap"><span class="material-icons-outlined">vpn_key</span></div>
+            <h2>AFX Portal</h2>
+            <span class="txt">Issue and manage server license keys, view active heartbeats, and link your AFX account directly in NSM.exe.</span>
+          </article>
+        </div>
+        <div class="c-lg-3 c-md-6 c-sm-6 c-xs-12">
+          <article class="a3">
+            <div class="icon-wrap"><span class="material-icons-outlined">code</span></div>
+            <h2>Lua, C# &amp; JS</h2>
+            <span class="txt">Build rich gamemodes, NUI interfaces, and custom gameplay systems using Lua, C#, or JavaScript runtimes.</span>
+          </article>
+        </div>
+        <div class="c-lg-3 c-md-6 c-sm-6 c-xs-12">
+          <article class="a4">
+            <div class="icon-wrap"><span class="material-icons-outlined">forum</span></div>
+            <h2>Community</h2>
+            <span class="txt">Share releases, discuss scripts, and discover resources on the AFX Forum and AFX Marketplace.</span>
+          </article>
         </div>
       </div>
+      <h2 class="closing">...and a <strong>lot</strong> more!</h2>
     </div>
   </div>
 </section>
 
-<section class="sud-section" id="requirements">
+<section class="enhanced">
+  <div class="root">
+    <div class="inner-root">
+      <div class="content">
+        <div class="cleft">
+          <span class="ea-badge">Now Available</span>
+          <h1>Now supporting Grand Theft Auto V Enhanced</h1>
+          <p>Jump into customized dedicated servers with the NSM desktop client, browse the live server list, and manage your server keys in AFX Portal.</p>
+          <hr>
+          <div class="btnrow">
+            <a class="ghostbtn" href="/servers">
+              <div class="in"><span class="gbtn-txt">Open Live Server List</span></div>
+            </a>
+            <span class="dl-text"><strong data-stat="servers">{{index .Stats "Servers"}}</strong> live servers &middot; <strong data-stat="players">{{kfmt (index .Stats "Players")}}</strong> players online</span>
+          </div>
+        </div>
+        <div class="cright"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="reqs">
   <div class="container">
     <div class="spacer">
-      <p class="sud-sublabel">system requirements</p>
-      <h2 class="sud-h2">Know before <span class="grad">you go.</span></h2>
-      <div class="sud-grid cols-2">
-        <article class="sud-card sud-specs">
-          <h3>Recommended</h3>
+      <hr>
+      <h1>System requirements</h1>
+      <div class="fx">
+        <div class="c-lg-6 c-md-6 c-xs-12">
+          <h2>Recommended</h2>
           <table class="stat-table">
             <tr><td class="stat">CPU</td><td>Intel Core i5 3470 @ 3.2GHz / AMD X8 FX-8350 @ 4GHz</td></tr>
             <tr><td class="stat">GPU</td><td>NVIDIA GTX 660 2GB / AMD HD 7870 2GB</td></tr>
             <tr><td class="stat">RAM</td><td>16GB</td></tr>
             <tr><td class="stat">HDD</td><td>72GB + ~8GB for NSM cache</td></tr>
           </table>
-        </article>
-        <article class="sud-card sud-specs">
-          <h3>Minimum</h3>
+        </div>
+        <div class="c-lg-6 c-md-6 c-xs-12">
+          <h2>Minimum</h2>
           <table class="stat-table">
             <tr><td class="stat">CPU</td><td>Intel Core 2 Quad CPU Q6600 @ 2.40GHz / AMD Phenom 9850 @ 2.5GHz</td></tr>
             <tr><td class="stat">GPU</td><td>NVIDIA 9800 GT 1GB / AMD HD 4870 1GB / Intel HD GT2</td></tr>
             <tr><td class="stat">RAM</td><td>8GB</td></tr>
             <tr><td class="stat">HDD</td><td>72GB + ~4GB for NSM cache</td></tr>
           </table>
-        </article>
-      </div>
-      <div class="sud-note" style="margin-top:1.15rem">
-        <span class="i">i</span>
-        <span>NSM does not modify your Grand Theft Auto V installation files and never interacts with Rockstar Online Services other than validating your game ownership on startup.</span>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="sud-section">
-  <div class="container">
-    <div class="spacer">
-      <p class="sud-eyebrow"><span class="dot"></span>FOR DEVELOPERS</p>
-      <h2 class="sud-h2">Create a server.<br><span class="grad">Write the rules.</span></h2>
-      <p class="sud-lead">Creating your own server for NSM is easy, and if you know any of the supported languages you can get started writing scripts right away. Issue a license key in AFX Portal and launch <code>NSM-Server.exe</code>.</p>
-      <div class="sud-btn-row">
-        <a class="btn primary" href="/keymaster">Create a server</a>
-        <a class="sud-ghost" href="/docs#server-setup">Setting up a server</a>
-      </div>
-      <div class="sud-grid cols-3" style="margin-top:1.65rem">
-        <a class="sud-card" href="/docs#scripting" style="text-decoration:none">
-          <span class="sud-tag">Lua</span>
-          <h3>Lua</h3>
-          <p>Lightweight, fast scripting with immediate access to all GTA V &amp; AFX natives.</p>
-        </a>
-        <a class="sud-card" href="/docs#scripting" style="text-decoration:none">
-          <span class="sud-tag">C#</span>
-          <h3>C#</h3>
-          <p>Strongly-typed .NET runtime for structured client and server resource development.</p>
-        </a>
-        <a class="sud-card" href="/docs#scripting" style="text-decoration:none">
-          <span class="sud-tag">JavaScript</span>
-          <h3>JavaScript</h3>
-          <p>Modern V8 / Node.js runtime with TypeScript definitions and NUI integration.</p>
-        </a>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="sud-section tight" id="faq">
-  <div class="container">
-    <div class="spacer">
-      <p class="sud-sublabel">a little more clarity</p>
-      <h2 class="sud-h2">Good questions.<br><span class="grad">Straight answers.</span></h2>
-      <div style="margin-top:1.85rem">
-        <div class="sud-faq-item" id="q1">
-          <h3><a href="#q1">Will I get banned from GTA:Online for playing NSM?</a></h3>
-          <p>Nope! NSM does not modify your Grand Theft Auto V installation files and never interacts with Rockstar Online Services other than validating your game ownership on startup.</p>
-        </div>
-        <div class="sud-faq-item" id="q2">
-          <h3><a href="#q2">How do I sign in inside NSM.exe?</a></h3>
-          <p>Click <strong>Sign in</strong> inside <code>NSM.exe</code>. It will open the NSM website in your browser where you can sign in to your AFX account and automatically link your session back into <code>NSM.exe</code>.</p>
-        </div>
-        <div class="sud-faq-item" id="q3">
-          <h3><a href="#q3">How do I create a server and register a license key?</a></h3>
-          <p>Open <a href="/keymaster">AFX Portal</a>, sign in to your account, generate a <code>cfxk_...</code> license key, and paste <code>sv_licenseKey</code> into your server's <code>server.cfg</code>.</p>
-        </div>
-        <div class="sud-faq-item" id="q4">
-          <h3><a href="#q4">Why does Steam show me playing Source SDK Base 2007?</a></h3>
-          <p>Like the classic modification runtime, NSM initializes Steam integrations under App ID <code>218</code> (<strong>Source SDK Base 2007</strong>) so your Steam overlay, friends list, and rich presence work cleanly without conflicting with the base game.</p>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<section class="sud-cta">
+<section class="dev">
   <div class="container">
     <div class="spacer">
-      <p class="sud-eyebrow" style="justify-content:center"><span class="dot"></span>READY WHEN YOU ARE</p>
-      <h2 class="sud-h2">Make yourself <span class="grad">at home.</span></h2>
-      <p class="sud-lead">Your next server starts here.</p>
-      <div class="sud-btn-row">
-        <a class="btn primary" href="/download">Download for Windows</a>
-        <a class="sud-ghost" href="/servers">Take a look around</a>
+      <article>
+        <h2>Developers</h2>
+        <p>Creating your own server for NSM is easy, and if you know any of the supported languages you can get started writing scripts right away.</p>
+      </article>
+      <article>
+        <h2>Create a server</h2>
+        <p>Find out how to start your own NSM server! Issue a license key in AFX Portal and launch <code>NSM-Server.exe</code>.</p>
+        <div class="btnpadder">
+          <a class="btn primary" href="/keymaster">Create a server</a>
+          <a class="btn" href="/docs#server-setup">Setting up a server</a>
+        </div>
+      </article>
+      <article>
+        <h2>Write scripts</h2>
+        <p>Write server and client resources using any of NSM's first-class scripting runtimes:</p>
+        <div class="fx langs">
+          <div class="c-lg-4 c-md-4 c-xs-12">
+            <a class="lang lua" href="/docs#scripting">
+              <div class="text">
+                <h3>Lua</h3>
+                <p>Lightweight, fast scripting with immediate access to all GTA V &amp; AFX natives.</p>
+              </div>
+            </a>
+          </div>
+          <div class="c-lg-4 c-md-4 c-xs-12">
+            <a class="lang cs" href="/docs#scripting">
+              <div class="text">
+                <h3>C#</h3>
+                <p>Strongly-typed .NET runtime for structured client and server resource development.</p>
+              </div>
+            </a>
+          </div>
+          <div class="c-lg-4 c-md-4 c-xs-12">
+            <a class="lang js" href="/docs#scripting">
+              <div class="text">
+                <h3>JavaScript</h3>
+                <p>Modern V8 / Node.js runtime with TypeScript definitions and NUI integration.</p>
+              </div>
+            </a>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="faq">
+  <div class="container">
+    <div class="spacer">
+      <h1>Frequently asked questions</h1>
+      <div id="q1">
+        <h3><a href="#q1">Will I get banned from GTA:Online for playing NSM?</a></h3>
+        <p>Nope! NSM does not modify your Grand Theft Auto V installation files and never interacts with Rockstar Online Services other than validating your game ownership on startup.</p>
       </div>
-      <p class="sud-meta">Windows 10 &amp; 11 &nbsp;·&nbsp; 64-bit &nbsp;·&nbsp; free to play</p>
+      <div id="q2">
+        <h3><a href="#q2">How do I sign in inside NSM.exe?</a></h3>
+        <p>Click <strong>Sign in</strong> inside <code>NSM.exe</code>. It will open the NSM website in your browser where you can sign in to your AFX account and automatically link your session back into <code>NSM.exe</code>.</p>
+      </div>
+      <div id="q3">
+        <h3><a href="#q3">How do I create a server and register a license key?</a></h3>
+        <p>Open <a href="/keymaster">AFX Portal</a>, sign in to your account, generate a <code>cfxk_...</code> license key, and paste <code>sv_licenseKey</code> into your server's <code>server.cfg</code>.</p>
+      </div>
+      <div id="q4">
+        <h3><a href="#q4">Why does Steam show me playing Source SDK Base 2007?</a></h3>
+        <p>Like the classic modification runtime, NSM initializes Steam integrations under App ID <code>218</code> (<strong>Source SDK Base 2007</strong>) so your Steam overlay, friends list, and rich presence work cleanly without conflicting with the base game.</p>
+      </div>
     </div>
   </div>
 </section>

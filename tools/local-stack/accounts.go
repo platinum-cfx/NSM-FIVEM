@@ -734,12 +734,6 @@ func ownerNeedsPasswordSetup() bool {
 }
 
 func saveAccountsLocked() {
-	if accountsReadOnly {
-		// master mode: the web service owns accounts.json; master's view
-		// is refreshed from disk (maybeReloadAccounts) and its heartbeat
-		// updates travel over the internal bind endpoint.
-		return
-	}
 	b, _ := json.MarshalIndent(acc, "", "  ")
 	tmp := accPath + ".tmp"
 	if err := os.WriteFile(tmp, b, 0600); err != nil {
