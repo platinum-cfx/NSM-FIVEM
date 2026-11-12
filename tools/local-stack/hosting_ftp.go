@@ -100,17 +100,17 @@ type ftpServer struct {
 	port         int
 	passivePort  int
 	user, pass   string
-	root         string
+	rootFn       func() string
 	logf         func(string)
 }
 
 // startFTPServer binds the control port and serves connections until Close.
-func startFTPServer(port int, passivePort int, user, pass, root string, logf func(string)) (*ftpServer, error) {
+func startFTPServer(port int, passivePort int, user, pass string, rootFn func() string, logf func(string)) (*ftpServer, error) {
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return nil, err
 	}
-	fs := &ftpServer{ln: ln, port: port, passivePort: passivePort, user: user, pass: pass, root: filepath.Clean(root), logf: logf}
+	fs := &ftpServer{ln: ln, port: port, passivePort: passivePort, user: user, pass: pass, rootFn: rootFn, logf: logf}
 	go fs.acceptLoop()
 	return fs, nil
 }
@@ -129,6 +129,7 @@ func (fs *ftpServer) acceptLoop() {
 
 type ftpConn struct {
 	fs         *ftpServer
+	root       string // server folder for this connection (resolved at connect)
 	c          net.Conn
 	r          *bufio.Reader
 	user       string
@@ -158,7 +159,7 @@ func (fc *ftpConn) upgradeTLS() error {
 }
 
 func (fs *ftpServer) handle(c net.Conn) {
-	fc := &ftpConn{fs: fs, c: c, r: bufio.NewReader(c), cwd: "/"}
+	fc := &ftpConn{fs: fs, c: c, r: bufio.NewReader(c), cwd: "/", root: filepath.Clean(fs.rootFn())}
 	defer func() {
 		if fc.passive != nil {
 			_ = fc.passive.Close()
@@ -275,7 +276,7 @@ func (fs *ftpServer) handle(c net.Conn) {
 		case "APPE":
 			fc.recvFile(arg, true)
 		case "DELE":
-			if p, ok := fc.resolve(arg); ok && fileExists(p) && os.Remove(p) == nil {
+			if p, ok := fc.resolve(arg); ok && p != fc.root && fileExists(p) && os.Remove(p) == nil {
 				fc.reply("250 deleted")
 			} else {
 				fc.reply("550 cannot delete")
@@ -287,7 +288,7 @@ func (fs *ftpServer) handle(c net.Conn) {
 				fc.reply("550 cannot create")
 			}
 		case "RMD", "XRMD":
-			if p, ok := fc.resolve(arg); ok && os.Remove(p) == nil {
+			if p, ok := fc.resolve(arg); ok && p != fc.root && os.Remove(p) == nil {
 				fc.reply("250 removed")
 			} else {
 				fc.reply("550 cannot remove")
@@ -361,9 +362,29 @@ func (fc *ftpConn) raw(s string)    { _, _ = io.WriteString(fc.c, s) }
 
 func (fc *ftpConn) resolve(rel string) (string, bool) {
 	rel = strings.ReplaceAll(rel, "\\", "/")
-	base := filepath.Join(fc.fs.root, filepath.FromSlash(strings.Trim(fc.cwd, "/")))
-	full := filepath.Clean(filepath.Join(base, filepath.FromSlash(rel)))
-	root := fc.fs.root
+	root := fc.root
+	// chroot-style resolution: ".." pops a part but never climbs above the
+	// FTP root, so "CWD .." at "/" stays at "/" like every real FTP server.
+	parts := make([]string, 0, 8)
+	for _, seg := range strings.Split(strings.Trim(fc.cwd, "/"), "/") {
+		switch seg {
+		case "", ".":
+		default:
+			parts = append(parts, seg)
+		}
+	}
+	for _, seg := range strings.Split(rel, "/") {
+		switch seg {
+		case "", ".":
+		case "..":
+			if len(parts) > 0 {
+				parts = parts[:len(parts)-1]
+			}
+		default:
+			parts = append(parts, seg)
+		}
+	}
+	full := filepath.Clean(filepath.Join(append([]string{root}, parts...)...))
 	if full != root && !strings.HasPrefix(full, root+string(os.PathSeparator)) {
 		return "", false
 	}
@@ -379,7 +400,7 @@ func (fc *ftpConn) chdir(rel string) bool {
 	if err != nil || !st.IsDir() {
 		return false
 	}
-	rel2 := strings.Trim(strings.TrimPrefix(p, fc.fs.root), string(os.PathSeparator))
+	rel2 := strings.Trim(strings.TrimPrefix(p, fc.root), string(os.PathSeparator))
 	fc.cwd = "/" + filepath.ToSlash(rel2)
 	if fc.cwd == "/" {
 		fc.cwd = "/"

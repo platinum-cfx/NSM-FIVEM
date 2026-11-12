@@ -422,6 +422,17 @@ func (m *hostingManager) dirOf(s *HostedServer) string {
 	return filepath.Join(m.root, s.ID)
 }
 
+// serverRoot is the folder holding the game server itself (server.cfg,
+// resources/, the server exe). It is the root users see over FTP and in the
+// Files tab - panel-internal files (ftppass.txt and the config mirror) live
+// one level up, outside it.
+func (m *hostingManager) serverRoot(s *HostedServer) string {
+	if s.ExeRel == "" {
+		return m.dirOf(s)
+	}
+	return filepath.Dir(filepath.Join(m.dirOf(s), s.ExeRel))
+}
+
 // deploy provisions a new city for the signed-in user. It is safe against
 // double-clicks and simultaneous requests: the one-server-per-account check
 // and the record creation happen atomically under the manager lock.
@@ -539,6 +550,7 @@ func (m *hostingManager) install(s *HostedServer) error {
 	if err != nil {
 		return err
 	}
+	s.ExeRel = relExe
 	m.mu.Lock()
 	if cur := m.find(s.ID); cur != nil {
 		cur.ExeRel = relExe
@@ -550,7 +562,7 @@ func (m *hostingManager) install(s *HostedServer) error {
 
 	// server.cfg with the REAL allocated ports, written into the server's own
 	// directory (where the binary looks for it) and mirrored at instance root
-	serverRoot := filepath.Dir(filepath.Join(m.dirOf(s), relExe))
+	serverRoot := m.serverRoot(s)
 	cfg := m.generateCfg(s, serverRoot)
 	if err := os.WriteFile(filepath.Join(serverRoot, "server.cfg"), []byte(cfg), 0o600); err != nil {
 		return err
@@ -559,7 +571,7 @@ func (m *hostingManager) install(s *HostedServer) error {
 		_ = os.WriteFile(filepath.Join(m.dirOf(s), "server.cfg"), []byte(cfg), 0o600)
 	}
 	m.appendLog(s, "[system] server.cfg generated with this server's ports (TCP "+itoa(s.GameTCPPort)+", UDP "+itoa(s.GameUDPPort)+")")
-	m.appendLog(s, "[system] config installed at "+filepath.ToSlash(filepath.Join(filepath.Base(serverRoot), "server.cfg")))
+	m.appendLog(s, "[system] config installed at server.cfg (your server folder root over FTP)")
 	return nil
 }
 
@@ -1298,7 +1310,7 @@ func (m *hostingManager) owned(id string, u *User) (*HostedServer, string, bool)
 	if s == nil || s.Owner != u.ID {
 		return nil, "", false
 	}
-	return s, m.dirOf(s), true
+	return s, m.serverRoot(s), true
 }
 
 func apiHostFiles(w http.ResponseWriter, r *http.Request) {
@@ -1615,7 +1627,11 @@ func (m *hostingManager) startFTP(s *HostedServer) {
 	if _, ok := m.ftp[s.ID]; ok || s.FTPPort <= 0 {
 		return
 	}
-	fs, err := startFTPServer(s.FTPPort, s.PassivePort, s.FTPUser, s.FTPPass, m.dirOf(s), func(msg string) {
+	fs, err := startFTPServer(s.FTPPort, s.PassivePort, s.FTPUser, s.FTPPass, func() string {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			return m.serverRoot(s)
+		}, func(msg string) {
 		m.appendLog(s, msg)
 	})
 	if err != nil {

@@ -86,6 +86,7 @@
       <ul class="zx-checks" style="margin:0 0 16px">
         <li>Protocol: <strong>FTP — Plain</strong> or <strong>FTP over explicit TLS</strong> (AUTH TLS) — both work</li>
         <li>Server: <code>{{.Host}}:{{$s.FTPPort}}</code> — use this exact port (NOT 21; port 21 is a different service)</li>
+        <li>The root folder IS your server: <code>server.cfg</code>, <code>resources/</code> and the server files are right there — going up stays at the root</li>
         <li>The FTP greeting must say <code>220 NSM Hosting FTP ready</code> — if it does not, you are on the wrong service</li>
         <li>User: <code>{{$s.FTPUser}}</code> (your NSM name) &nbsp; Password: <code>{{$s.FTPPass}}</code></li>
         <li>Passive mode on &mdash; data port <code>{{$s.PassivePort}}</code></li>
