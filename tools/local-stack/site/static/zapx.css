@@ -2291,3 +2291,36 @@ footer .foot-col ul.links a:hover { color: var(--zx-green); }
 ::-webkit-scrollbar-track { background: #0C0E14; }
 ::-webkit-scrollbar-thumb { background: #2a3342; }
 ::-webkit-scrollbar-thumb:hover { background: #38445a; }
+
+
+/* ---- dark cover: hero backdrop + leftovers ---- */
+.bg-holder, .bg-holder.with-bg {
+  background: #0C0E14 !important;
+  background-image: none !important;
+}
+.bg-holder.with-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(1100px 460px at 78% -140px, rgba(0, 255, 255, 0.12), transparent 60%),
+    radial-gradient(900px 420px at 12% -80px, rgba(24, 232, 136, 0.18), transparent 62%);
+  pointer-events: none;
+}
+.enhanced .root, .enhanced .inner-root { color: #c7d2de; }
+.enhanced h1, .enhanced h2 { color: #fff; }
+.enhanced p { color: #9aa8b8; }
+.ea-badge { background: var(--zx-green); color: var(--zx-green-ink); }
+.ghostbtn .in { background: rgba(255,255,255,0.06); border-color: var(--zx-line); }
+.gbtn-txt { color: #fff; }
+.dl-text { color: #9aa8b8; }
+.lang { background: var(--zx-card) !important; border: 1px solid var(--zx-line) !important; }
+.lang h3 { color: #fff; }
+.lang p { color: #9aa8b8; }
+.nsm-quick-links a { color: #9aa8b8; }
+.nsm-quick-links a:hover { color: var(--zx-green); }
+.plaText, .hero .desc { color: #8b98aa; }
+#dl { background: var(--zx-green) !important; color: var(--zx-green-ink) !important; }
+#dl:hover { background: var(--zx-green-hi) !important; }
+section.faq h3 a { color: #fff; }
+section.faq h3 a:hover { color: var(--zx-green); }
