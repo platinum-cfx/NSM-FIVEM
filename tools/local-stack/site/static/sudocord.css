@@ -1,0 +1,750 @@
+/* ============================================================================
+   NSM — Sudocord design layer
+   A glass-and-gradient dark skin applied over style.css without touching it.
+   Loaded after style.css; every rule here wins by cascade or specificity.
+   ========================================================================== */
+
+:root {
+  /* palette: deep space blacks + violet/cyan glass */
+  --bg: #07080d;
+  --bg2: #0b0d16;
+  --bg3: #111426;
+  --card: rgba(255, 255, 255, 0.045);
+  --card-hover: rgba(255, 255, 255, 0.085);
+  --line: rgba(255, 255, 255, 0.08);
+  --line2: rgba(255, 255, 255, 0.16);
+  --fg: #f2f3ff;
+  --fg-bright: #ffffff;
+  --muted: #9ba3bd;
+  --accent: #7c6cff;
+  --accent2: #4cc9f0;
+  --cyan: #6fe3ff;
+  --amber: #ffc857;
+  --green: #3ddc97;
+  --red: #ff5470;
+
+  /* NSM token mirrors (used across templates) */
+  --color-bg: #07080d;
+  --color-fg: #ffffff;
+  --color-accent-1: #7c6cff;
+  --color-accent-1-10: rgba(124, 108, 255, 0.14);
+  --color-accent-1-50: rgba(124, 108, 255, 0.45);
+  --color-accent-2: #2aa5c9;
+  --color-accent-2-50: rgba(76, 201, 240, 0.45);
+  --nsm-main: #07080d;
+  --nsm-main-50: #0b0d16;
+  --nsm-main-100: #111426;
+  --nsm-main-200: #1a1e36;
+  --nsm-main-300: #262c4d;
+
+  --font: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  --font-header: 'Space Grotesk', 'Inter', 'Segoe UI', sans-serif;
+
+  --sud-grad-text: linear-gradient(115deg, #ffffff 25%, #c3b6ff 55%, #6fe3ff 90%);
+  --sud-grad-btn: linear-gradient(120deg, #8f7cff, #6a5cff 55%, #4cc9f0 130%);
+  --sud-radius: 18px;
+  --sud-radius-lg: 26px;
+}
+
+/* ---------- base ---------- */
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #07080d !important;
+  background-image:
+    radial-gradient(70% 55% at 78% -8%, rgba(124, 108, 255, 0.22), transparent 60%),
+    radial-gradient(55% 45% at 12% 12%, rgba(76, 201, 240, 0.12), transparent 62%),
+    radial-gradient(90% 70% at 50% 120%, rgba(124, 108, 255, 0.10), transparent 60%) !important;
+  background-attachment: fixed !important;
+  color: var(--fg);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(124, 108, 255, 0.45);
+  color: #fff;
+}
+
+h1, h2, h3, h4, .h1, .h2, .h3 {
+  font-family: var(--font-header);
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+  color: var(--fg-bright);
+  font-weight: 700;
+}
+
+p {
+  line-height: 1.65;
+}
+
+a {
+  color: var(--cyan);
+  text-decoration-color: rgba(111, 227, 255, 0.4);
+  text-underline-offset: 3px;
+  transition: color 0.18s ease, text-decoration-color 0.18s ease;
+}
+a:hover {
+  color: #fff;
+  text-decoration-color: rgba(255, 255, 255, 0.7);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 1.5rem 0;
+}
+
+code {
+  background: rgba(124, 108, 255, 0.14);
+  border: 1px solid rgba(124, 108, 255, 0.22);
+  border-radius: 8px;
+  padding: 0.12em 0.45em;
+  font-size: 0.9em;
+  color: #d7d0ff;
+}
+
+/* ---------- glass primitives ---------- */
+
+.glass, .card, article.a1, article.a2, article.a3, article.a4,
+.stat-table, .sud-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--sud-radius);
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+}
+
+/* ---------- buttons ---------- */
+
+.btn, .sud-btn, .ghostbtn .in, a#dl, button, input[type="submit"] {
+  font-family: var(--font-header);
+  border-radius: 999px;
+  transition: transform 0.16s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.btn, .sud-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0.72rem 1.5rem;
+  border: 1px solid var(--line2);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--fg-bright);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.btn:hover, .sud-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+  color: #fff;
+}
+
+.btn.primary, .sud-btn.primary, a#dl, button[type="submit"], input[type="submit"] {
+  background: #ffffff;
+  color: #0b0d16;
+  border-color: transparent;
+  box-shadow: 0 10px 34px rgba(124, 108, 255, 0.35);
+  font-weight: 700;
+}
+.btn.primary:hover, .sud-btn.primary:hover, a#dl:hover, button[type="submit"]:hover {
+  background: #f0edff;
+  color: #0b0d16;
+  transform: translateY(-2px);
+  box-shadow: 0 16px 44px rgba(124, 108, 255, 0.5);
+}
+
+.ghostbtn .in, .sud-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.72rem 1.45rem;
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg-bright);
+  font-weight: 600;
+}
+.ghostbtn:hover .in, .sud-ghost:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.09);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+/* ---------- top nav (floating glass) ---------- */
+
+.bg-holder > .container > .spacer {
+  padding-top: 18px;
+}
+
+.nsm-top-header {
+  background: rgba(13, 15, 26, 0.6) !important;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  backdrop-filter: blur(22px) saturate(1.3);
+  -webkit-backdrop-filter: blur(22px) saturate(1.3);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.35);
+  margin: 0 0 8px;
+}
+
+.nsm-top-header .hbar {
+  padding: 0.55rem 1.15rem;
+  align-items: center;
+}
+
+.nsm-top-header .logo-title {
+  font-family: var(--font-header);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-size: 1.12rem;
+}
+
+.nsm-top-header .links {
+  gap: 0.15rem;
+  align-items: center;
+}
+
+.nsm-top-header .links li a {
+  color: var(--muted);
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  font-weight: 500;
+  font-size: 0.92rem;
+  transition: color 0.16s ease, background 0.16s ease;
+}
+.nsm-top-header .links li a:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+}
+.nsm-top-header .links li a.active {
+  color: #fff;
+  background: rgba(124, 108, 255, 0.22);
+}
+
+/* ---------- homepage: sudocord rhythm ---------- */
+
+.bg-holder.with-bg {
+  background:
+    radial-gradient(72% 88% at 82% -6%, rgba(124, 108, 255, 0.30), transparent 58%),
+    radial-gradient(48% 62% at 8% 22%, rgba(76, 201, 240, 0.14), transparent 60%) !important;
+  padding-bottom: 40px;
+}
+
+.sud-hero {
+  position: relative;
+  padding: 96px 0 84px;
+  overflow: hidden;
+}
+
+.sud-hero .sud-hero-bg {
+  position: absolute;
+  inset: -20% -10% auto auto;
+  width: 620px;
+  height: 620px;
+  background:
+    radial-gradient(38% 38% at 62% 40%, rgba(124, 108, 255, 0.5), transparent 70%),
+    radial-gradient(30% 30% at 38% 62%, rgba(76, 201, 240, 0.4), transparent 70%),
+    radial-gradient(24% 24% at 66% 70%, rgba(255, 106, 193, 0.25), transparent 70%);
+  filter: blur(46px);
+  opacity: 0.75;
+  pointer-events: none;
+  animation: sud-float 16s ease-in-out infinite alternate;
+}
+
+.sud-hero .sud-hero-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(70% 70% at 50% 30%, #000 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(70% 70% at 50% 30%, #000 20%, transparent 75%);
+  pointer-events: none;
+}
+
+@keyframes sud-float {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(-36px, 26px, 0) scale(1.07); }
+}
+
+.sud-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 1.15rem;
+}
+.sud-eyebrow .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sud-grad-btn);
+  box-shadow: 0 0 12px rgba(124, 108, 255, 0.9);
+}
+
+.sud-h1 {
+  font-size: clamp(2.7rem, 6.2vw, 4.6rem);
+  margin: 0 0 1.35rem;
+  max-width: 15ch;
+}
+.sud-h1 .grad {
+  background: var(--sud-grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.sud-h2 {
+  font-size: clamp(1.9rem, 3.6vw, 2.9rem);
+  margin: 0 0 1rem;
+}
+.sud-h2 .grad {
+  background: var(--sud-grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.sud-lead {
+  font-size: 1.18rem;
+  color: var(--muted);
+  max-width: 54ch;
+  margin: 0 0 2rem;
+}
+
+.sud-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.95rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+/* the big download button with in-button sublabel (sudocord style) */
+a#dl, .sud-btn.primary {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.85rem 1.9rem;
+  border-radius: 16px;
+}
+a#dl .txt, .sud-btn.primary .txt {
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+a#dl .desc, .sud-btn.primary .desc {
+  font-size: 0.78rem;
+  opacity: 0.72;
+  font-weight: 500;
+}
+
+.sud-meta {
+  font-size: 0.82rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0.9rem 0 0;
+}
+
+.sud-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 1.05rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.92rem;
+  color: var(--muted);
+  margin-bottom: 1.65rem;
+}
+.sud-live strong {
+  color: var(--fg-bright);
+  font-variant-numeric: tabular-nums;
+}
+
+.sud-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 1.75rem;
+}
+.sud-quick a {
+  padding: 0.42rem 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.sud-quick a:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* sections */
+
+.sud-section {
+  padding: 88px 0;
+  position: relative;
+}
+.sud-section.tight {
+  padding: 56px 0;
+}
+
+.sud-card {
+  padding: 1.65rem 1.55rem;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.22s ease, border-color 0.22s ease, background 0.22s ease;
+}
+.sud-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(124, 108, 255, 0.45);
+  background: var(--card-hover);
+}
+.sud-card .num {
+  display: block;
+  font-family: var(--font-header);
+  font-size: 2.35rem;
+  font-weight: 700;
+  background: var(--sud-grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  line-height: 1.1;
+  margin-bottom: 0.45rem;
+}
+.sud-card h3 {
+  font-size: 1.12rem;
+  margin: 0 0 0.55rem;
+}
+.sud-card p {
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin: 0;
+}
+.sud-card .sud-tag {
+  display: inline-block;
+  margin-bottom: 0.85rem;
+  padding: 0.22rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(124, 108, 255, 0.35);
+  background: rgba(124, 108, 255, 0.14);
+  color: #c9beff;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.sud-card .sud-card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 1.15rem;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--fg-bright);
+  text-decoration: none;
+}
+.sud-card .sud-card-link .arrow {
+  transition: transform 0.18s ease;
+}
+.sud-card:hover .sud-card-link .arrow {
+  transform: translateX(4px);
+}
+
+/* feature grid (the 8 feature articles restyled) */
+.sud-grid {
+  display: grid;
+  gap: 1.15rem;
+}
+.sud-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.sud-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.sud-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+
+/* checklist (trust rows) */
+.sud-checks {
+  display: grid;
+  gap: 0.85rem;
+}
+.sud-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 1.05rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.sud-check .tick {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(61, 220, 151, 0.16);
+  border: 1px solid rgba(61, 220, 151, 0.45);
+  color: var(--green);
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-top: 1px;
+}
+.sud-check span.txt {
+  color: var(--fg);
+  line-height: 1.55;
+}
+
+/* info note (the little "i" callout) */
+.sud-note {
+  display: flex;
+  gap: 0.95rem;
+  align-items: flex-start;
+  padding: 1.15rem 1.35rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 14px;
+  background: rgba(124, 108, 255, 0.08);
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+.sud-note .i {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba(124, 108, 255, 0.5);
+  color: #c9beff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-style: italic;
+  font-weight: 700;
+  font-family: var(--font-header);
+}
+
+/* specs tables */
+.sud-specs {
+  padding: 1.75rem 1.75rem 1.15rem;
+}
+.sud-specs h3 {
+  margin: 0 0 1rem;
+  font-size: 1.22rem;
+}
+.sud-specs .stat-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: transparent;
+  border: 0;
+}
+.sud-specs .stat-table td {
+  padding: 0.62rem 0.45rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.93rem;
+}
+.sud-specs .stat-table td.stat {
+  color: var(--fg-bright);
+  font-family: var(--font-header);
+  font-weight: 600;
+  width: 72px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+}
+
+/* FAQ */
+.sud-faq-item {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  padding: 1.35rem 1.55rem;
+  margin-bottom: 0.85rem;
+}
+.sud-faq-item h3 {
+  margin: 0 0 0.55rem;
+  font-size: 1.05rem;
+}
+.sud-faq-item h3 a {
+  color: var(--fg-bright);
+  text-decoration: none;
+}
+.sud-faq-item h3 a:hover {
+  color: var(--cyan);
+}
+.sud-faq-item p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.97rem;
+}
+
+/* final CTA */
+.sud-cta {
+  text-align: center;
+  padding: 104px 0 112px;
+  position: relative;
+  overflow: hidden;
+}
+.sud-cta::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(52% 90% at 50% 110%, rgba(124, 108, 255, 0.32), transparent 65%);
+  pointer-events: none;
+}
+.sud-cta .sud-h2 {
+  margin-left: auto;
+  margin-right: auto;
+}
+.sud-cta .sud-lead {
+  margin-left: auto;
+  margin-right: auto;
+}
+.sud-cta .sud-btn-row {
+  justify-content: center;
+}
+
+/* section divider label like "— downloads" */
+.sud-sublabel {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  margin-bottom: 2.15rem;
+}
+.sud-sublabel::before {
+  content: "";
+  width: 34px;
+  height: 1px;
+  background: var(--line2);
+}
+
+/* ---------- chrome on every other page ---------- */
+
+main {
+  display: block;
+}
+
+footer {
+  border-top: 1px solid var(--line) !important;
+  background: rgba(9, 10, 18, 0.72) !important;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  margin-top: 3.5rem;
+  padding: 2.75rem 0 1.5rem;
+}
+footer .muted {
+  color: var(--muted);
+}
+footer .links li a {
+  color: var(--muted);
+}
+footer .links li a:hover {
+  color: #fff;
+}
+
+/* inputs / forms (login, register, account pages) */
+input[type="text"], input[type="email"], input[type="password"], input[type="search"],
+input[type="number"], input[type="url"], textarea, select {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid var(--line2) !important;
+  border-radius: 12px !important;
+  color: var(--fg-bright) !important;
+  padding: 0.68rem 0.95rem;
+  font-family: var(--font);
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: rgba(124, 108, 255, 0.65) !important;
+  box-shadow: 0 0 0 3px rgba(124, 108, 255, 0.22);
+}
+
+/* generic table restyle */
+table {
+  border-color: var(--line);
+}
+td, th {
+  border-color: var(--line);
+}
+
+/* badges, pills, chips that templates use */
+.badge, .ea-badge {
+  border-radius: 999px !important;
+  border: 1px solid rgba(124, 108, 255, 0.4);
+  background: rgba(124, 108, 255, 0.16);
+  color: #d3caff;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.32rem 0.95rem;
+}
+
+/* material icons default tint */
+.material-icons-outlined {
+  color: var(--cyan);
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 980px) {
+  .sud-grid.cols-3, .sud-grid.cols-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .sud-hero {
+    padding: 64px 0 56px;
+  }
+  .sud-hero .sud-hero-bg {
+    width: 380px;
+    height: 380px;
+    right: -20%;
+  }
+  .sud-section {
+    padding: 60px 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .sud-grid.cols-2, .sud-grid.cols-3, .sud-grid.cols-4 {
+    grid-template-columns: 1fr;
+  }
+  .sud-h1 {
+    font-size: 2.35rem;
+  }
+  a#dl, .sud-btn.primary {
+    width: 100%;
+    align-items: center;
+    text-align: center;
+    border-radius: 16px;
+  }
+}
