@@ -131,6 +131,12 @@ func loadStatus() {
 	statusMu.Lock()
 	statusMon = s.Components
 	statusIncidents = s.Incidents
+	// Recent holds live probe results of THIS process only. Failures from a
+	// previous run (or a previous deployment) must not label a service that
+	// works right now as down.
+	for _, c := range statusMon {
+		c.Recent = nil
+	}
 	statusMu.Unlock()
 }
 
@@ -317,13 +323,16 @@ type statusView struct {
 	Incidents   []statusIncident      `json:"incidents"`
 }
 
-// statusHealthLabel classifies a component from its recent samples.
+// statusHealthLabel classifies a component from its most recent probes. Only
+// the last few checks count, so a recovered service shows "operational" within
+// a probe or two instead of staying red from stale history. Long-term uptime
+// percentages come from the per-day aggregates and are unaffected.
 func statusHealthLabel(c *statusComponent) string {
 	n := len(c.Recent)
 	if n == 0 {
 		return "operational"
 	}
-	window := 30
+	window := 3
 	if n < window {
 		window = n
 	}
@@ -333,12 +342,12 @@ func statusHealthLabel(c *statusComponent) string {
 			fails++
 		}
 	}
-	switch {
-	case fails == 0:
+	switch fails {
+	case 0:
 		return "operational"
-	case fails <= 2:
+	case 1:
 		return "degraded"
-	case fails < window/2:
+	case 2:
 		return "partial-outage"
 	default:
 		return "major-outage"
