@@ -635,6 +635,18 @@ jobs:
               assert len(data) == orig_len
               return bytes(data)
 
+          import base64 as _b64mod
+          NSM_LOGO_PNG = Path("tools/local-stack/site/static/nsm-icon.png").read_bytes()
+          LOGO_NAME_RE = re.compile(r"(logo|wordmark|brandmark|cfx|five.?m|citizen|swipe|intro|splash|loader|banner|mark)")
+          OLD_LOGO_PATH = b"M37.97 86.09h23.62l9.1-36.7L55.34 15.8 37.97 86.09zM115.69 15.8H61.59L49.55 37.97l33.57 35.19 6.72-26.97h7.56l18.29-30.39zM86.94 64.03l31.9-31.9-5.9-21.37H64.54l-2.36 4.72 54.1 54.69-29.34-6.14zM141.68 154.99L78.08 91.4 31.48 99.67 16.71 158.53h42.53l12.4-50.2h7.68l12.4 50.2h42.53l-7.43-28.94 14.86 25.4z"
+          NEW_LOGO_PATH = b"M39 155V25H68L128 106V25H153V155H123L64 74V155H39Z"
+          _logo_b64 = _b64mod.b64encode(NSM_LOGO_PNG).decode("ascii")
+          BOOT_FIXER = ("""<script data-nsm="1">
+          (function(){var L='data:image/png;base64,LOGO_B64';var rx=/logo|wordmark|cfx|five.?m|citizen|swipe|intro|splash/i;function sw(v){try{var n=document.createElement('img');n.src=L;n.setAttribute('data-nsm','1');if(v.getAttribute('class'))n.setAttribute('class',v.getAttribute('class')+' nsm-logo-swap');if(v.parentNode)v.parentNode.replaceChild(n,v);}catch(e){}}
+          function fix(){try{var els=document.querySelectorAll('img,svg,canvas');for(var i=0;i<els.length;i++){var el=els[i];if(el.hasAttribute('data-nsm')||el.hasAttribute('data-nsm-fixed'))continue;if(el.tagName==='IMG'){var s=el.getAttribute('src')||'',a=el.getAttribute('alt')||'';if(rx.test(s)||rx.test(a)){el.src=L;el.setAttribute('data-nsm','1');}}else if(el.tagName==='SVG'){var k=(el.getAttribute('class')||'')+' '+(el.getAttribute('id')||''),t=el.textContent||'';if(rx.test(k)||/fivem|cfx|citizen/i.test(t))sw(el);}else if(el.tagName==='CANVAS'){var p=el.closest&&el.closest('[class*="intro" i],[class*="splash" i],[class*="boot" i],[class*="loading" i]');if(p){el.style.display='none';if(!p.querySelector('img[data-nsm]')){var n=document.createElement('img');n.src=L;n.setAttribute('data-nsm','1');p.appendChild(n);}}}}var cs=document.querySelectorAll('[class*="intro" i],[class*="splash" i]');for(var j=0;j<cs.length;j++){var c=cs[j];if(c.hasAttribute('data-nsm-fixed'))continue;var m=c.querySelector('img,svg,canvas');if(m){if(m.tagName==='CANVAS'){m.style.display='none';var n2=document.createElement('img');n2.src=L;n2.setAttribute('data-nsm','1');m.parentNode.insertBefore(n2,m);}else{m.src=L;m.setAttribute('data-nsm','1');}c.setAttribute('data-nsm-fixed','1');}}var bg=document.querySelectorAll('[class*="logo" i],[id*="logo" i],[class*="wordmark" i]');for(var k2=0;k2<bg.length;k2++){var b=bg[k2];if(b.tagName==='IMG'||b.tagName==='SVG')continue;b.style.backgroundImage="url('"+L+"')";b.style.backgroundSize='contain';b.style.backgroundRepeat='no-repeat';b.style.backgroundPosition='center';}}catch(e){}}
+          fix();if(document.readyState!=='loading'){fix();}else{document.addEventListener('DOMContentLoaded',fix);}setTimeout(fix,250);setTimeout(fix,900);setTimeout(fix,2000);try{var mo=new MutationObserver(function(){fix();});var at=function(){if(document.body)mo.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class','src','style']});};if(document.body)at();else document.addEventListener('DOMContentLoaded',at);}catch(e){})();
+          </script>""").replace("LOGO_B64", _logo_b64).encode("utf-8")
+          CSS_FORCE = ("/* NSM logo force */[class*=\"logo\" i],[id*=\"logo\" i],[class*=\"wordmark\" i],[id*=\"wordmark\" i]{background-image:url('data:image/png;base64,LOGO_B64')!important;background-size:contain!important;background-repeat:no-repeat!important;background-position:center!important}").replace("LOGO_B64", _logo_b64).encode("utf-8")
           def patch_ui_archive(raw_bytes):
               buf = io.BytesIO()
               with zipfile.ZipFile(io.BytesIO(raw_bytes), "r") as zin, zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zout:
@@ -643,7 +655,7 @@ jobs:
                           continue
                       body = zin.read(info.filename)
                       lower = info.filename.lower()
-                      if lower.endswith((".js", ".html", ".json")):
+                      if lower.endswith((".js", ".html", ".json", ".css", ".svg")):
                           body = body.replace(
                               b"init({dsn:`http://127.0.0.1/sentry-ingest`,tracesSampleRate:.05",
                               b"init({enabled:!1,dsn:void 0,tracesSampleRate:0",
@@ -660,6 +672,10 @@ jobs:
                           body = body.replace(b"cfx.re/join", b"nsmultiplayer.com/join")
                           body = body.replace(b"http://127.0.0.1:80", b"https://nsmultiplayer.com")
                           body = body.replace(b"http://127.0.0.1", b"https://nsmultiplayer.com")
+                          # NSM: swap the FiveM logo artwork path + brand green for the blue NSM N
+                          body = body.replace(OLD_LOGO_PATH, NEW_LOGO_PATH)
+                          body = body.replace(b"#66AD43", b"#2F7BFF").replace(b"#66ad43", b"#2f7bff")
+                          body = body.replace(b"rgb(102, 173, 67)", b"rgb(47, 123, 255)").replace(b"rgb(102,173,67)", b"rgb(47,123,255)")
                           for pat in EMAIL_REGEX_PATTERNS:
                               body = body.replace(pat, b"/^[^\\s]{2,}$/")
                           if lower in ("app/index.html", "index.html"):
@@ -673,6 +689,18 @@ jobs:
                                       body = body.replace(b"</body>", POLL_SNIPPET + b"</body>", 1)
                                   else:
                                       body += POLL_SNIPPET
+                      # NSM: logo asset swap + boot fixer injection (all entry types)
+                      if not lower.endswith("nsm-logo.png") and LOGO_NAME_RE.search(lower) and lower.endswith((".png", ".svg", ".jpg", ".jpeg", ".webp", ".gif")):
+                          body = NSM_LOGO_PNG
+                      elif lower.endswith(".svg") and re.search(rb"fivem|cfx|citizen", body, re.I):
+                          body = NSM_LOGO_PNG
+                      if lower.endswith((".html", ".htm")) and b'data-nsm="1"' not in body:
+                          if b"</head>" in body:
+                              body = body.replace(b"</head>", CSS_FORCE + b"</head>", 1)
+                          if b"</body>" in body:
+                              body = body.replace(b"</body>", BOOT_FIXER + b"</body>", 1)
+                      elif lower.endswith(".css"):
+                          body = body + b"\n" + CSS_FORCE
                       zout.writestr(info.filename, body)
               return buf.getvalue()
 
@@ -735,6 +763,10 @@ jobs:
                   patched_ui = patch_ui_archive(zin.read("NSM-Client/citizen/ui.zip"))
                   overlay["NSM-Client/AxiomFX/ui.zip"] = patched_ui
                   Path("/tmp/patched-ui.zip").write_bytes(patched_ui)
+              if "NSM-Client/citizen/ui-big.zip" in zin.namelist():
+                  patched_big = patch_ui_archive(zin.read("NSM-Client/citizen/ui-big.zip"))
+                  overlay["NSM-Client/AxiomFX/ui-big.zip"] = patched_big
+                  Path("/tmp/patched-ui-big.zip").write_bytes(patched_big)
 
               if "NSM-Client/components.json" in zin.namelist():
                   comp_raw = zin.read("NSM-Client/components.json")
