@@ -187,14 +187,45 @@ func issueServerKey(u *User, label, boundEndpoint string, ttl time.Duration) (st
 
 	accMu.Lock()
 	ensureAccountsInitializedLocked()
+	// One active server key per account: issuing revokes every prior key.
+	var revoked []string
+	for i := range acc.ServerKeys {
+		rec0 := &acc.ServerKeys[i]
+		if rec0.UserID == u.ID && !rec0.Revoked {
+			rec0.Revoked = true
+			revoked = append(revoked, rec0.ID)
+		}
+	}
 	rec.JoinCode = ensureJoinCodeForKeyLocked(&rec)
 	acc.ServerKeys = append(acc.ServerKeys, rec)
 	saveAccountsLocked()
 	accMu.Unlock()
+	// registry eviction nests locks the other way - never under accMu
+	for _, id := range revoked {
+		reg.evictByKey(id)
+	}
 
 	fullKey := keyID + "." + secret
 	log.Printf("[keymaster] issued key %s for user %s (id %d)", keyID, u.Username, u.ID)
 	return fullKey, rec, nil
+}
+
+// revokeServerKeyAndEvict marks a server key revoked and drops its live
+// registry entry immediately so a recycled port cannot stay claimed.
+func revokeServerKeyAndEvict(keyID string) {
+	if keyID == "" {
+		return
+	}
+	accMu.Lock()
+	ensureAccountsInitializedLocked()
+	for i := range acc.ServerKeys {
+		if acc.ServerKeys[i].ID == keyID {
+			acc.ServerKeys[i].Revoked = true
+		}
+	}
+	saveAccountsLocked()
+	accMu.Unlock()
+	reg.evictByKey(keyID)
 }
 
 // validateServerKey validates a raw NSM key fail-closed.

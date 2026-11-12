@@ -79,6 +79,8 @@ const (
 
 // HostedServer is one customer city.
 type HostedServer struct {
+	KeyID  string `json:"keyId,omitempty"`  // keymaster server key id (auto-issued)
+	KeyRaw string `json:"keyRaw,omitempty"` // raw key written into server.cfg (owner-only)
 	ID          string   `json:"id"`
 	Owner       int64    `json:"owner"`
 	OwnerName   string   `json:"ownerName"`
@@ -535,10 +537,64 @@ func (m *hostingManager) deploy(u *User, name, region, reqHost string) (*HostedS
 	return s, nil
 }
 
+// ensureServerKey issues this hosted server's keymaster key on first install
+// so the game server can authenticate its heartbeat. One active key per
+// account: issuing revokes prior keys (see issueServerKey).
+func (m *hostingManager) ensureServerKey(s *HostedServer) {
+	if s.KeyRaw != "" {
+		return
+	}
+	own := userByID(s.Owner)
+	if own == nil {
+		return
+	}
+	raw, rec, err := issueServerKey(own, "Hosted: "+s.Name, "", 0)
+	if err != nil {
+		return
+	}
+	s.KeyID, s.KeyRaw = rec.ID, raw
+	m.mu.Lock()
+	m.saveLocked()
+	m.mu.Unlock()
+}
+
+// hostingPublicHostForPort maps a game port to the public host recorded for
+// the hosted server that owns it, so heartbeats arriving over loopback still
+// publish a reachable endpoint.
+func hostingPublicHostForPort(port int) string {
+	m := hostMgrV
+	if m == nil {
+		return ""
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, srv := range m.st.Servers {
+		if srv.GameUDPPort == port || srv.GameTCPPort == port {
+			return publicHostOf(srv)
+		}
+	}
+	return ""
+}
+
+// joinBaseURL is the site origin a shareable join link should carry.
+func joinBaseURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if xp := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))); xp == "https" {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
 // install downloads/locates the official server files and copies them into
 // the city's isolated directory, verifying the result.
 func (m *hostingManager) install(s *HostedServer) error {
 	m.setStatus(s, hostInstalling)
+	// issue this server's keymaster key first so the generated config can
+	// carry it even when file installation fails and is retried later
+	m.ensureServerKey(s)
 	m.appendLog(s, "[system] status: installing")
 	m.appendLog(s, "[system] installing official NSM server files")
 
@@ -622,8 +678,16 @@ func (m *hostingManager) generateCfg(s *HostedServer, instDir string) string {
 	fmt.Fprintf(&b, "sv_maxclients %d\n", hostingPackage.Slots)
 	fmt.Fprintf(&b, "sets sv_region \"%s\"\n", s.Region)
 	b.WriteString("sets sv_nsmHosted \"1\"\n")
-	b.WriteString("# paste the server key from AFX Portal (shown only when you create it):\n")
-	b.WriteString("# sets sv_nsmServerKey \"nsm_srv_...\"\n")
+	// sv_lan 1 turns off the stock auth-ticket requirement - our stack runs
+	// ticketless and the server impl keeps internet play working in lan mode.
+	// Without it players are rejected with "No authentication ticket was specified".
+	b.WriteString("sv_lan 1\n")
+	if s.KeyRaw != "" {
+		fmt.Fprintf(&b, "sets sv_nsmServerKey %q\n", s.KeyRaw)
+	} else {
+		b.WriteString("# paste the server key from AFX Portal (shown only when you create it):\n")
+		b.WriteString("# sets sv_nsmServerKey \"nsm_srv_...\"\n")
+	}
 	// only ensure resources that really exist in this server package
 	res := discoverResources(instDir)
 	if len(res) == 0 {
@@ -1165,7 +1229,7 @@ func dashboardServerPage(w http.ResponseWriter, r *http.Request) {
 		"Title": snap.Name + " - NSM Hosting", "S": snap, "PKG": hostingPackage,
 		"Tab": panelTab(r.URL.Query().Get("tab")), "Players": players,
 		"First": hostingPortFirst, "Last": hostingPortLast,
-		"Host": publicHostOf(snap),
+		"Host": publicHostOf(snap), "JoinBase": joinBaseURL(r),
 	})
 }
 
@@ -1285,6 +1349,7 @@ func apiHostDelete(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
+	revokeServerKeyAndEvict(s.KeyID)
 	m.delete(s)
 	sendJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

@@ -1033,14 +1033,20 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			ip = override
 		}
-		if isPublicMode && configuredPublicIP != "" {
-			if parsed := net.ParseIP(ip); parsed != nil && parsed.IsLoopback() {
-				ip = configuredPublicIP
-			}
-		}
 		port := hb.Port
 		if port == 0 {
 			port = 30120
+		}
+		if parsed := net.ParseIP(ip); parsed != nil && parsed.IsLoopback() {
+			// Heartbeats over loopback carry no usable address. Prefer the
+			// host the hosting panel recorded for this port, then the
+			// configured public IP - never publish loopback endpoints or
+			// clients hang on "fetching" forever.
+			if h := hostingPublicHostForPort(int(port)); h != "" {
+				ip = h
+			} else if isPublicMode && configuredPublicIP != "" {
+				ip = configuredPublicIP
+			}
 		}
 		endPoint := net.JoinHostPort(ip, strconv.FormatInt(port, 10))
 		rawKey := extractHeartbeatServerKey(r, hb)
@@ -1408,6 +1414,9 @@ func main() {
 	}
 	configuredPublicURL = strings.TrimRight(strings.TrimSpace(*pubURL), "/")
 	configuredPublicIP = strings.TrimSpace(*pubIP)
+	if ticketPublicKey == "" {
+		log.Printf("[tickets] no trusted ticket key configured - /api/ticket/pubkey reports unconfigured (fine while servers run sv_lan 1)")
+	}
 	isPublicMode = !parsedBind.IsLoopback() || configuredPublicURL != "" || configuredPublicIP != ""
 	if isPublicMode && configuredPublicIP == "" {
 		configuredPublicIP = detectOutboundIPv4()
