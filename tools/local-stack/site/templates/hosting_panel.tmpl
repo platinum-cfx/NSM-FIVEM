@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&family=JetBrains+Mono:wght@400;500;700&family=Material+Icons+Outlined&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=090b">
-  <link rel="stylesheet" href="/css/zapx.css?v=10">
-  <link rel="stylesheet" href="/css/panel.css?v=3">
+  <link rel="stylesheet" href="/css/style.css?v=090d">
+  <link rel="stylesheet" href="/css/zapx.css?v=12">
+  <link rel="stylesheet" href="/css/panel.css?v=5">
 </head>
 <body class="pnl-page">
 {{end}}
@@ -148,7 +148,7 @@ function supFilter(f){
   });
 }
 </script>
-<script src="/js/main.js?v=078n"></script></body></html>
+<script src="/js/main.js?v=079a"></script></body></html>
 {{end}}
 
 {{define "panel-rail"}}
@@ -192,24 +192,28 @@ function supFilter(f){
             <div class="pnl-sub"><span class="pnl-live-dot"></span> {{.Online}} online &middot; {{.Total}} service{{if ne .Total 1}}s{{end}} total &middot; up to {{.MaxServers}} per account</div>
             <a class="pnl-btn-green" href="/hosting/create">&#128722; Deploy server</a>
           </div>
-          <div class="pnl-pass pnl-pass-link" id="pnl-pass" onclick="location.href='/u/{{.User.Username}}'">
+          <div class="pnl-pass pnl-pass-link" id="pnl-pass" role="link" tabindex="0" title="Open profile settings" onclick="location.href='/u/{{.User.Username}}?tab=preferences'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.href='/u/{{.User.Username}}?tab=preferences'}">
             <div class="pnl-pass-banner"></div>
             <div class="pnl-pass-glow"></div>
-            <img class="av pav" src="/avatars/u/{{.User.Username}}/128.png?v=1" alt="" onerror="this.style.display='none'">
-            <div class="pnl-pass-info">
-              <div class="lbl">Pulse Pass</div>
-              <div class="nm">{{.User.Username}} <span class="pnl-arr">&#8250;</span></div>
-              <div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">NSM Hosting</span></div>
-              <div class="foot">Free forever &middot; every feature included</div>
+            <div class="pnl-pass-row">
+              <img class="av pav" src="/avatars/u/{{.User.Username}}/128.png?v=1" alt="" onerror="this.style.display='none'">
+              <div class="pnl-pass-info">
+                <div class="lbl">Pulse Pass</div>
+                <div class="nm">{{.User.Username}} <span class="pnl-arr">&#8250;</span></div>
+                <div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">NSM Hosting</span></div>
+              </div>
+              <a class="manage manage-ring" href="/u/{{.User.Username}}?tab=preferences" onclick="event.stopPropagation()">&#9998; Manage</a>
             </div>
-            <a class="manage manage-ring" href="/u/{{.User.Username}}">&#9998; Manage</a>
-            <div class="pnl-pass-colors" title="Banner colour" onclick="event.stopPropagation()">
-              <span class="pc-lbl">banner</span>
-              <button onclick="event.stopPropagation();pnlPassColor('#4c2a86','#1b1030')" style="background:linear-gradient(135deg,#4c2a86,#1b1030)"></button>
-              <button onclick="event.stopPropagation();pnlPassColor('#0e5c3a','#072418')" style="background:linear-gradient(135deg,#0e5c3a,#072418)"></button>
-              <button onclick="event.stopPropagation();pnlPassColor('#1e3a8a','#0c1a3e')" style="background:linear-gradient(135deg,#1e3a8a,#0c1a3e)"></button>
-              <button onclick="event.stopPropagation();pnlPassColor('#7c2d12','#2a1006')" style="background:linear-gradient(135deg,#7c2d12,#2a1006)"></button>
-              <button onclick="event.stopPropagation();pnlPassColor('#334155','#111827')" style="background:linear-gradient(135deg,#334155,#111827)"></button>
+            <div class="pnl-pass-foot">
+              <div class="foot">Free forever &middot; every feature included</div>
+              <div class="pnl-pass-colors" title="Banner colour" onclick="event.stopPropagation()">
+                <span class="pc-lbl">banner</span>
+                <button onclick="event.stopPropagation();pnlPassColor('#4c2a86','#1b1030')" style="background:linear-gradient(135deg,#4c2a86,#1b1030)"></button>
+                <button onclick="event.stopPropagation();pnlPassColor('#0e5c3a','#072418')" style="background:linear-gradient(135deg,#0e5c3a,#072418)"></button>
+                <button onclick="event.stopPropagation();pnlPassColor('#1e3a8a','#0c1a3e')" style="background:linear-gradient(135deg,#1e3a8a,#0c1a3e)"></button>
+                <button onclick="event.stopPropagation();pnlPassColor('#7c2d12','#2a1006')" style="background:linear-gradient(135deg,#7c2d12,#2a1006)"></button>
+                <button onclick="event.stopPropagation();pnlPassColor('#334155','#111827')" style="background:linear-gradient(135deg,#334155,#111827)"></button>
+              </div>
             </div>
           </div>
         </div>

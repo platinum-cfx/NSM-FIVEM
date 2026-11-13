@@ -363,10 +363,9 @@ body.nsm-swap-fade { animation: nsmFadeIn .18s ease; }
 .pnl-mini-btn:hover { transform: translateY(-1px); filter: brightness(1.08); }
 
 /* pass card: banner strip, inner glow, glowing edit ring */
-.pnl-pass { padding-top: 0; flex-wrap: wrap; }
 .pnl-pass-banner { position: absolute; inset: 0 0 auto 0; height: 76px; background: linear-gradient(115deg, var(--pnl-pass-a,#1d4ed8), var(--pnl-pass-b,#0b1a4a) 55%, rgba(255,255,255,.14)); opacity: .95; border-radius: 22px 22px 0 0; }
 .pnl-pass-glow { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(420px 190px at 18% -40%, rgba(255,255,255,.28), transparent 65%); mix-blend-mode: screen; }
-.pnl-pass > .av, .pnl-pass > div:not(.pnl-pass-colors):not(.pnl-pass-banner):not(.pnl-pass-glow) { position: relative; z-index: 1; }
+.pnl-pass .av, .pnl-pass > div:not(.pnl-pass-colors):not(.pnl-pass-banner):not(.pnl-pass-glow), .pnl-pass .pnl-pass-row, .pnl-pass .pnl-pass-foot { position: relative; z-index: 1; }
 .pnl-pass .manage.manage-ring { position: relative; z-index: 1; font-weight: 800; box-shadow: 0 0 0 2px rgba(255,255,255,.9), 0 0 18px 4px rgba(96,165,250,.75), 0 0 34px 10px rgba(96,165,250,.35); animation: pnlRing 2.6s ease-in-out infinite; }
 @keyframes pnlRing {
   0%,100% { box-shadow: 0 0 0 2px rgba(255,255,255,.9), 0 0 18px 4px rgba(96,165,250,.75), 0 0 34px 10px rgba(96,165,250,.35); }
@@ -375,6 +374,25 @@ body.nsm-swap-fade { animation: nsmFadeIn .18s ease; }
 .pnl-pass-colors { position: relative; z-index: 1; }
 .pnl-pass-colors .pc-lbl { font-size: .62rem; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.75); font-weight: 800; margin-right: 4px; }
 .pnl-pass-colors button { width: 26px; height: 26px; border-radius: 9px; border: 2px solid rgba(255,255,255,.4); cursor: pointer; }
+
+/* ===== top-right profile card composition (dashboard #pnl-pass) =====
+   The card grew twice and each growth left another override behind, which
+   scrambled the text. One composition here: banner strip on top, a content
+   row below it (avatar + identity + manage), then a footer row (note +
+   colour swatches). Nothing overlaps at any size. */
+#pnl-pass {
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: 14px; padding: 92px 26px 18px;
+}
+#pnl-pass .pnl-pass-row { display: flex; align-items: center; gap: 16px; }
+#pnl-pass .pnl-pass-info { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; text-align: left; line-height: 1.35; }
+#pnl-pass .lbl { font-size: .68rem; letter-spacing: .14em; font-weight: 800; opacity: .75; text-transform: uppercase; }
+#pnl-pass .nm { font-weight: 800; font-size: 1.12rem; margin: 3px 0 8px; }
+#pnl-pass .badges { display: flex; gap: 8px; flex-wrap: wrap; }
+#pnl-pass .manage { margin-left: auto; align-self: center; flex: 0 0 auto; }
+#pnl-pass .pnl-pass-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; }
+#pnl-pass .foot { margin-top: 0; opacity: .8; font-size: .74rem; }
+#pnl-pass .pnl-pass-colors { display: flex; align-items: center; gap: 6px; }
 
 /* news items (live forum announcements) */
 .pnl-news-item { border: 1px solid rgba(255,255,255,.08); border-left: 3px solid var(--pnl-accent,#18E888); border-radius: 14px; padding: 14px 16px; margin: 12px 0; background: rgba(255,255,255,.03); }
@@ -601,15 +619,34 @@ body.nsm-swap-fade { animation: nsmFadeIn .18s ease; }
 .pnl-usage-mini .pu-v { font-size: 0.72rem; }
 
 /* ===== top-right profile card — content fits the card at every size ===== */
-.pnl-pass { min-width: 0; }
-.pnl-pass .pnl-pass-info { min-width: 0; overflow-wrap: anywhere; }
-.pnl-pass .nm { overflow-wrap: anywhere; }
-.pnl-pass .foot { padding-right: 92px; overflow-wrap: anywhere; }
+#pnl-pass .pnl-pass-info .nm { overflow-wrap: anywhere; }
 @media (max-width: 720px) {
-  .pnl-pass {
-    min-width: 0; flex-wrap: wrap; padding: 18px 18px 44px;
+  #pnl-pass {
+    min-width: 0; flex: 1 1 auto; padding: 86px 18px 16px; gap: 12px;
   }
-  .pnl-pass .manage { margin-left: 0; align-self: center; }
-  .pnl-pass .foot { padding-right: 0; }
-  .pnl-pass-colors { left: 22px; right: auto; bottom: 12px; }
+  #pnl-pass .pnl-pass-row { flex-wrap: wrap; }
+  #pnl-pass .manage { margin-left: 0; }
+  #pnl-pass .pnl-pass-foot { flex-direction: column; align-items: flex-start; }
+}
+@media (min-width: 721px) and (max-width: 1180px) {
+  #pnl-pass { min-width: 0; }
+}
+
+/* ===== responsive pass: panels, tabs and forms adapt to small screens ===== */
+.pnl-top { flex-wrap: wrap; }
+.pnl-pass { max-width: 100%; }
+.pnl-panel table, .pnl-body table { width: 100%; }
+.pnl-table-scroll { width: 100%; overflow-x: auto; }
+.pnl-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 860px) {
+  /* tab list becomes a wrapped horizontal strip instead of a long column */
+  .pnl-tabs { flex-direction: row; flex-wrap: wrap; position: static; }
+  .pnl-tab { flex: 1 1 auto; justify-content: center; }
+  .pnl-tab-sep { display: none; }
+}
+@media (max-width: 720px) {
+  .pnl-body { padding: 18px 14px; }
+  .pnl-top { padding: 12px 14px; }
+  .pnl-form-row { grid-template-columns: 1fr; }
+  .pnl-pass { min-width: 0; }
 }
