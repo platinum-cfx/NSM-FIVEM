@@ -1318,3 +1318,90 @@
     }, 8000);
   });
 })();
+
+// ============================================================================
+// Forum sidebar toggle (three-line button) — desktop collapse + mobile drawer
+// ============================================================================
+function nsmToggleSidebar(btn) {
+  var sb = document.getElementById('d-sidebar');
+  if (!sb) return;
+  var mobile = window.matchMedia && window.matchMedia('(max-width: 980px)').matches;
+  if (mobile) {
+    sb.classList.remove('collapsed');
+    var open = sb.classList.toggle('mobile-open');
+    if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) sb.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    sb.classList.remove('mobile-open');
+    var col = sb.classList.toggle('collapsed');
+    if (btn) btn.setAttribute('aria-expanded', col ? 'false' : 'true');
+  }
+}
+
+// ============================================================================
+// Browser-tab title animation ("NSMultiplayer" -> "We Miss You!") — Forums and
+// Hosting sections ONLY (explicitly not the homepage, not the dashboard, not
+// any other section).
+// ============================================================================
+(function () {
+  'use strict';
+  var path = (window.location && location.pathname) || '';
+  var isForum = path === '/forum' || path.indexOf('/forum/') === 0;
+  var isHosting = path === '/hosting' ||
+    (path.indexOf('/hosting/') === 0 &&
+      path !== '/hosting/dashboard' && path !== '/hosting/manage');
+  if (!isForum && !isHosting) return; // never run outside the two sections
+
+  var TYPE_NAME = 'NSMultiplayer';
+  var TYPE_MISS = 'We Miss You!';
+  var TICK = 90;      // ms per typed character
+  var HOLD = 550;     // ms pause on the full name before it disappears
+
+  var timer = null;
+  var normalTitle = document.title;
+
+  function stopAnimation() {
+    if (timer !== null) {
+      clearInterval(timer);
+      timer = null;
+    }
+    document.title = normalTitle;
+  }
+
+  function startAnimation() {
+    if (timer !== null) return; // never run two animations at once
+    normalTitle = normalTitle || document.title;
+    var phase = 0;   // 0 typing name, 1 holding name, 2 clearing, 3 typing miss
+    var step = 0;
+    var heldTicks = Math.max(1, Math.round(HOLD / TICK));
+    timer = setInterval(function () {
+      if (phase === 0) {
+        step++;
+        document.title = TYPE_NAME.slice(0, step);
+        if (step >= TYPE_NAME.length) { phase = 1; step = 0; }
+      } else if (phase === 1) {
+        step++;
+        if (step >= heldTicks) { phase = 2; step = 0; }
+      } else if (phase === 2) {
+        document.title = '';  // make it disappear
+        phase = 3; step = 0;
+      } else {
+        step++;
+        document.title = TYPE_MISS.slice(0, step);
+        if (step >= TYPE_MISS.length) {
+          clearInterval(timer);
+          timer = null; // hold "We Miss You!" until the user returns
+        }
+      }
+    }, TICK);
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      startAnimation();
+    } else {
+      stopAnimation();
+    }
+  });
+  window.addEventListener('pagehide', stopAnimation);
+})();

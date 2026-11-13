@@ -55,7 +55,7 @@
           <textarea name="bio" class="inp" rows="4" maxlength="600" placeholder="Tell the NSM community about yourself, your servers, or your resources...">{{.User.Bio}}</textarea>
         </label>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="g2">
           <label>Upload Custom Avatar Image (PNG/JPG/GIF)
             <input type="file" name="avatar_file" accept="image/png,image/jpeg,image/gif,image/webp" class="inp">
           </label>
@@ -64,7 +64,7 @@
           </label>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div class="g3">
           <label>Generated Avatar Color
             <input type="color" name="avatar_color" value="{{.User.EffectiveAvatarColor}}" class="inp" style="height:42px;padding:4px">
           </label>
@@ -76,7 +76,7 @@
           </label>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="g2">
           <label>Location
             <input type="text" name="location" value="{{.User.Location}}" class="inp" maxlength="64" placeholder="e.g. Miami, FL">
           </label>
@@ -85,7 +85,7 @@
           </label>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="g2">
           <label>Website / GitHub URL
             <input type="url" name="website" value="{{.User.Website}}" class="inp" maxlength="160" placeholder="https://...">
           </label>
