@@ -103,13 +103,17 @@ type HostedServer struct {
 	LastStarted int64    `json:"lastStarted,omitempty"`
 	Console     []string `json:"console,omitempty"`
 	ConsoleSeq  int64    `json:"consoleSeq"`
+	Sched       []hostSchedule `json:"sched,omitempty"`
+	Favorite    bool     `json:"favorite,omitempty"`
+	PlanTier    string   `json:"planTier,omitempty"`
+	PlanUpvotes int      `json:"planUpvotes,omitempty"`
 }
 
 type hostingState struct {
 	Servers []*HostedServer `json:"servers"`
 }
 
-var errAlreadyOwns = errors.New("this NSM account already owns a server")
+var errAlreadyOwns = errors.New("each NSM account can run up to 5 servers")
 
 type hostedProc struct {
 	cmd      *exec.Cmd
@@ -184,13 +188,13 @@ func (m *hostingManager) normalizeLocked() {
 			srv.GameTCPPort = srv.GameUDPPort
 		}
 	}
-	seen := map[int64]bool{}
+	seen := map[int64]int{}
 	kept := m.st.Servers[:0]
 	for _, s := range m.st.Servers {
-		if s.Owner == 0 || seen[s.Owner] {
+		if s.Owner == 0 || seen[s.Owner] >= hostingMaxPerOwner {
 			continue
 		}
-		seen[s.Owner] = true
+		seen[s.Owner]++
 		if s.Status == "" {
 			s.Status = hostOffline
 		}
@@ -276,6 +280,17 @@ func (m *hostingManager) findOwnerLocked(owner int64) *HostedServer {
 		}
 	}
 	return nil
+}
+
+// findOwnerAllLocked returns every server the account owns (up to the limit).
+func (m *hostingManager) findOwnerAllLocked(owner int64) []*HostedServer {
+	out := []*HostedServer{}
+	for _, s := range m.st.Servers {
+		if s.Owner == owner {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // ---------------------------------------------------------------------------
@@ -492,11 +507,11 @@ func (m *hostingManager) deploy(u *User, name, region, reqHost string) (*HostedS
 		region = "us-east"
 	}
 
-	// ---- Phase A: atomic claim (one server per account, no duplicates) ----
+	// ---- Phase A: atomic claim (up to 5 servers per account) ----
 	m.mu.Lock()
-	if existing := m.findOwnerLocked(u.ID); existing != nil {
+	if owned := m.findOwnerAllLocked(u.ID); len(owned) >= hostingMaxPerOwner {
 		m.mu.Unlock()
-		return existing, errAlreadyOwns
+		return owned[0], errAlreadyOwns
 	}
 	m.hostingFirewallOnce()
 	s := &HostedServer{
@@ -1213,10 +1228,10 @@ func hostingCreatePage(w http.ResponseWriter, r *http.Request) {
 	}
 	m := hostMgr()
 	m.mu.Lock()
-	existing := m.findOwnerLocked(u.ID)
+	owned := m.findOwnerAllLocked(u.ID)
 	m.mu.Unlock()
-	if existing != nil {
-		http.Redirect(w, r, "/dashboard/"+existing.ID, http.StatusSeeOther)
+	if len(owned) >= hostingMaxPerOwner {
+		http.Redirect(w, r, "/hosting/dashboard", http.StatusSeeOther)
 		return
 	}
 	renderPage(w, r, "hosting_create.tmpl", map[string]interface{}{
@@ -1242,10 +1257,14 @@ func hostingCreateSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		if err == errAlreadyOwns {
+			http.Redirect(w, r, "/hosting/dashboard", http.StatusSeeOther)
+			return
+		}
 		http.Redirect(w, r, "/hosting/create?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/hosting/manage", http.StatusSeeOther)
+	http.Redirect(w, r, "/hosting/dashboard", http.StatusSeeOther)
 }
 
 func hostingManagePage(w http.ResponseWriter, r *http.Request) {
@@ -1279,13 +1298,15 @@ func hostingManagePage(w http.ResponseWriter, r *http.Request) {
 // dashboard (panel pages + API)
 // ---------------------------------------------------------------------------
 
-// panelTab defaults to the console — the console is the panel home.
+// panelTab defaults to the overview — the manage view opens on it.
 func panelTab(t string) string {
 	switch t {
-	case "overview", "files", "ports", "console", "config":
+	case "overview", "files", "console", "config", "plan", "access", "ai", "apps",
+		"dns", "traffic", "quota", "network", "firewall", "monitoring", "backups",
+		"schedules", "activity", "settings", "rescue", "tools":
 		return t
 	}
-	return "console"
+	return "overview"
 }
 
 func dashboardServerPage(w http.ResponseWriter, r *http.Request) {
@@ -1312,12 +1333,19 @@ func dashboardServerPage(w http.ResponseWriter, r *http.Request) {
 	if d := reg.get(snap.Endpoint); d != nil {
 		players = d.Clients
 	}
-	renderPage(w, r, "dashboard_server.tmpl", map[string]interface{}{
+	planTier, planUp := "spark", 10
+	if snap.PlanTier != "" {
+		planTier = snap.PlanTier
+		planUp = snap.PlanUpvotes
+	}
+	renderPage(w, r, "panel-manage", map[string]interface{}{
 		"Title": snap.Name + " - NSM Hosting", "S": snap, "PKG": hostingPackage,
 		"Tab": panelTab(r.URL.Query().Get("tab")), "Players": players,
 		"First": hostingPortFirst, "Last": hostingPortLast,
 		"Host": publicHostOf(snap), "JoinBase": joinBaseURL(r),
 		"Firewall": m.firewallNote, "PkgWarn": serverFilesWarning(),
+		"Net": hostNetInfo(), "PlanTier": planTier, "PlanUpvotes": planUp,
+		"Apps": oneClickApps, "Tiers": planTiers,
 	})
 }
 
@@ -1812,8 +1840,9 @@ func registerHostingRoutes(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("POST /hosting/deploy", hostingCreateSubmit)
 	mux.HandleFunc("GET /dashboard", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/hosting/manage", http.StatusFound)
+		http.Redirect(w, r, "/hosting/dashboard", http.StatusFound)
 	})
+	registerHostingPanel(mux)
 	mux.HandleFunc("GET /dashboard/{id}", dashboardServerPage)
 	mux.HandleFunc("GET /api/host/{id}/console", apiHostConsole)
 	mux.HandleFunc("POST /api/host/{id}/command", apiHostCommand)

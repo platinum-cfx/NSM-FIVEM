@@ -500,3 +500,14 @@ func statusPage(w http.ResponseWriter, r *http.Request) {
 func apiStatus(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusOK, statusSnapshot())
 }
+
+// statusIncidentsSnapshot returns a copy of the incident history for the
+// hosting panel's incidents page.
+func statusIncidentsSnapshot() []statusIncident {
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	out := make([]statusIncident, len(statusIncidents))
+	copy(out, statusIncidents)
+	sort.Slice(out, func(i, j int) bool { return out[i].Started > out[j].Started })
+	return out
+}

@@ -42,7 +42,15 @@
     </a>
     <ul class="links nav-main hidden-xs hidden-sm">
       <li><a href="/servers" class="{{if eq .Page "/servers"}}active{{end}}">Server List</a></li>
-      <li><a href="/hosting" class="{{if or (eq .Page "/hosting") (eq .Page "/hosting/create") (eq .Page "/hosting/manage")}}active{{end}}">Hosting</a></li>
+      <li class="has-drop">
+        <button type="button" class="drop-trigger{{if or (eq .Page "/hosting") (eq .Page "/hosting/create") (eq .Page "/hosting/manage") (eq .Page "/hosting/dashboard")}} active{{end}}">Hosting<span class="material-icons-outlined drop-caret">expand_more</span></button>
+        <ul class="drop-menu">
+          <li><a href="/hosting/dashboard">Dashboard</a></li>
+          <li><a href="/hosting/dashboard#services">My services</a></li>
+          <li><a href="/hosting/create">Deploy a server</a></li>
+          <li><a href="/hosting/support">Hosting support</a></li>
+        </ul>
+      </li>
       <li><a href="/keymaster" class="{{if eq .Page "/keymaster"}}active{{end}}">Portal</a></li>
       <li><a href="/support" class="{{if eq .Page "/support"}}active{{end}}">Support</a></li>
       <li class="has-drop">
@@ -83,6 +91,9 @@
   <ul>
     <li><a href="/servers">Server List</a></li>
     <li><a href="/hosting">Hosting</a></li>
+    <li><a href="/hosting/dashboard">Hosting Dashboard</a></li>
+    <li><a href="/hosting/create">Deploy a server</a></li>
+    <li><a href="/hosting/support">Hosting support</a></li>
     <li><a href="/keymaster">Portal</a></li>
     <li><a href="/support">Support</a></li>
     <li><span class="nav-drawer-label">Community</span></li>

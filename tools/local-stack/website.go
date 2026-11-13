@@ -51,7 +51,16 @@ func initSite() {
 	if forum == nil {
 		loadForum()
 	}
-	tmpl = template.Must(template.New("").Funcs(template.FuncMap{"kfmt": fmtCompact}).ParseFS(siteFS, "site/templates/*.tmpl"))
+	tmpl = template.Must(template.New("").Funcs(template.FuncMap{
+		"kfmt":    fmtCompact,
+		"slice1":  func(s string) string { if s == "" { return "?" }; r := []rune(s); return string(r[0]) },
+		"unixfmt": func(t int64) string {
+			if t <= 0 {
+				return "—"
+			}
+			return time.Unix(t, 0).Format("2 Jan 2006 15:04")
+		},
+	}).ParseFS(siteFS, "site/templates/*.tmpl"))
 }
 
 func accountCount() int64 {
