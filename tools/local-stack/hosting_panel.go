@@ -177,15 +177,10 @@ func hostNetTotals() (rx, tx int64) {
 
 func hostNetInfo() map[string]interface{} {
 	rx, tx := hostNetTotals()
-	hostFactsOnce.Do(func() {
-		if pub, ok := hostFacts()["publicIP"].(string); ok {
-			hostFactsPubIP = pub
-		}
-	})
-	ip := hostFactsPubIP
-	if ip == "" {
-		ip = os.Getenv("NSM_PUBLIC_IP")
-	}
+	// The address shown for the server is the canonical server IP — the same
+	// one every connection detail uses. Never surface proxy/website hostnames
+	// or interface guesses here.
+	ip := serverHostIP()
 	hostname := ""
 	if h, err := os.Hostname(); err == nil {
 		hostname = h
@@ -201,9 +196,6 @@ func hostNetInfo() map[string]interface{} {
 		"interface":    "eth0",
 	}
 }
-
-var hostFactsOnce   sync.Once
-var hostFactsPubIP  string
 
 func gatewayGuess(ip string) string {
 	parts := strings.Split(ip, ".")
@@ -228,18 +220,18 @@ type oneClickApp struct {
 }
 
 var oneClickApps = []oneClickApp{
-	{ID: "vmenu", Name: "vMenu", Kind: "utility", Dir: "vMenu", Version: "3.5",
-		Blurb: "The standard in-game menu — player options, vehicles, world tools and permissions.",
-		URL:   "https://github.com/TomGrobbe/vMenu/archive/refs/heads/master.zip"},
-	{ID: "qbcore", Name: "QBCore", Kind: "framework", Dir: "qb-core", Version: "stable",
-		Blurb: "The QBCore framework core — the base for thousands of QBCore city servers.",
-		URL:   "https://github.com/qbcore-framework/qb-core/archive/refs/heads/main.zip"},
-	{ID: "esx", Name: "ESX", Kind: "framework", Dir: "es_extended", Version: "legacy",
-		Blurb: "ESX Legacy core — the classic roleplay framework for custom cities.",
-		URL:   "https://github.com/esx-framework/esx_core/archive/refs/heads/main.zip"},
-	{ID: "qbox", Name: "Qbox", Kind: "framework", Dir: "qbx_core", Version: "stable",
-		Blurb: "Qbox core — the modern successor to QBCore with clean state handling.",
-		URL:   "https://github.com/Qbox-project/qbx_core/archive/refs/heads/main.zip"},
+	{ID: "vmenu", Name: "vMenu", Kind: "menu", Dir: "[vMenu]/vMenu", Version: "enhanced",
+		Blurb: "Complete vMenu Enhanced release — the standard in-game menu (player options, vehicles, world tools) with its default permissions config.",
+		URL:   ""},
+	{ID: "qbcore", Name: "QBCore", Kind: "framework", Dir: "[qb]/qb-core", Version: "stable",
+		Blurb: "Complete QBCore framework — every core resource (multicharacter, spawn, inventory, phone, jobs, HUD), all dependencies, the official SQL schema and a correctly ordered server.cfg.",
+		URL:   ""},
+	{ID: "esx", Name: "ESX Legacy", Kind: "framework", Dir: "[core]/es_extended", Version: "legacy",
+		Blurb: "Complete ESX Legacy stack from the official esx_core monorepo — es_extended, esx_lib, identity, multicharacter, menus, skinchanger and the legacy.sql schema.",
+		URL:   ""},
+	{ID: "qbox", Name: "Qbox", Kind: "framework", Dir: "[qbx]/qbx_core", Version: "stable",
+		Blurb: "Complete Qbox core stack — qbx_core with the ox suite (ox_lib, ox_inventory, ox_target, oxmysql), multicharacter, spawn, HUD and the official SQL schemas.",
+		URL:   ""},
 }
 
 // ---------------------------------------------------------------------------
@@ -1180,7 +1172,7 @@ func installedApps(m *hostingManager, s *HostedServer) map[string]bool {
 	out := map[string]bool{}
 	res := filepath.Join(m.serverRoot(s), "resources")
 	for _, a := range oneClickApps {
-		if _, err := os.Stat(filepath.Join(res, a.Dir)); err == nil {
+		if _, err := os.Stat(filepath.Join(res, filepath.FromSlash(a.Dir))); err == nil {
 			out[a.ID] = true
 		}
 	}
@@ -1195,10 +1187,18 @@ func apiHostApps(w http.ResponseWriter, r *http.Request) {
 	inst := installedApps(m, snap)
 	list := []map[string]interface{}{}
 	for _, a := range oneClickApps {
-		list = append(list, map[string]interface{}{
+		entry := map[string]interface{}{
 			"id": a.ID, "name": a.Name, "kind": a.Kind, "blurb": a.Blurb,
 			"version": a.Version, "installed": inst[a.ID],
-		})
+		}
+		if rec, isFW := frameworkRecipes[a.ID]; isFW {
+			have, total := fwInstalledCount(m.serverRoot(snap), rec)
+			entry["resources"] = total
+			entry["installedResources"] = have
+			entry["busy"] = m.fwBusy(snap.ID)
+			entry["installed"] = have == total && total > 0
+		}
+		list = append(list, entry)
 	}
 	sendJSON(w, http.StatusOK, map[string]interface{}{"apps": list})
 }
@@ -1226,6 +1226,23 @@ func apiHostAppInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	root := m.serverRoot(snap)
+	// Frameworks deploy through a complete recipe (every resource, the SQL
+	// schema and a managed server.cfg block) — see hosting_frameworks.go.
+	if rec, isFW := frameworkRecipes[id]; isFW {
+		if _, err := os.Stat(root); err != nil {
+			sendJSON(w, http.StatusConflict, map[string]string{"error": "server files are not installed yet"})
+			return
+		}
+		if !m.fwStart(snap, rec) {
+			sendJSON(w, http.StatusConflict, map[string]string{"error": "a framework installation is already running for this server"})
+			return
+		}
+		sendJSON(w, http.StatusAccepted, map[string]interface{}{
+			"ok": true, "started": true, "busy": true, "recipe": rec.ID,
+			"message": "installing " + rec.Name + " (" + itoa(len(rec.Parts)) + " components) — watch the Activity tab for progress",
+		})
+		return
+	}
 	res := filepath.Join(root, "resources")
 	if _, err := os.Stat(root); err != nil {
 		sendJSON(w, http.StatusConflict, map[string]string{"error": "server files are not installed yet"})

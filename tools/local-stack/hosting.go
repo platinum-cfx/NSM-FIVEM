@@ -108,9 +108,10 @@ type HostedServer struct {
 	Console     []string `json:"console,omitempty"`
 	ConsoleSeq  int64    `json:"consoleSeq"`
 	Sched       []hostSchedule `json:"sched,omitempty"`
-	Favorite    bool     `json:"favorite,omitempty"`
-	PlanTier    string   `json:"planTier,omitempty"`
-	PlanUpvotes int      `json:"planUpvotes,omitempty"`
+	Favorite    bool           `json:"favorite,omitempty"`
+	PlanTier    string         `json:"planTier,omitempty"`
+	PlanUpvotes int            `json:"planUpvotes,omitempty"`
+	DBs         []hostedDatabase `json:"dbs,omitempty"`
 }
 
 type hostingState struct {
@@ -906,6 +907,17 @@ func (m *hostingManager) generateCfg(s *HostedServer, instDir string) string {
 		}
 	}
 	b.WriteString("# add your resources under resources/ and start them here\n")
+	// A framework install owns a managed block in server.cfg. Server-file
+	// (re)installs must never wipe it — carry it over verbatim.
+	if old, err := os.ReadFile(filepath.Join(instDir, "server.cfg")); err == nil {
+		if i := strings.Index(string(old), "# >>> nsm-framework:"); i >= 0 {
+			if j := strings.Index(string(old)[i:], "# <<< nsm-framework <<<"); j >= 0 {
+				b.WriteString("\n")
+				b.WriteString(string(old)[i : i+j+len("# <<< nsm-framework <<<")])
+				b.WriteString("\n")
+			}
+		}
+	}
 	return b.String()
 }
 
@@ -2024,6 +2036,7 @@ func registerHostingRoutes(mux *http.ServeMux) {
 		http.Redirect(w, r, "/hosting/dashboard", http.StatusFound)
 	})
 	registerHostingPanel(mux)
+	registerHostingDBs(mux)
 	mux.HandleFunc("GET /dashboard/{id}", dashboardServerPage)
 	mux.HandleFunc("GET /api/host/{id}/console", apiHostConsole)
 	mux.HandleFunc("POST /api/host/{id}/command", apiHostCommand)

@@ -650,3 +650,16 @@ body.nsm-swap-fade { animation: nsmFadeIn .18s ease; }
   .pnl-form-row { grid-template-columns: 1fr; }
   .pnl-pass { min-width: 0; }
 }
+
+/* ===== databases tab ===== */
+.pnl-db { border: 1px solid rgba(255,255,255,.09); border-radius: 14px; padding: 12px 16px; margin: 10px 0; background: rgba(255,255,255,.03); }
+.pnl-db-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pnl-db-head .sp { flex: 1; }
+.pnl-db-body { margin-top: 10px; }
+.pnl-db-body .pnl-kv .k { min-width: 180px; }
+.pnl-secret { font-family: 'JetBrains Mono', Consolas, monospace; font-size: .78rem; word-break: break-all; background: rgba(255,255,255,.06); padding: 2px 8px; border-radius: 6px; }
+.pnl-db-body .hint { margin-top: 10px; }
+@media (max-width: 720px) {
+  .pnl-db-head .sp { display: none; }
+  .pnl-db-body .pnl-kv .k { min-width: 130px; }
+}

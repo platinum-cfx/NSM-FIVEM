@@ -383,7 +383,8 @@ pnlCardPoll();
           <a class="pnl-tab{{if eq $tab "plan"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=plan">&#8645; Manage plan</a>
           <a class="pnl-tab{{if eq $tab "access"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=access">&#128274; Access</a>
           <a class="pnl-tab{{if eq $tab "ai"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=ai">&#10022; Plus agent</a>
-          <a class="pnl-tab{{if eq $tab "apps"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=apps">&#9733; One-click apps</a>
+          <a class="pnl-tab{{if eq $tab "apps"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=apps">&#9733; Frameworks &amp; apps</a>
+          <a class="pnl-tab{{if eq $tab "databases"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=databases">&#9635; Databases</a>
           <div class="pnl-tab-sep"></div>
           <a class="pnl-tab{{if eq $tab "dns"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=dns">&#9998; DNS</a>
           <a class="pnl-tab{{if eq $tab "traffic"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=traffic">&#8593; Traffic</a>
@@ -566,8 +567,20 @@ pnlCardPoll();
 
           {{if eq $tab "apps"}}
           <div class="pnl-panel">
-            <h3>One-click install apps</h3><p class="hint">Installs straight into <code>resources/</code> and adds the <code>ensure</code> line — restart the server to load it.</p>
+            <h3>Frameworks &amp; apps</h3><p class="hint">A framework install deploys the <b>complete</b> framework — every core resource, its dependencies, the official SQL schema and a correctly ordered startup config (like a txAdmin deployment). Existing resources and your configs are never overwritten. Restart the server after installation.</p>
             <div id="app-list">loading…</div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "databases"}}
+          <div class="pnl-panel">
+            <h3>Databases</h3><p class="hint">Each database gets its own username and password with access to that database only — your data is isolated from every other customer. Framework installs can use these automatically. External tools like <b>HeidiSQL</b> connect with the details shown per database.</p>
+            <div id="db-config-note"></div>
+            <div class="pnl-form-row" style="margin:14px 0 6px">
+              <label>New database name<input id="db-name" class="inp" maxlength="20" placeholder="e.g. main, shop, dev"></label>
+              <div style="display:flex;align-items:flex-end;gap:10px"><button class="pnl-btn-green" onclick="pnlDBCreate(this)">Create database</button></div>
+            </div>
+            <div id="db-list">loading…</div>
           </div>
           {{end}}
 
@@ -931,20 +944,98 @@ function pnlAgentSend(){
   });
 }
 
-/* ---- apps ---- */
+/* ---- apps + frameworks ---- */
+var pnlAppsTimer=null;
 function pnlApps(){
   var el=document.getElementById('app-list'); if(!el)return;
   pnlGet('/api/host/'+ID+'/apps').then(function(d){
     el.innerHTML='';
+    var busy=false;
     d.apps.forEach(function(a){
+      if(a.busy)busy=true;
       var div=document.createElement('div');div.className='pnl-app';
-      div.innerHTML='<div class="logo">'+a.name[0]+'</div><div><div class="nm">'+a.name+' <span style="color:#fff;font-size:.72rem">v'+a.version+'</span></div><div class="blurb">'+a.blurb+'</div></div><div class="sp"></div>'+
-        (a.installed?'<span class="pnl-pill ok">installed</span>':'<button class="pnl-btn-green" onclick="pnlInstall(\''+a.id+'\',this)">Install</button>');
+      var right='';
+      if(a.busy){right='<span class="pnl-pill">installing '+a.installedResources+' / '+a.resources+'…</span>';}
+      else if(a.installed){right='<span class="pnl-pill ok">installed'+(a.resources?' ('+a.installedResources+'/'+a.resources+' resources)':'')+'</span>';}
+      else{right='<button class="pnl-btn-green" onclick="pnlInstall(\''+a.id+'\',this)">Install full '+a.name+'</button>';}
+      div.innerHTML='<div class="logo">'+a.name[0]+'</div><div><div class="nm">'+a.name+' <span style="color:#fff;font-size:.72rem">v'+a.version+'</span>'+(a.resources?' <span style="color:#9fb0c8;font-size:.72rem">· '+a.resources+' resources</span>':'')+'</div><div class="blurb">'+a.blurb+'</div></div><div class="sp"></div>'+right;
       el.appendChild(div);
     });
+    if(pnlAppsTimer){clearInterval(pnlAppsTimer);pnlAppsTimer=null;}
+    if(busy){pnlAppsTimer=setInterval(pnlApps,3000);}
   }).catch(function(e){pnlFail(el,'Apps could not be loaded.',e);});
 }
-function pnlInstall(id,btn){btn.textContent='Installing…';btn.disabled=true;post('/api/host/'+ID+'/apps/'+id+'/install').then(function(r){return r.json();}).then(function(){pnlApps();}).catch(function(){pnlApps();});}
+function pnlInstall(id,btn){btn.textContent='Installing…';btn.disabled=true;
+  post('/api/host/'+ID+'/apps/'+id+'/install').then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+    .then(function(x){if(!x.ok)alert((x.d&&x.d.error)||'install failed');pnlApps();}).catch(function(){pnlApps();});}
+
+/* ---- databases ---- */
+function pnlEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function pnlDBs(){
+  var el=document.getElementById('db-list'); if(!el)return;
+  var note=document.getElementById('db-config-note');
+  pnlGet('/api/host/'+ID+'/dbs').then(function(d){
+    if(note){note.innerHTML=d.configured?'':'<div class="alert alert-err" style="margin:10px 0">No database service is configured on this hosting host yet — databases cannot be created here. (Server-side setting: NSM_DB_ADMIN_DSN.)</div>';}
+    el.innerHTML='';
+    if(!d.dbs.length){el.innerHTML='<p class="hint">No databases yet. Create one above — frameworks installed from the Frameworks &amp; apps tab can use it automatically.</p>';return;}
+    d.dbs.forEach(function(db){
+      var div=document.createElement('div');div.className='pnl-db';
+      div.innerHTML='<div class="pnl-db-head"><b>'+pnlEsc(db.name)+'</b><span class="pnl-pill">'+pnlEsc(db.dbName)+'</span><div class="sp"></div>'+
+        '<button class="pnl-mini-btn" onclick="pnlDBShow(this,\''+pnlEsc(db.id)+'\')">Connection details</button>'+
+        '<button class="pnl-mini-btn" onclick="pnlDBRotate(\''+pnlEsc(db.id)+'\')">Reset password</button>'+
+        '<button class="pnl-mini-btn red" onclick="pnlDBDrop(\''+pnlEsc(db.id)+'\',\''+pnlEsc(db.name)+'\')">Delete</button></div>'+
+        '<div class="pnl-db-body" hidden></div>';
+      el.appendChild(div);
+    });
+  }).catch(function(e){pnlFail(el,'Databases could not be loaded.',e);});
+}
+function pnlDBCreate(btn){
+  var inp=document.getElementById('db-name'); if(!inp)return;
+  var name=(inp.value||'').trim().toLowerCase();
+  if(!/^[a-z0-9_]{2,20}$/.test(name)){alert('Use 2-20 characters: letters, numbers, underscore.');return;}
+  btn.disabled=true;btn.textContent='Creating…';
+  post('/api/host/'+ID+'/dbs','name='+encodeURIComponent(name)).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+    .then(function(x){btn.disabled=false;btn.textContent='Create database';if(!x.ok){alert((x.d&&x.d.error)||'create failed');return;}inp.value='';pnlDBs();})
+    .catch(function(){btn.disabled=false;btn.textContent='Create database';});
+}
+function pnlDBShow(btn,id){
+  var card=btn.closest('.pnl-db'); if(!card)return;
+  var body=card.querySelector('.pnl-db-body');
+  if(!body.hidden && body.dataset.loaded==='1'){body.hidden=!body.hidden;return;}
+  pnlGet('/api/host/'+ID+'/dbs/'+id).then(function(d){
+    var db=d.db||{};var h=db.heidi||{};
+    body.innerHTML='<div class="pnl-kv">'+
+      '<div class="r"><span class="k">Host (HeidiSQL)</span><span class="v">'+pnlEsc(h.host)+'</span></div>'+
+      '<div class="r"><span class="k">Port</span><span class="v">'+pnlEsc(h.port)+'</span></div>'+
+      '<div class="r"><span class="k">Network</span><span class="v">'+pnlEsc(h.network)+'</span></div>'+
+      '<div class="r"><span class="k">Username</span><span class="v">'+pnlEsc(h.user)+'</span></div>'+
+      '<div class="r"><span class="k">Password</span><span class="v"><code class="pnl-secret" id="pnl-db-pass-'+pnlEsc(db.id)+'">••••••••</code> <button class="pnl-mini-btn" onclick="pnlDBReveal(\''+pnlEsc(db.id)+'\',this)">Show</button></span></div>'+
+      '<div class="r"><span class="k">Database</span><span class="v">'+pnlEsc(h.database)+'</span></div>'+
+      '<div class="r"><span class="k">FiveM connection string</span><span class="v"><code class="pnl-secret" id="pnl-db-conn-'+pnlEsc(db.id)+'">••••••••</code> <button class="pnl-mini-btn" onclick="pnlDBReveal(\''+pnlEsc(db.id)+'\',this)">Show</button></span></div>'+
+      '</div><p class="hint">HeidiSQL: open a MySQL connection to the host and port above, then sign in with this username and password. This user can only reach this one database.</p>';
+    body.dataset.raw=JSON.stringify({pass:h.password||'',conn:'mysql://'+(h.user||'')+':'+encodeURIComponent(h.password||'')+'@'+(h.host||'')+':'+(h.port||3306)+'/'+(h.database||'')+'?charset=utf8mb4'});
+    body.dataset.loaded='1';body.hidden=false;
+  });
+}
+function pnlDBReveal(id,btn){
+  var card=btn.closest('.pnl-db'); if(!card)return;
+  var body=card.querySelector('.pnl-db-body');
+  try{
+    var raw=JSON.parse(body.dataset.raw||'{}');
+    var passEl=document.getElementById('pnl-db-pass-'+id);
+    var connEl=document.getElementById('pnl-db-conn-'+id);
+    if(passEl&&passEl.textContent==='••••••••'){passEl.textContent=raw.pass||'';connEl.textContent=raw.conn||'';btn.textContent='Hide';}
+    else{passEl.textContent='••••••••';connEl.textContent='••••••••';btn.textContent='Show';}
+  }catch(e){}
+}
+function pnlDBRotate(id){
+  if(!confirm('Reset this database password? Any resource using the old password must be updated.'))return;
+  post('/api/host/'+ID+'/dbs/'+id+'/rotate').then(function(){pnlDBs();});
+}
+function pnlDBDrop(id,name){
+  if(!confirm('Delete database "'+name+'" and ALL of its data? This cannot be undone.'))return;
+  post('/api/host/'+ID+'/dbs/'+id+'/drop').then(function(){pnlDBs();});
+}
 
 /* ---- backups / schedules / activity ---- */
 function pnlBackups(){
@@ -1045,6 +1136,7 @@ pnlStats();
 window.__nsmTimers.push(setInterval(pnlStats,4000));
 if(document.getElementById('pnl-console'))window.__nsmTimers.push(setInterval(pnlConsole,2500));
 if(document.getElementById('app-list'))pnlApps();
+if(document.getElementById('db-list'))pnlDBs();
 if(document.getElementById('bk-list'))pnlBackups();
 if(document.getElementById('sch-list'))pnlScheds();
 if(document.getElementById('act-list')){window.__nsmTimers.push(setInterval(pnlActivity,6000));pnlActivity();}
