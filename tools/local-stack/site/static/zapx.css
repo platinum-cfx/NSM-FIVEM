@@ -211,7 +211,7 @@ footer ul.links a:hover { color: var(--zx-green); }
 .zx-facts .zx-sec-eyebrow { color: var(--zx-green-dark); }
 .zx-facts h2 { color: #14202e; font-size: clamp(1.8rem, 3.4vw, 2.5rem); margin: 0 0 8px; }
 .zx-facts .zx-sec-sub { color: #ffffff; margin: 0 0 34px; }
-.zx-fact-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.zx-fact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 18px; }
 .zx-fact {
   background: #fff; border: 1px solid #e2e9ef; border-radius: 16px; padding: 24px 22px;
 }
@@ -2398,4 +2398,10 @@ header.nsm-top-header input, header.nsm-top-header select { color: #ffffff !impo
 @media (max-width: 640px) {
   .hosting-scope .zx-hero-title { font-size: 1.72rem; }
   .hosting-scope .lead { font-size: 0.98rem; }
+}
+
+/* ===== responsive safety: nothing overflows its container on small screens ===== */
+.zx-scope img, .hosting-scope img { max-width: 100%; height: auto; }
+@media (max-width: 620px) {
+  .zx-card-row { grid-template-columns: 1fr !important; }
 }
