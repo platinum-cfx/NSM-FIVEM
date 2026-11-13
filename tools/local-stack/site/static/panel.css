@@ -300,3 +300,53 @@ body.nsm-swap-fade { animation: nsmFadeIn .18s ease; }
   .pnl-rail-foot { margin-top: 0; width: 100%; }
   .pnl-rail-sep { display: none; }
 }
+
+/* --- typography matches the main site (Figtree, heavy, gradient accents) --- */
+.pnl-page { font-family: 'Figtree', var(--font-body, sans-serif); }
+.pnl h1, .pnl h2, .pnl h3, .pnl .nm, .pnl-hero-left h2 { font-family: var(--font-header, 'Figtree'), sans-serif; font-weight: 800; letter-spacing: -0.015em; }
+.pnl-h2 { font-size: 1.7rem; font-weight: 900; }
+.pnl-hero-left h2 { font-size: 1.9rem; }
+.pnl-panel h3 { font-size: 1.02rem; }
+
+/* modern soft edges + colourful power buttons */
+.pnl-card, .pnl-panel, .pnl-pass, .pnl-hero-panel, .pnl-support-card, .pnl-plus-card { border-radius: 22px; }
+.pnl-mini-btn, .pnl-btn-green, .pnl-pill, .pnl-badge-imported, .pnl-chip { border-radius: 99px; }
+.pnl-mini-btn.green { background: linear-gradient(135deg, var(--pnl-accent,#18E888), var(--pnl-accent2,#0d9d5f)); color: #04120c; border: 0; font-weight: 800; }
+.pnl-mini-btn.red { background: linear-gradient(135deg,#f87171,#dc2626); color: #fff; border: 0; font-weight: 800; }
+.pnl-mini-btn:hover { transform: translateY(-1px); filter: brightness(1.08); }
+
+/* pass card: banner strip, inner glow, glowing edit ring */
+.pnl-pass { padding-top: 0; flex-wrap: wrap; }
+.pnl-pass-banner { position: absolute; inset: 0 0 auto 0; height: 76px; background: linear-gradient(115deg, var(--pnl-pass-a,#1d4ed8), var(--pnl-pass-b,#0b1a4a) 55%, rgba(255,255,255,.14)); opacity: .95; border-radius: 22px 22px 0 0; }
+.pnl-pass-glow { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(420px 190px at 18% -40%, rgba(255,255,255,.28), transparent 65%); mix-blend-mode: screen; }
+.pnl-pass > .av, .pnl-pass > div:not(.pnl-pass-colors):not(.pnl-pass-banner):not(.pnl-pass-glow) { position: relative; z-index: 1; }
+.pnl-pass .manage.manage-ring { position: relative; z-index: 1; font-weight: 800; box-shadow: 0 0 0 2px rgba(255,255,255,.9), 0 0 18px 4px rgba(96,165,250,.75), 0 0 34px 10px rgba(96,165,250,.35); animation: pnlRing 2.6s ease-in-out infinite; }
+@keyframes pnlRing {
+  0%,100% { box-shadow: 0 0 0 2px rgba(255,255,255,.9), 0 0 18px 4px rgba(96,165,250,.75), 0 0 34px 10px rgba(96,165,250,.35); }
+  50% { box-shadow: 0 0 0 3px rgba(255,255,255,1), 0 0 26px 7px rgba(96,165,250,.95), 0 0 46px 14px rgba(96,165,250,.45); }
+}
+.pnl-pass-colors { position: relative; z-index: 1; }
+.pnl-pass-colors .pc-lbl { font-size: .62rem; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.75); font-weight: 800; margin-right: 4px; }
+.pnl-pass-colors button { width: 26px; height: 26px; border-radius: 9px; border: 2px solid rgba(255,255,255,.4); cursor: pointer; }
+
+/* news items (live forum announcements) */
+.pnl-news-item { border: 1px solid rgba(255,255,255,.08); border-left: 3px solid var(--pnl-accent,#18E888); border-radius: 14px; padding: 14px 16px; margin: 12px 0; background: rgba(255,255,255,.03); }
+.pnl-news-item .nn { font-weight: 800; font-size: 1.02rem; display: flex; gap: 10px; align-items: center; }
+.pnl-news-item .nm2 { color: #8fa0b2; font-size: .74rem; margin: 4px 0 8px; }
+.pnl-news-item p { margin: 0; color: #c6d2de; font-size: .88rem; line-height: 1.55; white-space: pre-wrap; }
+.pnl-news-pin { border-left-color: #f59e0b; }
+
+/* pass plan cards: the selected plan lights purple and stays lit */
+.pnl-tiers-pass { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 14px; }
+.pnl-plan-card { flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px 18px !important; min-height: 110px; }
+.pnl-plan-card .tup { font-size: .72rem; color: #8fa0b2; font-weight: 700; letter-spacing: .05em; }
+.pnl-plan-card.pnl-plan-lit { border-color: rgba(168,85,247,.85); background: linear-gradient(160deg, rgba(168,85,247,.22), rgba(88,28,135,.28)); box-shadow: 0 0 0 1px rgba(168,85,247,.5), 0 12px 34px rgba(124,58,237,.35); }
+
+/* error detail, chip link, modern plus card (previously lost to a dead anchor) */
+.pnl-err-d { display: block; width: 100%; color: #fecaca; font-family: 'JetBrains Mono', monospace; font-size: .74rem; word-break: break-word; }
+.pnl-chip-link { color: var(--pnl-accent,#18E888); text-decoration: underline; }
+.pnl-plus-card { flex-direction: column; justify-content: center; align-items: center; gap: 8px; text-align: center; border: 2px dashed rgba(24,232,136,.4); min-height: 340px; background: rgba(24,232,136,.04); transition: all .18s ease; }
+.pnl-plus-card:hover { border-color: var(--pnl-accent,#18E888); background: rgba(24,232,136,.10); transform: translateY(-3px); }
+.pnl-plus-card .plus { font-size: 2.6rem; font-weight: 300; color: var(--pnl-accent,#18E888); line-height: 1; }
+.pnl-plus-card .plus-t { font-weight: 800; font-size: 1.02rem; }
+.pnl-plus-card .plus-s { color: #8fa0b2; font-size: .82rem; }
