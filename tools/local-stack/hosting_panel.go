@@ -254,9 +254,34 @@ func panelUser(r *http.Request, w http.ResponseWriter) *User {
 	return u
 }
 
-func panelNav(active string) map[string]interface{} {
+func panelNav(active string, u *User) map[string]interface{} {
+	svc := 0
+	if u != nil {
+		m := hostMgr()
+		m.mu.Lock()
+		for _, s := range m.st.Servers {
+			if s.Owner == u.ID {
+				svc++
+			}
+		}
+		m.mu.Unlock()
+	}
+	short := "FREE"
+	if u != nil {
+		switch u.PulseTier {
+		case "core":
+			short = "CORE"
+		case "pro":
+			short = "PRO"
+		case "sovereign":
+			short = "SOV"
+		case "eternal":
+			short = "ETL"
+		}
+	}
 	return map[string]interface{}{
 		"Active": active, "SupportOpen": int64(0), "SupportNew": int64(0), "SupportClosed": int64(0),
+		"ServiceCount": svc, "PassTierShort": short,
 	}
 }
 
@@ -282,14 +307,18 @@ func hostingDashboardPage(w http.ResponseWriter, r *http.Request) {
 			online++
 		}
 	}
-	_, openN, newN, closedN := support().openFor(u.ID)
+	all, openN, newN, closedN := support().openFor(u.ID)
+	supportAgo := "No messages yet"
+	if len(all) > 0 {
+		supportAgo = "Updated " + agoText(all[0].Updated)
+	}
 	data := map[string]interface{}{
 		"Title": "Dashboard - NSM Hosting", "Servers": mine, "Online": online,
 		"Total": len(mine), "MaxServers": hostingMaxPerOwner, "PKG": hostingPackage,
-		"PassTier": pulseTierName(u), "Greeting": greetingWord(),
+		"PassTier": pulseTierName(u), "Greeting": greetingWord(), "SupportAgo": supportAgo,
 		"SupportOpen": openN + newN, "SupportNew": newN, "SupportClosed": closedN,
 	}
-	for k, v := range panelNav("dashboard") {
+	for k, v := range panelNav("dashboard", u) {
 		data[k] = v
 	}
 	renderPage(w, r, "panel-dashboard", data)
@@ -307,6 +336,28 @@ func pulseTierName(u *User) string {
 		return "Pulse Eternal"
 	}
 	return "Pulse Free"
+}
+
+// agoText renders a short relative time like "1 day ago".
+func agoText(ts int64) string {
+	d := time.Now().Unix() - ts
+	switch {
+	case d < 60:
+		return "just now"
+	case d < 3600:
+		return fmt.Sprintf("%d minute%s ago", d/60, plural(d/60))
+	case d < 86400:
+		return fmt.Sprintf("%d hour%s ago", d/3600, plural(d/3600))
+	default:
+		return fmt.Sprintf("%d day%s ago", d/86400, plural(d/86400))
+	}
+}
+
+func plural(n int64) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func greetingWord() string {
@@ -327,7 +378,7 @@ func hostingBillingPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := map[string]interface{}{"Title": "Billing - NSM Hosting", "PKG": hostingPackage, "PassTier": pulseTierName(u)}
-	for k, v := range panelNav("billing") {
+	for k, v := range panelNav("billing", u) {
 		data[k] = v
 	}
 	renderPage(w, r, "panel-billing", data)
@@ -339,7 +390,7 @@ func hostingPassPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := map[string]interface{}{"Title": "Pulse - NSM Hosting", "PassTier": pulseTierName(u)}
-	for k, v := range panelNav("pass") {
+	for k, v := range panelNav("pass", u) {
 		data[k] = v
 	}
 	renderPage(w, r, "panel-pass", data)
@@ -351,7 +402,7 @@ func hostingNewsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := map[string]interface{}{"Title": "News - NSM Hosting"}
-	for k, v := range panelNav("news") {
+	for k, v := range panelNav("news", u) {
 		data[k] = v
 	}
 	renderPage(w, r, "panel-news", data)
@@ -363,7 +414,7 @@ func hostingIncidentsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := map[string]interface{}{"Title": "Incidents - NSM Hosting", "Incidents": statusIncidentsSnapshot()}
-	for k, v := range panelNav("incidents") {
+	for k, v := range panelNav("incidents", u) {
 		data[k] = v
 	}
 	renderPage(w, r, "panel-incidents", data)
@@ -375,7 +426,7 @@ func hostingCommunityPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := map[string]interface{}{"Title": "Community & Partners - NSM Hosting", "Section": r.URL.Query().Get("s")}
-	for k, v := range panelNav("community") {
+	for k, v := range panelNav("community", u) {
 		data[k] = v
 	}
 	renderPage(w, r, "panel-community", data)
@@ -409,7 +460,7 @@ func hostingSupportPage(w http.ResponseWriter, r *http.Request) {
 		ss.mu.Unlock()
 		data["T"] = snap
 	}
-	for k, v := range panelNav("support") {
+	for k, v := range panelNav("support", u) {
 		data[k] = v
 	}
 	renderPage(w, r, "panel-support", data)

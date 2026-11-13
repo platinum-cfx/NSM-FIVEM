@@ -836,15 +836,13 @@
       window.location.href = finalUrl;
       return;
     }
+    // stop timers bound to the old page before the DOM goes away
+    if (window.__nsmTimers && window.__nsmTimers.length) {
+      for (var ti = 0; ti < window.__nsmTimers.length; ti++) clearInterval(window.__nsmTimers[ti]);
+      window.__nsmTimers = [];
+    }
     if (doc.title) {
       document.title = doc.title;
-    }
-    document.body.className = doc.body.className || '';
-    var bodyStyle = doc.body.getAttribute('style');
-    if (bodyStyle) {
-      document.body.setAttribute('style', bodyStyle);
-    } else {
-      document.body.removeAttribute('style');
     }
 
     var prevScrollY = window.scrollY;
@@ -855,37 +853,76 @@
       samePath = (uOld.pathname === uNew.pathname);
     } catch (e) {}
 
-    document.body.innerHTML = doc.body.innerHTML;
+    var bodyClass = doc.body.className || '';
+    var bodyStyle = doc.body.getAttribute('style');
+    var bodyHTML = doc.body.innerHTML;
 
-    // Execute inline page scripts (except main.js which is already active)
-    var scripts = document.body.querySelectorAll('script');
-    for (var i = 0; i < scripts.length; i++) {
-      var oldScript = scripts[i];
-      var src = oldScript.getAttribute('src') || '';
-      if (src.indexOf('/js/main.js') !== -1) continue;
-      var newScript = document.createElement('script');
-      for (var a = 0; a < oldScript.attributes.length; a++) {
-        var attr = oldScript.attributes[a];
-        newScript.setAttribute(attr.name, attr.value);
+    function swapNow() {
+      document.body.className = bodyClass;
+      if (bodyStyle) {
+        document.body.setAttribute('style', bodyStyle);
+      } else {
+        document.body.removeAttribute('style');
       }
-      newScript.textContent = oldScript.textContent;
-      oldScript.parentNode.replaceChild(newScript, oldScript);
+      document.body.innerHTML = bodyHTML;
+
+      // stylesheets already in <head> must not be re-added — a duplicate
+      // <link> re-triggers a load and flashes the page unstyled
+      var links = document.body.querySelectorAll('link[rel="stylesheet"]');
+      for (var li = 0; li < links.length; li++) {
+        var lhref = (links[li].getAttribute('href') || '').replace(/"/g, '');
+        if (lhref && document.head.querySelector('link[rel="stylesheet"][href="' + lhref + '"]')) {
+          links[li].parentNode.removeChild(links[li]);
+        }
+      }
+
+      // execute inline page scripts (main.js stays alive from the first load)
+      var scripts = document.body.querySelectorAll('script');
+      for (var i = 0; i < scripts.length; i++) {
+        var oldScript = scripts[i];
+        var src = oldScript.getAttribute('src') || '';
+        if (src.indexOf('/js/main.js') !== -1) continue;
+        var newScript = document.createElement('script');
+        for (var a2 = 0; a2 < oldScript.attributes.length; a2++) {
+          var attr = oldScript.attributes[a2];
+          newScript.setAttribute(attr.name, attr.value);
+        }
+        newScript.textContent = oldScript.textContent;
+        oldScript.parentNode.replaceChild(newScript, oldScript);
+      }
     }
 
-    if (pushState) {
+    function finishSwap() {
+      if (pushState) {
+        try {
+          window.history.pushState({ nsmSpa: true }, document.title, finalUrl);
+        } catch (e) {}
+      }
+      if (samePath) {
+        window.scrollTo(0, prevScrollY);
+      } else {
+        window.scrollTo(0, 0);
+      }
+      state.selectedEp = '';
+      initNSMPage();
+    }
+
+    var fancy = false;
+    if (document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       try {
-        window.history.pushState({ nsmSpa: true }, document.title, finalUrl);
+        document.startViewTransition(function () { swapNow(); finishSwap(); });
+        fancy = true;
       } catch (e) {}
     }
-
-    if (samePath) {
-      window.scrollTo(0, prevScrollY);
-    } else {
-      window.scrollTo(0, 0);
+    if (!fancy) {
+      swapNow();
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.body.classList.remove('nsm-swap-fade');
+        void document.body.offsetWidth;
+        document.body.classList.add('nsm-swap-fade');
+      }
+      finishSwap();
     }
-
-    state.selectedEp = '';
-    initNSMPage();
   }
 
   function nsmNavigate(url, pushState) {

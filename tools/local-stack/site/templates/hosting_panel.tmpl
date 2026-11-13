@@ -1,21 +1,21 @@
-{{define "panel-assets"}}<link rel="stylesheet" href="/css/panel.css?v=1">{{end}}
+{{define "panel-assets"}}{{end}}
 
 {{define "panel-rail"}}
-<aside class="pnl-rail">
+<aside class="pnl-rail" id="pnl-rail">
   <a class="pnl-logo" href="/hosting/dashboard"><span class="nsm">NSM</span> <span style="font-size:.8rem;opacity:.7">HOSTING</span></a>
-  <a class="pnl-rail-item{{if eq .Active "dashboard"}} pnl-on{{end}}" href="/hosting/dashboard"><span class="pnl-rail-ic">&#9638;</span> Dashboard</a>
-  <a class="pnl-rail-item{{if eq .Active "services"}} pnl-on{{end}}" href="/hosting/dashboard#services"><span class="pnl-rail-ic">&#9635;</span> My services <span class="cnt">{{.ServiceCount}}</span></a>
-  <a class="pnl-rail-item{{if eq .Active "support"}} pnl-on{{end}}" href="/hosting/support"><span class="pnl-rail-ic">&#9993;</span> Support {{if .SupportOpen}}<span class="cnt">{{.SupportOpen}}</span>{{end}}</a>
-  <a class="pnl-rail-item{{if eq .Active "billing"}} pnl-on{{end}}" href="/hosting/billing"><span class="pnl-rail-ic">&#9830;</span> Billing</a>
-  <a class="pnl-rail-item{{if eq .Active "pass"}} pnl-on{{end}}" href="/hosting/pass"><span class="pnl-rail-ic">&#10022;</span> Pulse</a>
+  <a class="pnl-rail-item{{if eq .Active "dashboard"}} pnl-on{{end}}" href="/hosting/dashboard"><span class="material-icons-outlined pnl-ric">dashboard</span> Dashboard</a>
+  <a class="pnl-rail-item{{if eq .Active "services"}} pnl-on{{end}}" href="/hosting/dashboard#services"><span class="material-icons-outlined pnl-ric">dns</span> My services <span class="cnt">{{.ServiceCount}}</span></a>
+  <a class="pnl-rail-item{{if eq .Active "support"}} pnl-on{{end}}" href="/hosting/support"><span class="material-icons-outlined pnl-ric">support_agent</span> Support {{if .SupportOpen}}<span class="cnt">{{.SupportOpen}}</span>{{end}}</a>
+  <a class="pnl-rail-item{{if eq .Active "billing"}} pnl-on{{end}}" href="/hosting/billing"><span class="material-icons-outlined pnl-ric">credit_card</span> Billing</a>
+  <a class="pnl-rail-item pnl-pass-item{{if eq .Active "pass"}} pnl-on{{end}}" href="/hosting/pass"><span class="material-icons-outlined pnl-ric">bolt</span> Pulse</a>
   <div class="pnl-rail-sep"></div>
-  <a class="pnl-rail-item{{if eq .Active "community"}} pnl-on{{end}}" href="/hosting/community"><span class="pnl-rail-ic">&#9788;</span> Community &amp; Partners</a>
-  <a class="pnl-rail-item{{if eq .Active "news"}} pnl-on{{end}}" href="/hosting/news"><span class="pnl-rail-ic">&#9673;</span> News</a>
-  <a class="pnl-rail-item{{if eq .Active "incidents"}} pnl-on{{end}}" href="/hosting/incidents"><span class="pnl-rail-ic">&#9888;</span> Incidents</a>
+  <a class="pnl-rail-item{{if eq .Active "community"}} pnl-on{{end}}" href="/hosting/community"><span class="material-icons-outlined pnl-ric">groups</span> Community &amp; Partners</a>
+  <a class="pnl-rail-item{{if eq .Active "news"}} pnl-on{{end}}" href="/hosting/news"><span class="material-icons-outlined pnl-ric">campaign</span> News</a>
+  <a class="pnl-rail-item{{if eq .Active "incidents"}} pnl-on{{end}}" href="/hosting/incidents"><span class="material-icons-outlined pnl-ric">warning</span> Incidents</a>
   <div class="pnl-rail-foot">
-    <a class="pnl-me" href="/profile">
+    <a class="pnl-me" href="/account">
       {{if .User.AvatarData}}<img src="{{.User.AvatarData}}" alt="">{{else}}<span class="av">{{slice1 .User.Username}}</span>{{end}}
-      <div><div class="nm">{{.User.Username}}</div><div class="sub">My account &middot; Settings</div></div>
+      <div><div class="nm">My account</div><div class="sub">Settings</div></div>
       <span class="tier">{{.PassTierShort}}</span>
     </a>
   </div>
@@ -47,7 +47,7 @@
               <div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">NSM Hosting</span></div>
               <div class="foot">Free forever &middot; every feature included</div>
             </div>
-            <a class="manage" href="/profile">Manage</a>
+            <a class="manage" href="/u/{{.User.Username}}">Manage</a>
             <div class="pnl-pass-colors" title="Card colour">
               <button onclick="pnlPassColor('#4c2a86','#1b1030')" style="background:#4c2a86"></button>
               <button onclick="pnlPassColor('#0e5c3a','#072418')" style="background:#0e5c3a"></button>
@@ -62,17 +62,17 @@
           <div>
             <div class="lbl">Support</div>
             <div class="big">{{.SupportOpen}} open</div>
-            <div class="up">Hosting chat &middot; staff replies here &middot; <a href="/support" style="color:#18E888">NSM tickets &#8599;</a></div>
+            <div class="up">{{.SupportAgo}} &middot; <a href="/support" style="color:#18E888">NSM tickets &#8599;</a></div>
           </div>
           <div class="chev">&#8250;</div>
         </div>
 
         <div class="pnl-chips">
-          <div class="pnl-chip">&#9888; Incidents <b>No incidents</b></div>
-          <div class="pnl-chip">&#9711; DDoS <b>No attacks</b></div>
-          <div class="pnl-chip">&#9830; Billing <b>Free &mdash; no charges</b></div>
-          <div class="pnl-chip">&#9673; Discord <b><a href="/forum" style="color:#18E888">Community</a></b></div>
-          <div class="pnl-chip">&#9788; Birthday <b>Not provided</b></div>
+          <div class="pnl-chip"><span class="material-icons-outlined">error_outline</span> Incidents <b>No incidents</b></div>
+          <div class="pnl-chip"><span class="material-icons-outlined">shield</span> DDoS <b>No attacks</b></div>
+          <div class="pnl-chip"><span class="material-icons-outlined">credit_card</span> Billing <b>Free &mdash; no charges</b></div>
+          <div class="pnl-chip"><span class="material-icons-outlined">chat_bubble_outline</span> Discord <b><a href="/forum" style="color:#18E888">Role active</a></b></div>
+          <div class="pnl-chip"><span class="material-icons-outlined">cake</span> Birthday <b>Not provided</b></div>
         </div>
       </div>
 
@@ -99,16 +99,17 @@
             </div>
             <span class="pnl-badge-imported">&#8599; Imported from NSM</span>
             <div class="pnl-meta">
-              <div class="r"><span class="k">IP / Port</span><span class="v">{{$.HostPublic}} : {{.GameTCPPort}} <button class="pnl-copy" onclick="pnlCopy('{{$.HostPublic}}:{{.GameTCPPort}}')">&#128203;</button></span></div>
-              <div class="r"><span class="k">Package</span><span class="v">{{$.PKG.Slots}} slots &middot; {{$.PKG.RAMGB}} GB RAM &middot; {{$.PKG.DiskGB}} GB</span></div>
-              <div class="r"><span class="k">System</span><span class="v">{{$.SystemName}}</span></div>
-              <div class="r"><span class="k">Location</span><span class="v">{{.Region}}</span></div>
-              <div class="r"><span class="k">Uptime</span><span class="v" data-uptime="{{.ID}}">{{if .LastStarted}}since {{.LastStarted}}{{else}}offline{{end}}</span></div>
+              <div class="r"><span class="k"><span class="material-icons-outlined">lan</span> IP / Port</span><span class="v">{{$.HostPublic}} : {{.GameTCPPort}} <button class="pnl-copy" onclick="pnlCopy('{{$.HostPublic}}:{{.GameTCPPort}}')">&#128203;</button></span></div>
+              <div class="r"><span class="k"><span class="material-icons-outlined">inventory_2</span> Package</span><span class="v">{{$.PKG.Slots}} slots &middot; {{$.PKG.RAMGB}} GB RAM &middot; {{$.PKG.DiskGB}} GB</span></div>
+              <div class="r"><span class="k"><span class="material-icons-outlined">desktop_windows</span> System</span><span class="v">{{$.SystemName}}</span></div>
+              <div class="r"><span class="k"><span class="material-icons-outlined">location_on</span> Location</span><span class="v">{{.Region}}</span></div>
+              <div class="r"><span class="k"><span class="material-icons-outlined">schedule</span> Uptime</span><span class="v" data-uptime="{{.ID}}">{{if .LastStarted}}since {{.LastStarted}}{{else}}offline{{end}}</span></div>
             </div>
-            <div class="pnl-card-actions">
+            <div class="pnl-card-actions" data-pwr-row="{{.ID}}">
               <a class="pnl-mini-btn green" href="/dashboard/{{.ID}}">Manage</a>
-              <button class="pnl-mini-btn red" onclick="pnlPower('{{.ID}}','stop')">Stop</button>
-              <button class="pnl-mini-btn" onclick="pnlPower('{{.ID}}','restart')">Restart</button>
+              <button class="pnl-mini-btn red" data-pwr="stop" onclick="pnlPower('{{.ID}}','stop',this)"{{if ne .Status "online"}} style="display:none"{{end}}>Stop</button>
+              <button class="pnl-mini-btn green" data-pwr="start" onclick="pnlPower('{{.ID}}','start',this)"{{if eq .Status "online"}} style="display:none"{{end}}>Start</button>
+              <button class="pnl-mini-btn" data-pwr="restart" onclick="pnlPower('{{.ID}}','restart',this)">Restart</button>
             </div>
           </div>
           {{end}}
@@ -124,6 +125,13 @@
 </div>
 <a class="pnl-fab" href="/hosting/support" title="Hosting support chat">&#128172;</a>
 <script>
+function pnlToast(msg){
+  var t=document.getElementById('pnl-toast');
+  if(!t){t=document.createElement('div');t.id='pnl-toast';document.body.appendChild(t);}
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(window.__nsmToastT);
+  window.__nsmToastT=setTimeout(function(){t.classList.remove('show');},4200);
+}
 function pnlCopy(t){navigator.clipboard&&navigator.clipboard.writeText(t);}
 function pnlPassColor(a,b){var p=document.getElementById('pnl-pass');p.style.setProperty('--pnl-pass-a',a);p.style.setProperty('--pnl-pass-b',b);try{localStorage.setItem('nsmPassColor',JSON.stringify([a,b]));}catch(e){}}
 (function(){try{var c=JSON.parse(localStorage.getItem('nsmPassColor')||'null');if(c)document.getElementById('pnl-pass').style.cssText+=';--pnl-pass-a:'+c[0]+';--pnl-pass-b:'+c[1];}catch(e){}
@@ -135,15 +143,30 @@ function pnlCustomize(btn){
   try{localStorage.setItem('nsmCompact',on?'1':'0');}catch(e){}
 }
 (function(){try{if(localStorage.getItem('nsmCompact')==='1'){document.getElementById('pnl-grid').classList.add('pnl-compact');document.getElementById('pnl-customize').classList.add('pnl-on');}}catch(e){}})();
-function pnlPower(id,a){fetch('/api/host/'+id+'/power/'+a,{method:'POST'}).then(function(){setTimeout(function(){location.reload();},900);});}
+function pnlApplyCard(id,status){
+  var row=document.querySelector('[data-pwr-row="'+id+'"]'); if(!row)return;
+  var stop=row.querySelector('[data-pwr="stop"]'),start=row.querySelector('[data-pwr="start"]');
+  var online=status==='online';
+  if(stop){stop.style.display=online?'':'none';stop.disabled=false;}
+  if(start){start.style.display=online?'none':'';start.disabled=false;}
+}
+function pnlPower(id,a,btn){
+  if(btn)btn.disabled=true;
+  fetch('/api/host/'+id+'/power/'+a,{method:'POST'}).then(function(r){return r.json();}).then(function(d){if(d&&d.error)pnlToast('Power action failed: '+d.error);setTimeout(function(){pnlCardPoll();},1200);}).catch(function(){if(btn)btn.disabled=false;});
+}
 function pnlFav(id,btn){btn.classList.toggle('on');}
-setInterval(function(){
+function pnlCardPoll(){
   document.querySelectorAll('[data-live-pill]').forEach(function(el){
-    fetch('/api/host/'+el.getAttribute('data-live-pill')+'/stats').then(function(r){return r.json();}).then(function(d){
+    var id=el.getAttribute('data-live-pill');
+    fetch('/api/host/'+id+'/stats').then(function(r){return r.json();}).then(function(d){
       el.textContent=d.status;el.className='pnl-pill '+(d.status==='online'?'ok':d.status==='error'?'bad':'off');
+      pnlApplyCard(id,d.status);
     }).catch(function(){});
   });
-},10000);
+}
+window.__nsmTimers=window.__nsmTimers||[];
+window.__nsmTimers.push(setInterval(pnlCardPoll,10000));
+pnlCardPoll();
 </script>
 {{template "foot" .}}
 {{end}}
@@ -151,11 +174,17 @@ setInterval(function(){
 {{define "panel-manage"}}
 {{template "head" .}}{{template "panel-assets" .}}
 {{$s := .S}}{{$tab := .Tab}}
-<div class="pnl">
-  {{template "panel-rail" .}}
+<div class="pnl pnl-full">
   <div class="pnl-main">
-    <div class="pnl-top"><h1>{{$s.Name}}</h1><div class="sp"></div>
-      <a class="pnl-icon-btn" href="/hosting/dashboard" title="Dashboard">&#9638;</a>
+    <div class="pnl-top pnl-top-srv">
+      <a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a>
+      <h1>{{$s.Name}}</h1>
+      <span class="pnl-imported">Imported from NSM</span>
+      <span class="pnl-pill {{if eq $s.Status "online"}}ok{{else}}off{{end}}" id="srv-pill">{{$s.Status}}</span>
+      <div class="sp"></div>
+      <button class="pnl-mini-btn red" data-pwr="stop" onclick="pnlPower('stop',this)"{{if ne $s.Status "online"}} style="display:none"{{end}}>Stop</button>
+      <button class="pnl-mini-btn green" data-pwr="start" onclick="pnlPower('start',this)"{{if eq $s.Status "online"}} style="display:none"{{end}}>Start</button>
+      <button class="pnl-mini-btn" data-pwr="restart" onclick="pnlPower('restart',this)">Restart</button>
       <a class="pnl-icon-btn" href="/hosting/support" title="Support">&#9993;</a>
     </div>
     <div class="pnl-body">
@@ -192,12 +221,7 @@ setInterval(function(){
               <div class="title"><span id="srv-name">{{$s.Name}}</span>
                 <button class="pen" title="Rename" onclick="pnlRename()">&#9998;</button>
               </div>
-              <span class="pnl-imported">Imported from NSM</span>
               <span class="pnl-unit">unit #{{$s.ID}}</span>
-              <div class="sp"></div>
-              <span class="pnl-pill {{if eq $s.Status "online"}}ok{{else}}off{{end}}" id="srv-pill">{{$s.Status}}</span>
-              <button class="pnl-mini-btn red" onclick="pnlPower('stop')">Stop</button>
-              <button class="pnl-mini-btn" onclick="pnlPower('restart')">Restart</button>
             </div>
             <div class="pnl-connect">
               <div><div class="lbl">Connect</div><div class="val">{{.Host}}:{{$s.GameTCPPort}}</div></div>
@@ -518,7 +542,24 @@ function post(url, body) {
 }
 window.post = post;
 function pnlPost(u){post(u).then(function(){location.reload();});}
-function pnlPower(a){post('/api/host/'+ID+'/power/'+a).then(function(){setTimeout(function(){location.reload();},900);});}
+function pnlApplySrvStatus(d){
+  var pill=document.getElementById('srv-pill'); if(pill){pill.textContent=d.status; pill.className='pnl-pill '+(d.status==='online'?'ok':d.status==='error'?'bad':'off');}
+  var stop=document.querySelector('.pnl-top [data-pwr="stop"]'),start=document.querySelector('.pnl-top [data-pwr="start"]');
+  var online=d.status==='online';
+  if(stop){stop.style.display=online?'':'none';stop.disabled=false;}
+  if(start){start.style.display=online?'none':'';start.disabled=false;}
+}
+function pnlPower(a,btn){
+  if(btn)btn.disabled=true;
+  post('/api/host/'+ID+'/power/'+a).then(function(r){return r.json();}).then(function(d){if(d&&d.error)pnlToast('Power action failed: '+d.error);setTimeout(pnlStats,1200);setTimeout(pnlStats,2400);}).catch(function(){if(btn)btn.disabled=false;});
+}
+function pnlToast(msg){
+  var t=document.getElementById('pnl-toast');
+  if(!t){t=document.createElement('div');t.id='pnl-toast';document.body.appendChild(t);}
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(window.__nsmToastT);
+  window.__nsmToastT=setTimeout(function(){t.classList.remove('show');},4200);
+}
 function pnlNote(t){var m=document.getElementById('set-msg');if(m)m.textContent=t;}
 function pnlCopy(t){navigator.clipboard&&navigator.clipboard.writeText(t);}
 function pnlShowPass(){var e=document.getElementById('ftp-pass');e.textContent=e.getAttribute('data-pass');}
@@ -555,7 +596,7 @@ function pnlStats(){
     var cv=document.getElementById('m-chart');
     if(cv){var x=cv.getContext('2d'),w=cv.width=cv.offsetWidth,h=cv.height=90;x.clearRect(0,0,w,h);x.strokeStyle='#18E888';x.beginPath();
       hist.forEach(function(v,i){var px=i/59*w,py=h-v/100*h*0.95;i?x.lineTo(px,py):x.moveTo(px,py);});x.stroke();}
-    var pill=document.getElementById('srv-pill'); if(pill){pill.textContent=d.status; pill.className='pnl-pill '+(d.status==='online'?'ok':d.status==='error'?'bad':'off');}
+    pnlApplySrvStatus(d);
     var live=document.getElementById('srv-live');
     if(live)live.textContent=(d.online?'Uptime '+fmtUp(d.uptimeSec):'Server is '+d.status)+' · updated '+new Date().toLocaleTimeString();
     var ga=document.getElementById('guest-agent'); if(ga){ga.textContent=d.guestAgent?'connected':'idle';ga.style.color=d.guestAgent?'#18E888':'#8fa0b2';}
@@ -697,18 +738,19 @@ window.cfgSave=cfgSave;
 window.cfgSaveRestart=function(){cfgSave().then(function(){pnlPower('restart');});};
 
 /* ---- boot ---- */
+window.__nsmTimers=window.__nsmTimers||[];
 if(document.getElementById('pnl-console'))pnlConsole();
 if(document.getElementById('filetable'))fmList('');
 if(document.getElementById('cfgtext')){
   fetch('/api/host/'+ID+'/file?path=server.cfg').then(function(r){return r.json();}).then(function(d){document.getElementById('cfgtext').value=d.content||'';});
 }
 pnlStats();
-setInterval(pnlStats,4000);
-if(document.getElementById('pnl-console'))consoleTimer=setInterval(pnlConsole,2500);
+window.__nsmTimers.push(setInterval(pnlStats,4000));
+if(document.getElementById('pnl-console'))window.__nsmTimers.push(setInterval(pnlConsole,2500));
 if(document.getElementById('app-list'))pnlApps();
 if(document.getElementById('bk-list'))pnlBackups();
 if(document.getElementById('sch-list'))pnlScheds();
-if(document.getElementById('act-list'))setInterval(pnlActivity,6000),pnlActivity();
+if(document.getElementById('act-list')){window.__nsmTimers.push(setInterval(pnlActivity,6000));pnlActivity();}
 </script>
 {{template "foot" .}}
 {{end}}
@@ -871,7 +913,7 @@ function pnlCloseTicket(id){fetch('/api/hosting/support/'+id+'/close',{method:'P
       <div style="flex:1">
         <h2><span class="pnl-grad">{{.PassTier}}</span></h2>
         <div class="pnl-sub">Your NSM pass — every hosting feature is included free.</div>
-        <a class="pnl-btn-green" href="/profile">Manage profile</a>
+        <a class="pnl-btn-green" href="/u/{{.User.Username}}">Manage profile</a>
       </div>
       <div class="pnl-pass"><div class="av">{{slice1 .User.Username}}</div><div><div class="lbl">Pulse Pass</div><div class="nm">{{.User.Username}} &#8250;</div><div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">Free forever</span></div></div></div>
     </div>
