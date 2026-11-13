@@ -3191,11 +3191,31 @@ func adminUsersPage(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// ITEM 2 — Server Hosting Support: live view of the existing hosting
+	// ticket system (same store the hosting panel chats against).
+	hostTickets := []map[string]interface{}{}
+	if ss := support(); ss != nil {
+		ss.mu.Lock()
+		for i := len(ss.Tickets) - 1; i >= 0; i-- {
+			t := ss.Tickets[i]
+			msgs := []map[string]interface{}{}
+			for _, m := range t.Messages {
+				msgs = append(msgs, map[string]interface{}{"From": m.From, "By": m.By, "Text": m.Text, "At": m.At})
+			}
+			hostTickets = append(hostTickets, map[string]interface{}{
+				"ID": t.ID, "OwnerName": t.OwnerName, "Subject": t.Subject,
+				"Status": t.Status, "Updated": t.Updated, "Messages": msgs,
+			})
+		}
+		ss.mu.Unlock()
+	}
+
 	renderPage(w, r, "admin_users.tmpl", map[string]interface{}{
 		"Title":       "Staff Control Panel — AFX Administration",
 		"User":        u,
 		"Users":       users,
 		"Tickets":     ticketViews,
+		"HostTickets": hostTickets,
 		"TotalUsers":  len(users),
 		"BannedCount": bannedCnt,
 		"StaffCount":  staffCnt,

@@ -17,7 +17,37 @@
 <body class="pnl-page">
 {{end}}
 
-{{define "panel-foot"}}<script src="/js/main.js?v=078n"></script></body></html>
+{{define "panel-foot"}}<script>
+(function(){
+  // ITEM 1 — restore the profile-card colour everywhere it appears
+  try{var c=JSON.parse(localStorage.getItem('nsmPassColor')||'null');
+    if(c){document.documentElement.style.setProperty('--pnl-pass-a',c[0]);document.documentElement.style.setProperty('--pnl-pass-b',c[1]);}
+  }catch(e){}
+  // ITEM 6 — mouse-following glow, kept inside each highlighted element
+  var SEL='.pnl-pass,.pnl-me,.pnl-rail-item,.pnl-chip,.pnl-mini-btn,.pnl-btn-green,.pnl-tab';
+  var raf=0;
+  document.addEventListener('mousemove',function(e){
+    if(raf)return;
+    raf=requestAnimationFrame(function(){
+      raf=0;
+      var el=e.target&&e.target.closest?e.target.closest(SEL):null;
+      if(!el)return;
+      var r=el.getBoundingClientRect();
+      el.style.setProperty('--mx',(e.clientX-r.left)+'px');
+      el.style.setProperty('--my',(e.clientY-r.top)+'px');
+    });
+  },{passive:true});
+})();
+function supFilter(f){
+  if(!document.getElementById('sup-list'))return;
+  document.querySelectorAll('.pnl-tab-chip[data-f]').forEach(function(b){b.classList.toggle('pnl-on',b.getAttribute('data-f')===f);});
+  document.querySelectorAll('#sup-list .pnl-ticket').forEach(function(t){
+    var b=t.getAttribute('data-bucket');
+    t.style.display=(b==='all'||b===f)?'':'none';
+  });
+}
+</script>
+<script src="/js/main.js?v=078n"></script></body></html>
 {{end}}
 
 {{define "panel-rail"}}
@@ -28,6 +58,7 @@
   <a class="pnl-rail-item{{if eq .Active "support"}} pnl-on{{end}}" href="/hosting/support"><span class="material-icons-outlined pnl-ric">support_agent</span> Support {{if .SupportOpen}}<span class="cnt">{{.SupportOpen}}</span>{{end}}</a>
   <a class="pnl-rail-item{{if eq .Active "billing"}} pnl-on{{end}}" href="/hosting/billing"><span class="material-icons-outlined pnl-ric">credit_card</span> Billing</a>
   <a class="pnl-rail-item pnl-pass-item{{if eq .Active "pass"}} pnl-on{{end}}" href="/hosting/pass"><span class="material-icons-outlined pnl-ric">bolt</span> Pulse</a>
+  <div class="pnl-rail-bottom">
   <div class="pnl-rail-sep"></div>
   <a class="pnl-rail-item{{if eq .Active "community"}} pnl-on{{end}}" href="/hosting/community"><span class="material-icons-outlined pnl-ric">groups</span> Community &amp; Partners</a>
   <a class="pnl-rail-item{{if eq .Active "news"}} pnl-on{{end}}" href="/hosting/news"><span class="material-icons-outlined pnl-ric">campaign</span> News</a>
@@ -38,6 +69,7 @@
       <div><div class="nm">My account</div><div class="sub">Settings</div></div>
       <span class="tier">{{.PassTierShort}}</span>
     </a>
+  </div>
   </div>
 </aside>
 {{end}}
@@ -59,24 +91,24 @@
             <div class="pnl-sub"><span class="pnl-live-dot"></span> {{.Online}} online &middot; {{.Total}} service{{if ne .Total 1}}s{{end}} total &middot; up to {{.MaxServers}} per account</div>
             <a class="pnl-btn-green" href="/hosting/create">&#128722; Deploy server</a>
           </div>
-          <div class="pnl-pass" id="pnl-pass">
+          <div class="pnl-pass pnl-pass-link" id="pnl-pass" onclick="location.href='/u/{{.User.Username}}'">
             <div class="pnl-pass-banner"></div>
             <div class="pnl-pass-glow"></div>
             <img class="av pav" src="/avatars/u/{{.User.Username}}/128.png?v=1" alt="" onerror="this.style.display='none'">
             <div>
               <div class="lbl">Pulse Pass</div>
-              <div class="nm">{{.User.Username}} &#8250;</div>
+              <div class="nm">{{.User.Username}} <span class="pnl-arr">&#8250;</span></div>
               <div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">NSM Hosting</span></div>
               <div class="foot">Free forever &middot; every feature included</div>
             </div>
             <a class="manage manage-ring" href="/u/{{.User.Username}}">&#9998; Manage</a>
-            <div class="pnl-pass-colors" title="Banner colour">
+            <div class="pnl-pass-colors" title="Banner colour" onclick="event.stopPropagation()">
               <span class="pc-lbl">banner</span>
-              <button onclick="pnlPassColor('#4c2a86','#1b1030')" style="background:linear-gradient(135deg,#4c2a86,#1b1030)"></button>
-              <button onclick="pnlPassColor('#0e5c3a','#072418')" style="background:linear-gradient(135deg,#0e5c3a,#072418)"></button>
-              <button onclick="pnlPassColor('#1e3a8a','#0c1a3e')" style="background:linear-gradient(135deg,#1e3a8a,#0c1a3e)"></button>
-              <button onclick="pnlPassColor('#7c2d12','#2a1006')" style="background:linear-gradient(135deg,#7c2d12,#2a1006)"></button>
-              <button onclick="pnlPassColor('#334155','#111827')" style="background:linear-gradient(135deg,#334155,#111827)"></button>
+              <button onclick="event.stopPropagation();pnlPassColor('#4c2a86','#1b1030')" style="background:linear-gradient(135deg,#4c2a86,#1b1030)"></button>
+              <button onclick="event.stopPropagation();pnlPassColor('#0e5c3a','#072418')" style="background:linear-gradient(135deg,#0e5c3a,#072418)"></button>
+              <button onclick="event.stopPropagation();pnlPassColor('#1e3a8a','#0c1a3e')" style="background:linear-gradient(135deg,#1e3a8a,#0c1a3e)"></button>
+              <button onclick="event.stopPropagation();pnlPassColor('#7c2d12','#2a1006')" style="background:linear-gradient(135deg,#7c2d12,#2a1006)"></button>
+              <button onclick="event.stopPropagation();pnlPassColor('#334155','#111827')" style="background:linear-gradient(135deg,#334155,#111827)"></button>
             </div>
           </div>
         </div>
@@ -158,8 +190,8 @@ function pnlToast(msg){
   window.__nsmToastT=setTimeout(function(){t.classList.remove('show');},4200);
 }
 function pnlCopy(t){navigator.clipboard&&navigator.clipboard.writeText(t);}
-function pnlPassColor(a,b){var p=document.getElementById('pnl-pass');p.style.setProperty('--pnl-pass-a',a);p.style.setProperty('--pnl-pass-b',b);try{localStorage.setItem('nsmPassColor',JSON.stringify([a,b]));}catch(e){}}
-(function(){try{var c=JSON.parse(localStorage.getItem('nsmPassColor')||'null');if(c)document.getElementById('pnl-pass').style.cssText+=';--pnl-pass-a:'+c[0]+';--pnl-pass-b:'+c[1];}catch(e){}
+function pnlPassColor(a,b){var r=document.documentElement.style;r.setProperty('--pnl-pass-a',a);r.setProperty('--pnl-pass-b',b);var p=document.getElementById('pnl-pass');if(p){p.style.setProperty('--pnl-pass-a',a);p.style.setProperty('--pnl-pass-b',b);}try{localStorage.setItem('nsmPassColor',JSON.stringify([a,b]));}catch(e){}}
+(function(){try{var c=JSON.parse(localStorage.getItem('nsmPassColor')||'null');if(c){document.documentElement.style.setProperty('--pnl-pass-a',c[0]);document.documentElement.style.setProperty('--pnl-pass-b',c[1]);}}catch(e){}
   var h=new Date().getHours();var g=h<12?'Good morning':h<18?'Good afternoon':'Good evening';document.getElementById('pnl-greet').textContent=g;})();
 var pnlACCENTS=[['#18E888','#0d9d5f','Green'],['#22d3ee','#0e7490','Cyan'],['#3b82f6','#1d4ed8','Blue'],['#a855f7','#7e22ce','Purple'],['#ec4899','#be185d','Pink'],['#f97316','#c2410c','Orange']];
 function pnlSetAccent(a,b){var r=document.documentElement.style;
@@ -916,22 +948,22 @@ if(document.getElementById('act-list')){window.__nsmTimers.push(setInterval(pnlA
       </div>
       {{else}}
       <div class="pnl-tabs-row">
-        <span class="pnl-tab-chip pnl-on">New <span class="n">{{.SupportNew}}</span></span>
-        <span class="pnl-tab-chip">Open <span class="n">{{.SupportOpen}}</span></span>
-        <span class="pnl-tab-chip">Closed <span class="n">{{.SupportClosed}}</span></span>
+        <button type="button" class="pnl-tab-chip pnl-on" data-f="new" onclick="supFilter('new')">New <span class="n">{{.ChipNew}}</span></button>
+        <button type="button" class="pnl-tab-chip" data-f="open" onclick="supFilter('open')">Open <span class="n">{{.ChipOpen}}</span></button>
+        <button type="button" class="pnl-tab-chip" data-f="closed" onclick="supFilter('closed')">Closed <span class="n">{{.ChipClosed}}</span></button>
       </div>
       <div class="pnl-panel">
         <h3>Hosting support</h3><p class="hint">Live chat with the hosting team — separate from the <a href="/support" style="color:#18E888">NSM ticket system</a>. Status of the platform lives on the <a href="/status" style="color:#18E888">status page</a>.</p>
-        <div class="pnl-tickets">
+        <div class="pnl-tickets" id="sup-list">
           {{range .Tickets}}
-          <a class="pnl-ticket" href="/hosting/support?t={{.ID}}">
+          <a class="pnl-ticket" data-bucket="{{if eq .Status "new"}}new{{else if eq .Status "closed"}}closed{{else}}open{{end}}" href="/hosting/support?t={{.ID}}">
             <span class="id">#{{.ID}}</span>
             <span class="subj">{{.Subject}}</span>
             <span class="pnl-pill {{if eq .Status "closed"}}off{{else}}ok{{end}}">{{.Status}}</span>
             <span class="when">{{unixfmt .Updated}}</span>
           </a>
           {{else}}
-          <div class="pnl-ticket">No tickets yet — press <b>New chat</b> to reach the hosting team.</div>
+          <div class="pnl-ticket" data-bucket="all">No tickets yet — press <b>New chat</b> to reach the hosting team.</div>
           {{end}}
         </div>
       </div>
@@ -1050,7 +1082,7 @@ function pnlCloseTicket(id){fetch('/api/hosting/support/'+id+'/close',{method:'P
         <div class="pnl-sub">Your NSM pass — every hosting feature is included free.</div>
         <a class="pnl-btn-green" href="/u/{{.User.Username}}">Manage profile</a>
       </div>
-      <div class="pnl-pass"><img class="av pav" src="/avatars/u/{{.User.Username}}/128.png?v=1" alt="" onerror="this.style.display='none'"><div><div class="lbl">Pulse Pass</div><div class="nm">{{.User.Username}} &#8250;</div><div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">Free forever</span></div></div></div>
+      <div class="pnl-pass"><img class="av pav" src="/avatars/u/{{.User.Username}}/128.png?v=1" alt="" onerror="this.style.display='none'"><div><div class="lbl">Pulse Pass</div><div class="nm">{{.User.Username}} <span class="pnl-arr">&#8250;</span></div><div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">Free forever</span></div></div></div>
     </div>
     <div class="pnl-panel"><h3>What's included</h3><p class="hint">Up to 5 servers, 2048 slots each, backups, schedules, one-click apps, the Plus scripting agent and hosting support chat.</p></div>
     <div class="pnl-panel">

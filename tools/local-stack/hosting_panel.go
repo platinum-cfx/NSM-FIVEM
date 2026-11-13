@@ -141,11 +141,10 @@ func (ss *supportStore) openFor(owner int64) (tickets []*supportTicket, openCoun
 		switch t.Status {
 		case "new":
 			newCount++
-			openCount++
 		case "closed":
 			closedCount++
 		default:
-			// open / answered / waiting all count as active conversations
+			// open / answered / waiting — the Open bucket, disjoint from New
 			openCount++
 		}
 	}
@@ -285,7 +284,7 @@ func panelNav(active string, u *User) map[string]interface{} {
 	openN, newN, closedN := int64(0), int64(0), int64(0)
 	if u != nil {
 		_, o, n, c := support().openFor(u.ID)
-		openN, newN, closedN = int64(o), int64(n), int64(c)
+		openN, newN, closedN = int64(o+n), int64(n), int64(c)
 	}
 	return map[string]interface{}{
 		"Active": active, "SupportOpen": openN, "SupportNew": newN, "SupportClosed": closedN,
@@ -332,7 +331,7 @@ func hostingDashboardPage(w http.ResponseWriter, r *http.Request) {
 		"Title": "Dashboard - NSM Hosting", "Servers": mine, "Online": online,
 		"Total": len(mine), "MaxServers": hostingMaxPerOwner, "PKG": hostingPackage,
 		"PassTier": pulseTierName(u), "Greeting": greetingWord(), "SupportAgo": supportAgo,
-		"SupportOpen": openN, "SupportNew": newN, "SupportClosed": closedN,
+		"SupportOpen": openN + newN, "SupportNew": newN, "SupportClosed": closedN,
 		"DueText": dueText,
 	}
 	for k, v := range panelNav("dashboard", u) {
@@ -541,7 +540,8 @@ func hostingSupportPage(w http.ResponseWriter, r *http.Request) {
 	tickets, openN, newN, closedN := support().openFor(u.ID)
 	data := map[string]interface{}{
 		"Title": "Support - NSM Hosting", "Tickets": tickets,
-		"SupportOpen": openN, "SupportNew": newN, "SupportClosed": closedN,
+		"SupportOpen": openN + newN, "SupportNew": newN, "SupportClosed": closedN,
+		"ChipOpen": openN, "ChipNew": newN, "ChipClosed": closedN,
 	}
 	if id != "" {
 		ss := support()
@@ -633,17 +633,18 @@ func apiHostSupportMessage(w http.ResponseWriter, r *http.Request) {
 	ss := support()
 	ss.mu.Lock()
 	t := ss.findLocked(r.PathValue("id"))
-	if t == nil || (t.Owner != u.ID && u.Role != "founder") {
+	if t == nil || (t.Owner != u.ID && u.Role != "founder" && !roleAtLeast(u.Role, "staff")) {
 		ss.mu.Unlock()
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
 	from := "user"
-	if u.Role == "founder" {
+	if u.Role == "founder" || roleAtLeast(u.Role, "staff") {
 		from = "staff"
 	}
 	t.Messages = append(t.Messages, supportMsg{From: from, By: u.Username, Text: body.Text, At: time.Now().Unix()})
-	if t.Status == "closed" {
+	// ITEM 3 — a response moves the ticket into Open (from New or Closed)
+	if t.Status == "new" || t.Status == "closed" {
 		t.Status = "open"
 	}
 	t.Updated = time.Now().Unix()
@@ -662,7 +663,7 @@ func apiHostSupportClose(w http.ResponseWriter, r *http.Request) {
 	ss := support()
 	ss.mu.Lock()
 	t := ss.findLocked(r.PathValue("id"))
-	if t == nil || (t.Owner != u.ID && u.Role != "founder") {
+	if t == nil || (t.Owner != u.ID && u.Role != "founder" && !roleAtLeast(u.Role, "staff")) {
 		ss.mu.Unlock()
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return

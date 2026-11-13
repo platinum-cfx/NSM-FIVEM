@@ -43,8 +43,9 @@
 .pnl-rail-item .cnt { margin-left: auto; background: rgba(24,232,136,.16); color: #18E888; border-radius: 99px; font-size: .72rem; padding: 1px 8px; }
 .pnl-rail-ic { width: 18px; text-align: center; opacity: .9; font-size: 1rem; }
 .pnl-rail-sep { height: 1px; background: rgba(255,255,255,.07); margin: 12px 6px; }
-.pnl-rail-foot { margin-top: auto; }
-.pnl-me { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: linear-gradient(120deg, rgba(29,78,216,.32), rgba(11,26,74,.45)); border: 1px solid rgba(96,165,250,.35); }
+.pnl-rail-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 4px; }
+.pnl-rail-foot { margin-top: 2px; }
+.pnl-me { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: linear-gradient(120deg, color-mix(in srgb, var(--pnl-pass-a,#1d4ed8) 42%, transparent), color-mix(in srgb, var(--pnl-pass-b,#0b1a4a) 62%, transparent)); border: 1px solid color-mix(in srgb, var(--pnl-pass-a,#1d4ed8) 55%, rgba(255,255,255,.35)); }
 .pnl-me img, .pnl-me .av { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg,#3b82f6,#1d4ed8); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #04120c; }
 .pnl-me .nm { font-weight: 700; font-size: .88rem; }
 .pnl-me .sub { font-size: .72rem; color: #8fa0b2; }
@@ -300,6 +301,52 @@ body.nsm-swap-fade { animation: nsmFadeIn .18s ease; }
   .pnl-rail-foot { margin-top: 0; width: 100%; }
   .pnl-rail-sep { display: none; }
 }
+
+/* ITEM 6 — mouse-following glow kept inside each highlighted element */
+.pnl-pass > .pnl-pass-glow {
+  background: radial-gradient(340px circle at var(--mx,22%) var(--my,-10%), color-mix(in srgb, var(--pnl-pass-a,#1d4ed8) 55%, rgba(255,255,255,.55)), transparent 72%);
+  mix-blend-mode: screen; transition: opacity .3s ease;
+}
+.pnl-me, .pnl-rail-item, .pnl-chip, .pnl-mini-btn, .pnl-btn-green, .pnl-tab { position: relative; }
+.pnl-me::after, .pnl-rail-item::after, .pnl-chip::after, .pnl-mini-btn::after, .pnl-btn-green::after, .pnl-tab::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0;
+  background: radial-gradient(180px circle at var(--mx,50%) var(--my,50%), var(--pnl-glow, rgba(255,255,255,.16)), transparent 70%);
+  transition: opacity .35s ease;
+}
+.pnl-me:hover::after, .pnl-rail-item:hover::after, .pnl-chip:hover::after, .pnl-mini-btn:hover::after, .pnl-btn-green:hover::after, .pnl-tab:hover::after { opacity: 1; }
+.pnl-me { --pnl-glow: color-mix(in srgb, var(--pnl-pass-a,#1d4ed8) 60%, rgba(255,255,255,.35)); }
+.pnl-rail-item, .pnl-tab { --pnl-glow: rgba(24,232,136,.22); }
+.pnl-pass-item { --pnl-glow: rgba(168,85,247,.30); }
+.pnl-chip { --pnl-glow: rgba(255,255,255,.20); }
+.pnl-btn-green, .pnl-mini-btn.green { --pnl-glow: rgba(24,232,136,.35); }
+.pnl-mini-btn.red { --pnl-glow: rgba(248,113,113,.35); }
+
+/* ITEM 8 — ZapX-style glass on highlighted / interactive elements only */
+.pnl-pass, .pnl-me, .pnl-chip, .pnl-pill, .pnl-mini-btn, .pnl-btn-green,
+.pnl-badge-imported, .pnl-me .tier,
+.pnl-rail-item:hover, .pnl-rail-item.pnl-on, .pnl-tab:hover, .pnl-tab.pnl-on {
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.pnl-pass { box-shadow: inset 0 1px 0 rgba(255,255,255,.18), inset 0 -1px 0 rgba(0,0,0,.18), 0 18px 44px rgba(0,0,0,.35); }
+.pnl-me { box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 10px 26px rgba(0,0,0,.30); }
+.pnl-chip, .pnl-pill, .pnl-badge-imported, .pnl-me .tier {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14);
+  border: 1px solid rgba(255,255,255,.12);
+}
+.pnl-mini-btn, .pnl-btn-green {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 8px 20px rgba(0,0,0,.28);
+  border: 1px solid rgba(255,255,255,.14);
+}
+.pnl-rail-item:hover, .pnl-rail-item.pnl-on, .pnl-tab:hover, .pnl-tab.pnl-on {
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 8px 22px rgba(0,0,0,.26);
+}
+
+/* ITEM 7 — profile-card arrow slides right on hover */
+.pnl-arr { display: inline-block; transition: transform .28s cubic-bezier(.2,.8,.25,1); }
+.pnl-pass:hover .pnl-arr { transform: translateX(6px); }
+.pnl-pass-link { cursor: pointer; }
 
 /* --- typography matches the main site (Figtree, heavy, gradient accents) --- */
 .pnl-page { font-family: 'Figtree', var(--font-body, sans-serif); }

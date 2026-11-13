@@ -3,7 +3,7 @@
     <div class="container">
       <div class="spacer">
         <p class="lead" style="margin:0 0 .6rem"><strong>NSM Status</strong></p>
-        <h1 style="font-size:2.1rem;margin:0 0 1.1rem">System uptime &amp; incident history</h1>
+        <h1 style="font-size:2.1rem;margin:0 0 1.1rem;color:#fff">System uptime &amp; incident history</h1>
         {{if eq .Status.Overall "operational"}}
         <div id="st-banner" style="background:rgba(22,199,132,.14);border:1px solid rgba(22,199,132,.5);color:#16c784;padding:.9rem 1.2rem;border-radius:10px;font-size:1.15rem;font-weight:600;display:inline-block">
           &#9679;&nbsp; {{.Status.OverallText}}
@@ -27,7 +27,7 @@
 <section class="features">
   <div class="container">
     <div class="spacer">
-      <h1 style="margin:0 0 1.2rem">Systems</h1>
+      <h1 style="margin:0 0 1.2rem;color:#fff">Systems</h1>
       {{range .Status.Components}}
       <div style="background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:1.15rem 1.35rem;margin:0 0 14px">
         <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:6px">
