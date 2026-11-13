@@ -209,6 +209,22 @@ func (m *hostingManager) normalizeLocked() {
 		kept = append(kept, s)
 	}
 	m.st.Servers = kept
+	// never allow two cities to share a game port
+	portSeen := map[int]bool{}
+	for i := range m.st.Servers {
+		s := m.st.Servers[i]
+		if !portSeen[s.GameTCPPort] {
+			portSeen[s.GameTCPPort] = true
+			continue
+		}
+		if np, err := m.allocPortLocked(); err == nil && np != 0 {
+			old := s.GameTCPPort
+			s.GameTCPPort = np
+			s.GameUDPPort = np
+			portSeen[np] = true
+			log.Printf("[hosting] city %s shared port %d with another city — moved to %d", s.ID, old, np)
+		}
+	}
 }
 
 func (m *hostingManager) saveLocked() {
@@ -906,9 +922,30 @@ func (m *hostingManager) start(s *HostedServer) error {
 			m.appendLog(s, fmt.Sprintf("[system] stopped %d leftover server process(es) from an earlier run", reaped))
 		}
 		if !portBindable(s.GameTCPPort) || !portBindable(s.GameUDPPort) {
-			m.setStatus(s, hostError)
-			m.appendLog(s, fmt.Sprintf("[error] ports %d/%d are held by another process on this machine — free them or delete and re-create the server to get new ports", s.GameTCPPort, s.GameUDPPort))
-			return errPortsBusy
+			// A process outside this city holds the ports (often another city
+			// stuck on the same port from an older build). Move this city to a
+			// free port pair instead of refusing to boot.
+			m.mu.Lock()
+			oldPort := s.GameTCPPort
+			np, aerr := m.allocPortLocked()
+			if aerr == nil && np != 0 {
+				s.GameTCPPort = np
+				s.GameUDPPort = np
+				if len(s.ExtraPorts) > 0 {
+					if ep, eerr := m.allocPortLocked(); eerr == nil {
+						s.ExtraPorts[0] = ep
+					}
+				}
+				m.saveLocked()
+				m.mu.Unlock()
+				m.healCfg(s)
+				m.appendLog(s, fmt.Sprintf("[system] port %d was held by another process — moved this city to port %d", oldPort, np))
+			} else {
+				m.mu.Unlock()
+				m.setStatus(s, hostError)
+				m.appendLog(s, fmt.Sprintf("[error] ports %d/%d are held by another process on this machine and the port pool is full — free ports or delete unused servers", s.GameTCPPort, s.GameUDPPort))
+				return errPortsBusy
+			}
 		}
 	}
 	if abs, err := filepath.Abs(exe); err == nil {

@@ -377,7 +377,33 @@ func hostingBillingPage(w http.ResponseWriter, r *http.Request) {
 	if u == nil {
 		return
 	}
-	data := map[string]interface{}{"Title": "Billing - NSM Hosting", "PKG": hostingPackage, "PassTier": pulseTierName(u)}
+	m := hostMgr()
+	m.mu.Lock()
+	type billRow struct {
+		Name   string
+		Tier   string
+		Up     int
+		DueTxt string
+	}
+	rows := []billRow{}
+	total := 0.0
+	for _, srv := range m.st.Servers {
+		if srv.Owner != u.ID {
+			continue
+		}
+		up, tier := srv.PlanUpvotes, srv.PlanTier
+		if tier == "" {
+			up, tier = 10, "spark"
+		}
+		d := planDueEUR(up)
+		total += d
+		rows = append(rows, billRow{Name: srv.Name, Tier: tier, Up: up, DueTxt: dueText(d)})
+	}
+	m.mu.Unlock()
+	data := map[string]interface{}{
+		"Title": "Billing - NSM Hosting", "PKG": hostingPackage, "PassTier": pulseTierName(u),
+		"Bills": rows, "TotalDue": fmt.Sprintf("€%.2f", total), "NextCharge": "1 December 2026",
+	}
 	for k, v := range panelNav("billing", u) {
 		data[k] = v
 	}
@@ -702,6 +728,26 @@ func apiHostActivity(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusOK, map[string]interface{}{"lines": acts})
 }
 
+// planDueEUR prices a package by its upvotes. The entry package (10
+// upvotes) is free; beyond that the monthly amount scales with attention.
+func planDueEUR(up int) float64 {
+	if up <= 10 {
+		return 0
+	}
+	due := float64(up) * 0.0002
+	if due < 2.99 {
+		due = 2.99
+	}
+	return float64(int(due*100+0.5)) / 100
+}
+
+func dueText(d float64) string {
+	if d <= 0 {
+		return "Free"
+	}
+	return fmt.Sprintf("€%.2f", d)
+}
+
 func apiHostPlan(w http.ResponseWriter, r *http.Request) {
 	m, snap, _, ok := panelOwned(w, r)
 	if !ok {
@@ -717,7 +763,10 @@ func apiHostPlan(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		m.mu.Unlock()
-		sendJSON(w, http.StatusOK, map[string]interface{}{"tier": tier, "upvotes": up, "price": "Free", "due": "Free"})
+		d := planDueEUR(up)
+		sendJSON(w, http.StatusOK, map[string]interface{}{
+			"tier": tier, "upvotes": up, "due": d, "dueText": dueText(d), "currency": "EUR", "period": "month",
+		})
 		return
 	}
 	var body struct {
@@ -738,11 +787,15 @@ func apiHostPlan(w http.ResponseWriter, r *http.Request) {
 	if cur := m.find(snap.ID); cur != nil {
 		cur.PlanTier = body.Tier
 		cur.PlanUpvotes = body.Upvotes
-		m.logNL(cur, "[panel] package updated — "+body.Tier+" · "+strconv.Itoa(body.Upvotes)+" upvotes")
+		m.logNL(cur, "[panel] package updated — "+body.Tier+" · "+strconv.Itoa(body.Upvotes)+" upvotes · "+dueText(planDueEUR(body.Upvotes))+"/month")
 		m.saveLocked()
 	}
 	m.mu.Unlock()
-	sendJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "tier": body.Tier, "upvotes": body.Upvotes, "due": "Free"})
+	d := planDueEUR(body.Upvotes)
+	sendJSON(w, http.StatusOK, map[string]interface{}{
+		"ok": true, "tier": body.Tier, "upvotes": body.Upvotes,
+		"due": d, "dueText": dueText(d), "currency": "EUR", "period": "month",
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -761,7 +814,10 @@ func listBackups(m *hostingManager, s *HostedServer) []hostBackup {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".zip") {
 			continue
 		}
-		info, _ := e.Info()
+		info, ierr := e.Info()
+		if ierr != nil {
+			continue
+		}
 		out = append(out, hostBackup{
 			ID: strings.TrimSuffix(e.Name(), ".zip"), Name: e.Name(),
 			Created: info.ModTime().Unix(), SizeMB: info.Size() / (1024 * 1024),

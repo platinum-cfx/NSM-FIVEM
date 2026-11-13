@@ -1,5 +1,25 @@
 {{define "panel-assets"}}{{end}}
 
+{{define "panel-head"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{if .Title}}{{.Title}}{{else}}NSM Hosting{{end}}</title>
+  <link rel="icon" type="image/png" href="/img/nsm-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&family=JetBrains+Mono:wght@400;500;700&family=Material+Icons+Outlined&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css?v=090a">
+  <link rel="stylesheet" href="/css/zapx.css?v=9">
+  <link rel="stylesheet" href="/css/panel.css?v=2">
+</head>
+<body class="pnl-page">
+{{end}}
+
+{{define "panel-foot"}}<script src="/js/main.js?v=078n"></script></body></html>
+{{end}}
+
 {{define "panel-rail"}}
 <aside class="pnl-rail" id="pnl-rail">
   <a class="pnl-logo" href="/hosting/dashboard"><span class="nsm">NSM</span> <span style="font-size:.8rem;opacity:.7">HOSTING</span></a>
@@ -23,11 +43,11 @@
 {{end}}
 
 {{define "panel-dashboard"}}
-{{template "head" .}}{{template "panel-assets" .}}
+{{template "panel-head" .}}
 <div class="pnl">
   {{template "panel-rail" .}}
   <div class="pnl-main">
-    <div class="pnl-top"><h1>Dashboard</h1><div class="sp"></div>
+    <div class="pnl-top"><a class="pnl-back" href="/" title="Back to NSM website">&#8592;</a><h1>Dashboard</h1><div class="sp"></div>
       <a class="pnl-icon-btn" href="/hosting/support" title="Support">&#9993;{{if .SupportOpen}}<span class="dot">{{.SupportOpen}}</span>{{end}}</a>
       <a class="pnl-icon-btn" href="/hosting/incidents" title="Incidents">&#9888;</a>
     </div>
@@ -168,11 +188,11 @@ window.__nsmTimers=window.__nsmTimers||[];
 window.__nsmTimers.push(setInterval(pnlCardPoll,10000));
 pnlCardPoll();
 </script>
-{{template "foot" .}}
+{{template "panel-foot" .}}
 {{end}}
 
 {{define "panel-manage"}}
-{{template "head" .}}{{template "panel-assets" .}}
+{{template "panel-head" .}}
 {{$s := .S}}{{$tab := .Tab}}
 <div class="pnl pnl-full">
   <div class="pnl-main">
@@ -280,7 +300,13 @@ pnlCardPoll();
 
           {{if eq $tab "plan"}}
           <div class="pnl-panel">
-            <h3>Auto scaling</h3><p class="hint">Automatically adjusts to the typical load of the last hour.</p>
+            <h3>Server header</h3>
+            <div class="pnl-srv-head" style="margin-bottom:10px">
+              <div class="title"><span>{{$s.Name}}</span></div>
+              <span class="pnl-imported">Imported from NSM</span>
+              <span class="pnl-unit">unit #{{$s.ID}}</span>
+            </div>
+            <p class="hint">Scale with me &mdash; the package adjusts to the typical load of the last hour.</p>
             <label style="display:flex;gap:10px;align-items:center;font-weight:700"><input type="checkbox" id="autoscale" onchange="pnlNote('Auto scaling '+(this.checked?'on':'off'))"> Scale automatically</label>
             <div class="pnl-gauges" style="margin-top:16px">
               <div class="pnl-gauge"><div class="k">CPU load</div><div class="v" id="g-cpu2">—</div><div class="pnl-bar"><i id="b-cpu2" style="width:0"></i></div></div>
@@ -289,10 +315,10 @@ pnlCardPoll();
             </div>
           </div>
           <div class="pnl-panel">
-            <h3>Customize server package</h3><p class="hint">Your package is measured in <strong>upvotes</strong> — the NSM currency of attention. Current plan: <strong style="color:#18E888">Free &middot; 10 upvotes</strong>.</p>
+            <h3>Customize server package</h3><p class="hint">Measured in <strong>upvotes</strong> — the NSM currency of attention. Pick a package or drag the slider to exactly the size you need.</p>
             <div class="pnl-tiers" id="tier-row">
-              {{range .Tiers}}<button class="pnl-tier{{if eq $.PlanTier .Name}} pnl-on{{end}}" data-up="{{.Upvotes}}" onclick="pnlTier(this,'{{.Name}}')">{{.Name}}</button>{{end}}
-              <button class="pnl-tier{{if eq .PlanTier "custom"}} pnl-on{{end}}" onclick="pnlTier(this,'custom')">Custom</button>
+              {{range .Tiers}}<button class="pnl-tier{{if eq $.PlanTier .Name}} pnl-on{{end}}" data-up="{{.Upvotes}}" onclick="pnlTier(this,'{{.Name}}')"><span class="tname">{{.Name}}</span><span class="tprice" data-price></span></button>{{end}}
+              <button class="pnl-tier{{if eq .PlanTier "custom"}} pnl-on{{end}}" onclick="pnlTier(this,'custom')"><span class="tname">Custom</span><span class="tprice">slider</span></button>
             </div>
             <div class="pnl-slider-row">
               <button class="pnl-mini-btn" onclick="pnlStep(-1000)">−</button>
@@ -301,13 +327,14 @@ pnlCardPoll();
               <div class="pnl-stepper"><span class="num" id="up-num">{{.PlanUpvotes}}</span></div>
             </div>
             <div class="pnl-due">
-              <div><div class="k">Your charge amount due</div><div class="v">Free</div></div>
-              <div style="text-align:right"><div class="k">Price</div><div class="v" style="font-size:1.15rem">&euro;0.00 / month</div></div>
+              <div><div class="k">Your charge amount due</div><div class="v" id="due-amount">—</div></div>
+              <div style="text-align:right"><div class="k">Price</div><div class="v" style="font-size:1.15rem"><span id="due-price">—</span> <span style="font-size:.8rem;opacity:.7">/ month</span></div></div>
             </div>
-            <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+            <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
               <button class="pnl-btn-green" onclick="pnlPlanSave()">Order subscription</button>
               <span id="plan-msg" style="color:#18E888;font-size:.85rem"></span>
             </div>
+            <p class="hint" style="margin-top:10px">Payment is arranged through <a href="/hosting/support" style="color:#18E888">hosting support</a> — invoices are sent to your account email.</p>
           </div>
           {{end}}
 
@@ -541,6 +568,15 @@ function post(url, body) {
   return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})});
 }
 window.post = post;
+function pnlGet(url){
+  var ab=('AbortController' in window)?new AbortController():null;
+  if(ab)setTimeout(function(){ab.abort();},8000);
+  return fetch(url,{signal:ab?ab.signal:undefined}).then(function(r){
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    return r.json();
+  });
+}
+function pnlFail(el,msg){if(el)el.innerHTML='<div class="pnl-err">'+msg+' <button class="pnl-mini-btn" onclick="location.reload()">Retry</button></div>';}
 function pnlPost(u){post(u).then(function(){location.reload();});}
 function pnlApplySrvStatus(d){
   var pill=document.getElementById('srv-pill'); if(pill){pill.textContent=d.status; pill.className='pnl-pill '+(d.status==='online'?'ok':d.status==='error'?'bad':'off');}
@@ -627,12 +663,26 @@ function pnlCmd(e){
 /* ---- plan ---- */
 var planTier={{printf "%q" .PlanTier}},planUp={{.PlanUpvotes}};
 function fmtN(n){return n>=1000000?(n/1000000).toFixed(n%1000000?1:0)+'M':n>=1000?(n/1000).toFixed(n%1000?1:0)+'k':String(n);}
+function pnlDue(up){return up<=10?0:Math.max(2.99,Math.round(up*0.0002*100)/100);}
+function pnlDueText(up){var d=pnlDue(up);return d<=0?'Free':'€'+d.toFixed(2);}
+function pnlDueRefresh(){
+  var a=document.getElementById('due-amount'),b=document.getElementById('due-price');
+  if(a)a.textContent=pnlDueText(planUp)+(pnlDue(planUp)>0?' / month':'');
+  if(b)b.textContent=pnlDueText(planUp);
+}
+(function(){document.querySelectorAll('.pnl-tier [data-price]').forEach(function(sp){
+  var t=sp.closest('.pnl-tier'),up=parseInt(t.getAttribute('data-up')||'0',10);
+  if(up)sp.textContent=pnlDueText(up)+' / mo';
+});pnlDueRefresh();})();
 function pnlSlide(v){planUp=parseInt(v,10);planTier='custom';document.getElementById('up-num').textContent=fmtN(planUp);
-  document.querySelectorAll('.pnl-tier').forEach(function(t){t.classList.remove('pnl-on');});}
+  document.querySelectorAll('.pnl-tier').forEach(function(t){t.classList.remove('pnl-on');});
+  var c=document.querySelector('.pnl-tier[onclick*="custom"]');if(c)c.classList.add('pnl-on');
+  pnlDueRefresh();}
 function pnlStep(d){var s=document.getElementById('up-slider');s.value=Math.max(1,Math.min(2000000,parseInt(s.value,10)+d));pnlSlide(s.value);}
 function pnlTier(btn,name){document.querySelectorAll('.pnl-tier').forEach(function(t){t.classList.remove('pnl-on');});btn.classList.add('pnl-on');
-  planTier=name;var up=btn.getAttribute('data-up');if(up){document.getElementById('up-slider').value=up;pnlSlide(up);}else{planTier='custom';}}
-function pnlPlanSave(){post('/api/host/'+ID+'/plan',{tier:planTier,upvotes:planUp}).then(function(r){return r.json();}).then(function(d){document.getElementById('plan-msg').textContent='Saved — '+fmtN(d.upvotes||planUp)+' upvotes · due: Free';});}
+  planTier=name;var up=btn.getAttribute('data-up');if(up){document.getElementById('up-slider').value=up;pnlSlide(up);planTier=name;}else{planTier='custom';pnlDueRefresh();}}
+function pnlPlanSave(){post('/api/host/'+ID+'/plan',{tier:planTier,upvotes:planUp}).then(function(r){return r.json();}).then(function(d){
+  document.getElementById('plan-msg').textContent='Subscription active — '+(d.dueText||pnlDueText(planUp))+' / month · '+fmtN(d.upvotes||planUp)+' upvotes';}).catch(function(){pnlToast('Could not save the plan');});}
 
 /* ---- agent ---- */
 function pnlAgentSend(){
@@ -651,7 +701,7 @@ function pnlAgentSend(){
 /* ---- apps ---- */
 function pnlApps(){
   var el=document.getElementById('app-list'); if(!el)return;
-  fetch('/api/host/'+ID+'/apps').then(function(r){return r.json();}).then(function(d){
+  pnlGet('/api/host/'+ID+'/apps').then(function(d){
     el.innerHTML='';
     d.apps.forEach(function(a){
       var div=document.createElement('div');div.className='pnl-app';
@@ -659,14 +709,14 @@ function pnlApps(){
         (a.installed?'<span class="pnl-pill ok">installed</span>':'<button class="pnl-btn-green" onclick="pnlInstall(\''+a.id+'\',this)">Install</button>');
       el.appendChild(div);
     });
-  });
+  }).catch(function(){pnlFail(el,'Apps could not be loaded.');});
 }
 function pnlInstall(id,btn){btn.textContent='Installing…';btn.disabled=true;post('/api/host/'+ID+'/apps/'+id+'/install').then(function(r){return r.json();}).then(function(){pnlApps();}).catch(function(){pnlApps();});}
 
 /* ---- backups / schedules / activity ---- */
 function pnlBackups(){
   var el=document.getElementById('bk-list'); if(!el)return;
-  fetch('/api/host/'+ID+'/backups').then(function(r){return r.json();}).then(function(d){
+  pnlGet('/api/host/'+ID+'/backups').then(function(d){
     if(!d.backups.length){el.innerHTML='<div class="pnl-ticket">No backups yet — create your first one.</div>';return;}
     el.innerHTML='';
     d.backups.forEach(function(b){
@@ -676,13 +726,13 @@ function pnlBackups(){
         '<button class="pnl-mini-btn red" onclick="pnlBackupOp(\''+b.id+'\',\'delete\')">Delete</button>';
       el.appendChild(div);
     });
-  });
+  }).catch(function(){pnlFail(el,'Backups could not be loaded.');});
 }
 function pnlBackupCreate(){document.getElementById('bk-msg').textContent='Creating…';post('/api/host/'+ID+'/backup').then(function(r){return r.json();}).then(function(){document.getElementById('bk-msg').textContent='Backup created';pnlBackups();});}
 function pnlBackupOp(id,op){if(op==='restore'&&!confirm('Restore this backup? Current files are replaced.'))return;post('/api/host/'+ID+'/backup/'+id+'/'+op).then(function(){pnlBackups();});}
 function pnlScheds(){
   var el=document.getElementById('sch-list'); if(!el)return;
-  fetch('/api/host/'+ID+'/schedules').then(function(r){return r.json();}).then(function(d){
+  pnlGet('/api/host/'+ID+'/schedules').then(function(d){
     if(!d.schedules||!d.schedules.length){el.innerHTML='<div class="pnl-ticket">No schedules yet.</div>';return;}
     el.innerHTML='';
     d.schedules.forEach(function(s){
@@ -692,16 +742,16 @@ function pnlScheds(){
         '<button class="pnl-mini-btn red" onclick="pnlSchedOp(\''+s.id+'\',\'delete\')">Delete</button>';
       el.appendChild(div);
     });
-  });
+  }).catch(function(){pnlFail(el,'Schedules could not be loaded.');});
 }
 function pnlSchedAdd(){post('/api/host/'+ID+'/schedules',{label:'',kind:document.getElementById('sch-kind').value,everyMin:parseInt(document.getElementById('sch-min').value,10)||60}).then(function(){pnlScheds();});}
 function pnlSchedOp(id,op){post('/api/host/'+ID+'/schedule/'+id+'/'+op).then(function(){pnlScheds();});}
 function pnlActivity(){
   var el=document.getElementById('act-list'); if(!el)return;
-  fetch('/api/host/'+ID+'/activity').then(function(r){return r.json();}).then(function(d){
-    el.textContent=d.lines.join('\n')||'no activity yet';
+  pnlGet('/api/host/'+ID+'/activity').then(function(d){
+    el.textContent=(d.lines||[]).join('\n')||'no activity yet';
     el.scrollTop=el.scrollHeight;
-  }).catch(function(){});
+  }).catch(function(){el.textContent='Activity could not be loaded — it will retry automatically.';});
 }
 
 /* ---- files + config (kept from the classic panel) ---- */
@@ -710,8 +760,8 @@ function fmList(p){
   var t=document.getElementById('filetable'); if(!t)return;
   cur=p||'';
   document.getElementById('fm-path').textContent='/'+cur;
-  fetch('/api/host/'+ID+'/files?path='+encodeURIComponent(cur)).then(function(r){return r.json();}).then(function(d){
-    if(d.error){t.textContent=d.error;return;}
+  pnlGet('/api/host/'+ID+'/files?path='+encodeURIComponent(cur)).then(function(d){
+    if(d.error){t.innerHTML='<div class="pnl-err">'+d.error+'</div>';return;}
     var h='<div class="pnl-kv">';
     d.entries.forEach(function(e){
       var act=e.dir?"fmList('"+e.path+"')":"fmEdit('"+e.path+"')";
@@ -742,7 +792,21 @@ window.__nsmTimers=window.__nsmTimers||[];
 if(document.getElementById('pnl-console'))pnlConsole();
 if(document.getElementById('filetable'))fmList('');
 if(document.getElementById('cfgtext')){
-  fetch('/api/host/'+ID+'/file?path=server.cfg').then(function(r){return r.json();}).then(function(d){document.getElementById('cfgtext').value=d.content||'';});
+  pnlGet('/api/host/'+ID+'/file?path=server.cfg').then(function(d){
+    if(d.error){
+      document.getElementById('cfgtext').value='# server.cfg is not on disk yet — press "Create default config" to write one.\n# '+d.error;
+      var m=document.getElementById('cfgmsg');
+      if(m)m.innerHTML='<button class="pnl-mini-btn green" onclick="cfgCreate()">Create default config</button>';
+      return;
+    }
+    document.getElementById('cfgtext').value=d.content||'';
+  }).catch(function(){
+    document.getElementById('cfgtext').value='# could not read server.cfg';
+  });
+}
+function cfgCreate(){
+  var txt='sv_hostname "NSM City"\nsv_maxclients 2048\nsv_lan 1\nsets sv_projectName "NSM City"\n';
+  post('/api/host/'+ID+'/file/write',{path:'server.cfg',content:txt}).then(function(){location.reload();});
 }
 pnlStats();
 window.__nsmTimers.push(setInterval(pnlStats,4000));
@@ -752,15 +816,15 @@ if(document.getElementById('bk-list'))pnlBackups();
 if(document.getElementById('sch-list'))pnlScheds();
 if(document.getElementById('act-list')){window.__nsmTimers.push(setInterval(pnlActivity,6000));pnlActivity();}
 </script>
-{{template "foot" .}}
+{{template "panel-foot" .}}
 {{end}}
 
 {{define "panel-support"}}
-{{template "head" .}}{{template "panel-assets" .}}
+{{template "panel-head" .}}
 <div class="pnl">
   {{template "panel-rail" .}}
   <div class="pnl-main">
-    <div class="pnl-top"><h1>Support</h1><div class="sp"></div>
+    <div class="pnl-top"><a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a><h1>Support</h1><div class="sp"></div>
       <div class="pnl-top-actions">
         <button class="pnl-mini-btn green" onclick="pnlNewTicket()">New chat</button>
         <a class="pnl-mini-btn" href="/support">Help center</a>
@@ -827,15 +891,15 @@ function pnlSendTicketMsg(id){
 }
 function pnlCloseTicket(id){fetch('/api/hosting/support/'+id+'/close',{method:'POST'}).then(function(){location.href='/hosting/support';});}
 </script>
-{{template "foot" .}}
+{{template "panel-foot" .}}
 {{end}}
 
 {{define "panel-community"}}
-{{template "head" .}}{{template "panel-assets" .}}
+{{template "panel-head" .}}
 <div class="pnl">
   {{template "panel-rail" .}}
   <div class="pnl-main">
-    <div class="pnl-top"><h1>Community &amp; Partners</h1><div class="sp"></div><a class="pnl-mini-btn" href="/hosting/dashboard">&#8592; back to dashboard</a></div>
+    <div class="pnl-top"><a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a><h1>Community &amp; Partners</h1><div class="sp"></div><a class="pnl-mini-btn" href="/hosting/dashboard">&#8592; back to dashboard</a></div>
     <div class="pnl-body">
       <div class="pnl-community">
         <nav class="pnl-subrail">
@@ -883,31 +947,40 @@ function pnlCloseTicket(id){fetch('/api/hosting/support/'+id+'/close',{method:'P
     </div>
   </div>
 </div>
-{{template "foot" .}}
+{{template "panel-foot" .}}
 {{end}}
 
 {{define "panel-billing"}}
-{{template "head" .}}{{template "panel-assets" .}}
+{{template "panel-head" .}}
 <div class="pnl">{{template "panel-rail" .}}<div class="pnl-main">
-  <div class="pnl-top"><h1>Billing</h1></div>
+  <div class="pnl-top"><a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a><h1>Billing</h1></div>
   <div class="pnl-body">
     <div class="pnl-panel">
-      <h3>Billing</h3><p class="hint">NSM Hosting is free — there are no charges, ever.</p>
+      <h3>Your subscriptions</h3><p class="hint">Packages are billed monthly. Payment is arranged through <a href="/hosting/support" style="color:#18E888">hosting support</a>.</p>
       <div class="pnl-kv">
-        <div class="r"><span class="k">Current plan</span><span class="v">NSM Standard &middot; Free</span></div>
-        <div class="r"><span class="k">Next charge</span><span class="v">None</span></div>
+        {{range .Bills}}
+        <div class="r"><span class="k">{{.Name}} &middot; {{.Tier}} &middot; {{.Up}} upvotes</span><span class="v">{{.DueTxt}} / month</span></div>
+        {{else}}
+        <div class="r"><span class="k">No paid packages yet</span><span class="v">Choose one under Manage plan</span></div>
+        {{end}}
+        <div class="r"><span class="k"><strong>Amount due</strong></span><span class="v" style="color:#18E888;font-size:1.05rem">{{.TotalDue}}</span></div>
+        <div class="r"><span class="k">Next charge</span><span class="v">{{.NextCharge}}</span></div>
         <div class="r"><span class="k">Pass</span><span class="v">{{.PassTier}}</span></div>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+        <a class="pnl-btn-green" href="/hosting/support">Arrange payment</a>
+        <a class="pnl-mini-btn" href="/hosting/dashboard">Manage packages</a>
       </div>
     </div>
   </div>
 </div></div>
-{{template "foot" .}}
+{{template "panel-foot" .}}
 {{end}}
 
 {{define "panel-pass"}}
-{{template "head" .}}{{template "panel-assets" .}}
+{{template "panel-head" .}}
 <div class="pnl">{{template "panel-rail" .}}<div class="pnl-main">
-  <div class="pnl-top"><h1>Pulse</h1></div>
+  <div class="pnl-top"><a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a><h1>Pulse</h1></div>
   <div class="pnl-body">
     <div class="pnl-hero">
       <div style="flex:1">
@@ -920,25 +993,25 @@ function pnlCloseTicket(id){fetch('/api/hosting/support/'+id+'/close',{method:'P
     <div class="pnl-panel"><h3>What's included</h3><p class="hint">Up to 5 servers, 2048 slots each, backups, schedules, one-click apps, the Plus scripting agent and hosting support chat.</p></div>
   </div>
 </div></div>
-{{template "foot" .}}
+{{template "panel-foot" .}}
 {{end}}
 
 {{define "panel-news"}}
-{{template "head" .}}{{template "panel-assets" .}}
+{{template "panel-head" .}}
 <div class="pnl">{{template "panel-rail" .}}<div class="pnl-main">
-  <div class="pnl-top"><h1>News</h1></div>
+  <div class="pnl-top"><a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a><h1>News</h1></div>
   <div class="pnl-body">
     <div class="pnl-panel"><h3>The new NSM Hosting panel is live</h3><p class="hint">Live updates, backups, schedules, one-click apps and the Plus scripting agent — all free. Questions? Open a <a href="/hosting/support" style="color:#18E888">hosting chat</a>.</p></div>
     <div class="pnl-panel"><h3>Five servers per account</h3><p class="hint">You can now run up to five cities at once from one NSM account — deploy extras from the <a href="/hosting/dashboard" style="color:#18E888">dashboard</a>.</p></div>
   </div>
 </div></div>
-{{template "foot" .}}
+{{template "panel-foot" .}}
 {{end}}
 
 {{define "panel-incidents"}}
-{{template "head" .}}{{template "panel-assets" .}}
+{{template "panel-head" .}}
 <div class="pnl">{{template "panel-rail" .}}<div class="pnl-main">
-  <div class="pnl-top"><h1>Incidents</h1></div>
+  <div class="pnl-top"><a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a><h1>Incidents</h1></div>
   <div class="pnl-body">
     <div class="pnl-panel">
       <h3>Platform incidents</h3><p class="hint">Live from the <a href="/status" style="color:#18E888">status page</a>.</p>
@@ -953,5 +1026,5 @@ function pnlCloseTicket(id){fetch('/api/hosting/support/'+id+'/close',{method:'P
     </div>
   </div>
 </div></div>
-{{template "foot" .}}
+{{template "panel-foot" .}}
 {{end}}
