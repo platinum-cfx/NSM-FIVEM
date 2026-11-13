@@ -2000,6 +2000,7 @@ func generateInitialsPNG(initial byte, bgHex string, size int) []byte {
 }
 
 func serveUserAvatar(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	username := r.PathValue("username")
 	sizeStr := strings.TrimSuffix(r.PathValue("size"), ".png")
 	size, _ := strconv.Atoi(sizeStr)

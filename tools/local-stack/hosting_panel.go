@@ -140,10 +140,12 @@ func (ss *supportStore) openFor(owner int64) (tickets []*supportTicket, openCoun
 		switch t.Status {
 		case "new":
 			newCount++
-		case "open":
 			openCount++
 		case "closed":
 			closedCount++
+		default:
+			// open / answered / waiting all count as active conversations
+			openCount++
 		}
 	}
 	sort.Slice(tickets, func(i, j int) bool { return tickets[i].Updated > tickets[j].Updated })
@@ -276,11 +278,16 @@ func panelNav(active string, u *User) map[string]interface{} {
 		case "sovereign":
 			short = "SOV"
 		case "eternal":
-			short = "ETL"
+			short = "MAX"
 		}
 	}
+	openN, newN, closedN := int64(0), int64(0), int64(0)
+	if u != nil {
+		_, o, n, c := support().openFor(u.ID)
+		openN, newN, closedN = int64(o), int64(n), int64(c)
+	}
 	return map[string]interface{}{
-		"Active": active, "SupportOpen": int64(0), "SupportNew": int64(0), "SupportClosed": int64(0),
+		"Active": active, "SupportOpen": openN, "SupportNew": newN, "SupportClosed": closedN,
 		"ServiceCount": svc, "PassTierShort": short,
 	}
 }
@@ -312,16 +319,33 @@ func hostingDashboardPage(w http.ResponseWriter, r *http.Request) {
 	if len(all) > 0 {
 		supportAgo = "Updated " + agoText(all[0].Updated)
 	}
+	totalDue := 0.0
+	for _, s := range mine {
+		totalDue += planDueEUR(s.PlanUpvotes)
+	}
+	dueText := "Free \u2014 no charges"
+	if totalDue > 0 {
+		dueText = fmt.Sprintf("\u20ac%.2f/month", totalDue)
+	}
 	data := map[string]interface{}{
 		"Title": "Dashboard - NSM Hosting", "Servers": mine, "Online": online,
 		"Total": len(mine), "MaxServers": hostingMaxPerOwner, "PKG": hostingPackage,
 		"PassTier": pulseTierName(u), "Greeting": greetingWord(), "SupportAgo": supportAgo,
-		"SupportOpen": openN + newN, "SupportNew": newN, "SupportClosed": closedN,
+		"SupportOpen": openN, "SupportNew": newN, "SupportClosed": closedN,
+		"DueText": dueText,
 	}
 	for k, v := range panelNav("dashboard", u) {
-		data[k] = v
+		if _, ok := data[k]; !ok {
+			data[k] = v
+		}
 	}
 	renderPage(w, r, "panel-dashboard", data)
+}
+
+// nextChargeDate is the same day next month, e.g. "13 December 2026".
+func nextChargeDate() string {
+	t := time.Now().AddDate(0, 1, 0)
+	return t.Format("2 January 2006")
 }
 
 func pulseTierName(u *User) string {
@@ -333,7 +357,7 @@ func pulseTierName(u *User) string {
 	case "sovereign":
 		return "Pulse Sovereign"
 	case "eternal":
-		return "Pulse Eternal"
+		return "Pulse Max"
 	}
 	return "Pulse Free"
 }
@@ -402,10 +426,12 @@ func hostingBillingPage(w http.ResponseWriter, r *http.Request) {
 	m.mu.Unlock()
 	data := map[string]interface{}{
 		"Title": "Billing - NSM Hosting", "PKG": hostingPackage, "PassTier": pulseTierName(u),
-		"Bills": rows, "TotalDue": fmt.Sprintf("€%.2f", total), "NextCharge": "1 December 2026",
+		"Bills": rows, "TotalDue": fmt.Sprintf("€%.2f", total), "NextCharge": nextChargeDate(),
 	}
 	for k, v := range panelNav("billing", u) {
-		data[k] = v
+		if _, ok := data[k]; !ok {
+			data[k] = v
+		}
 	}
 	renderPage(w, r, "panel-billing", data)
 }
@@ -417,7 +443,9 @@ func hostingPassPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data := map[string]interface{}{"Title": "Pulse - NSM Hosting", "PassTier": pulseTierName(u)}
 	for k, v := range panelNav("pass", u) {
-		data[k] = v
+		if _, ok := data[k]; !ok {
+			data[k] = v
+		}
 	}
 	renderPage(w, r, "panel-pass", data)
 }
@@ -429,7 +457,9 @@ func hostingNewsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data := map[string]interface{}{"Title": "News - NSM Hosting"}
 	for k, v := range panelNav("news", u) {
-		data[k] = v
+		if _, ok := data[k]; !ok {
+			data[k] = v
+		}
 	}
 	renderPage(w, r, "panel-news", data)
 }
@@ -441,7 +471,9 @@ func hostingIncidentsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data := map[string]interface{}{"Title": "Incidents - NSM Hosting", "Incidents": statusIncidentsSnapshot()}
 	for k, v := range panelNav("incidents", u) {
-		data[k] = v
+		if _, ok := data[k]; !ok {
+			data[k] = v
+		}
 	}
 	renderPage(w, r, "panel-incidents", data)
 }
@@ -453,7 +485,9 @@ func hostingCommunityPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data := map[string]interface{}{"Title": "Community & Partners - NSM Hosting", "Section": r.URL.Query().Get("s")}
 	for k, v := range panelNav("community", u) {
-		data[k] = v
+		if _, ok := data[k]; !ok {
+			data[k] = v
+		}
 	}
 	renderPage(w, r, "panel-community", data)
 }
@@ -468,7 +502,7 @@ func hostingSupportPage(w http.ResponseWriter, r *http.Request) {
 	tickets, openN, newN, closedN := support().openFor(u.ID)
 	data := map[string]interface{}{
 		"Title": "Support - NSM Hosting", "Tickets": tickets,
-		"SupportOpen": openN + newN, "SupportNew": newN, "SupportClosed": closedN,
+		"SupportOpen": openN, "SupportNew": newN, "SupportClosed": closedN,
 	}
 	if id != "" {
 		ss := support()
@@ -487,7 +521,9 @@ func hostingSupportPage(w http.ResponseWriter, r *http.Request) {
 		data["T"] = snap
 	}
 	for k, v := range panelNav("support", u) {
-		data[k] = v
+		if _, ok := data[k]; !ok {
+			data[k] = v
+		}
 	}
 	renderPage(w, r, "panel-support", data)
 }
