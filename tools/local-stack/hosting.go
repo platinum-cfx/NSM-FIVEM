@@ -288,9 +288,25 @@ func (m *hostingManager) setStatus(s *HostedServer, status string) {
 	m.mu.Unlock()
 }
 
+// cleanServerID normalizes a server id arriving from a URL, query parameter
+// or request body. Cached or hand-built clients have wrapped ids in extra
+// quotation marks (JSON-style), which made lookups fail with "does not exist
+// on this host" even though the server was registered. Real ids never contain
+// quote characters, so removing them is lossless.
+func cleanServerID(id string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '"', '\'', '\\':
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(id))
+}
+
 func (m *hostingManager) find(id string) *HostedServer {
+	id = cleanServerID(id)
 	for _, s := range m.st.Servers {
-		if s.ID == id {
+		if cleanServerID(s.ID) == id {
 			return s
 		}
 	}
@@ -301,9 +317,10 @@ func (m *hostingManager) find(id string) *HostedServer {
 // duplicate ids from old data (a foreign copy earlier in the list must not
 // shadow the caller's own server).
 func (m *hostingManager) findOwned(id string, owner int64) *HostedServer {
+	id = cleanServerID(id)
 	var first *HostedServer
 	for _, s := range m.st.Servers {
-		if s.ID != id {
+		if cleanServerID(s.ID) != id {
 			continue
 		}
 		if s.Owner == owner {
@@ -321,15 +338,24 @@ func (m *hostingManager) findOwned(id string, owner int64) *HostedServer {
 // many servers this process loaded and its pid — that instantly exposes a
 // second instance or wrong data directory serving the API.
 func (m *hostingManager) missingServerText(id string, u *User) string {
-	if strings.TrimSpace(id) == "" {
+	id = cleanServerID(id)
+	if id == "" {
 		return "missing server id in request (panel bug — please report)"
 	}
 	for _, s := range m.st.Servers {
-		if s.ID == id {
-			return fmt.Sprintf("server %s belongs to a different account (pid %d, %d servers loaded)", id, os.Getpid(), len(m.st.Servers))
+		if cleanServerID(s.ID) == id {
+			return fmt.Sprintf("server %s belongs to a different account", id)
 		}
 	}
-	return fmt.Sprintf("server %s does not exist on this host (pid %d, %d servers loaded)", id, os.Getpid(), len(m.st.Servers))
+	return fmt.Sprintf("server %s does not exist on this host", id)
+}
+
+// log404 keeps the full diagnostics in the server log: the id exactly as it
+// arrived (so quoting bugs stay visible), the normalized id, the account and
+// the process — enough to spot a second instance or a stale registry at a
+// glance. Internal host details never reach the client.
+func log404(kind, rawID string, uid int64, msg string) {
+	log.Printf("[panel] 404 %sid=%q clean=%q uid=%d pid=%d: %s", kind, rawID, cleanServerID(rawID), uid, os.Getpid(), msg)
 }
 
 func (m *hostingManager) findOwnerLocked(owner int64) *HostedServer {
@@ -1459,7 +1485,7 @@ func apiHostConsole(w http.ResponseWriter, r *http.Request) {
 	s := m.findOwned(id, u.ID)
 	if s == nil || s.Owner != u.ID {
 		msg := m.missingServerText(id, u)
-		log.Printf("[panel] 404 console id=%q uid=%d: %s", id, u.ID, msg)
+		log404("console ", id, u.ID, msg)
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": msg})
 		return
 	}
@@ -1490,7 +1516,7 @@ func apiHostCommand(w http.ResponseWriter, r *http.Request) {
 	s := m.findOwned(id, u.ID)
 	m.mu.Unlock()
 	if s == nil || s.Owner != u.ID {
-		log.Printf("[panel] 404 id=%q uid=%d: %s", id, u.ID, m.missingServerText(id, u))
+		log404("", id, u.ID, m.missingServerText(id, u))
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
 		return
 	}
@@ -1513,7 +1539,7 @@ func apiHostPower(w http.ResponseWriter, r *http.Request) {
 	s := m.findOwned(id, u.ID)
 	m.mu.Unlock()
 	if s == nil || s.Owner != u.ID {
-		log.Printf("[panel] 404 id=%q uid=%d: %s", id, u.ID, m.missingServerText(id, u))
+		log404("", id, u.ID, m.missingServerText(id, u))
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
 		return
 	}
@@ -1550,7 +1576,7 @@ func apiHostUsage(w http.ResponseWriter, r *http.Request) {
 	s := m.findOwned(id, u.ID)
 	m.mu.Unlock()
 	if s == nil || s.Owner != u.ID {
-		log.Printf("[panel] 404 id=%q uid=%d: %s", id, u.ID, m.missingServerText(id, u))
+		log404("", id, u.ID, m.missingServerText(id, u))
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
 		return
 	}
@@ -1569,7 +1595,7 @@ func apiHostDelete(w http.ResponseWriter, r *http.Request) {
 	s := m.findOwned(id, u.ID)
 	m.mu.Unlock()
 	if s == nil || s.Owner != u.ID {
-		log.Printf("[panel] 404 id=%q uid=%d: %s", id, u.ID, m.missingServerText(id, u))
+		log404("", id, u.ID, m.missingServerText(id, u))
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
 		return
 	}
@@ -1883,7 +1909,7 @@ func apiHostPorts(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	s := m.findOwned(id, u.ID)
 	if s == nil || s.Owner != u.ID {
-		log.Printf("[panel] 404 id=%q uid=%d: %s", id, u.ID, m.missingServerText(id, u))
+		log404("", id, u.ID, m.missingServerText(id, u))
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
 		return
 	}

@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -697,7 +696,7 @@ func panelOwned(w http.ResponseWriter, r *http.Request) (*hostingManager, *Hoste
 	m.mu.Unlock()
 	if snap == nil {
 		msg := m.missingServerText(id, u)
-		log.Printf("[panel] 404 id=%q uid=%d: %s", id, u.ID, msg)
+		log404("", id, u.ID, msg)
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": msg})
 		return nil, nil, nil, false
 	}

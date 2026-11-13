@@ -620,7 +620,7 @@ pnlCardPoll();
   </div>
 </div>
 <script>
-var ID = {{printf "%q" $s.ID}};
+var ID = {{$s.ID}};
 function post(url, body) {
   return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})});
 }
@@ -755,7 +755,7 @@ function pnlCmd(e){
 }
 
 /* ---- plan ---- */
-var planTier={{printf "%q" .PlanTier}},planUp={{.PlanUpvotes}};
+var planTier={{.PlanTier}},planUp={{.PlanUpvotes}};
 function fmtN(n){return n>=1000000?(n/1000000).toFixed(n%1000000?1:0)+'M':n>=1000?(n/1000).toFixed(n%1000?1:0)+'k':String(n);}
 function pnlDue(up){return up<=10?0:Math.max(2.99,Math.round(up*0.0002*100)/100);}
 function pnlDueText(up){var d=pnlDue(up);return d<=0?'Free':'€'+d.toFixed(2);}
@@ -782,7 +782,7 @@ function pnlPlanSave(){post('/api/host/'+ID+'/plan',{tier:planTier,upvotes:planU
 function pnlAgentSend(){
   var t=document.getElementById('agent-in'); if(!t.value.trim())return;
   var chat=document.getElementById('agent-chat');
-  var me=document.createElement('div');me.className='pnl-msg me';me.innerHTML='<div class="who">'+{{printf "%q" .User.Username}}+'</div>'+t.value.replace(/[<>]/g,'');chat.appendChild(me);
+  var me=document.createElement('div');me.className='pnl-msg me';me.innerHTML='<div class="who">'+{{.User.Username}}+'</div>'+t.value.replace(/[<>]/g,'');chat.appendChild(me);
   var q=t.value;t.value='';chat.scrollTop=chat.scrollHeight;
   post('/api/host/'+ID+'/agent',{message:q}).then(function(r){return r.json();}).then(function(d){
     var el=document.createElement('div');el.className='pnl-msg them';

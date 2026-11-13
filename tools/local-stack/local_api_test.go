@@ -2100,3 +2100,149 @@ func TestJoinCodes(t *testing.T) {
 		t.Fatal("key generation card must include the server's join code link")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Server-id routing: the "does not exist on this host" incident (2026-11-13).
+// The panel embedded ids with {{printf "%q"}} inside <script>, html/template
+// JS-escaped the quotes again, and every /api/host/… request carried a
+// JSON-quoted id ("h123" instead of h123) that matched no registry entry.
+// These tests pin the exact live ids and both failure modes.
+// ---------------------------------------------------------------------------
+
+// resetHostMgr points the hosting singleton at a throwaway state file and
+// directory so hosting tests never touch the repo's real hosting.json.
+func resetHostMgr(t *testing.T) {
+	t.Helper()
+	tmp := t.TempDir()
+	m := &hostingManager{
+		path:      filepath.Join(tmp, "hosting.json"),
+		root:      filepath.Join(tmp, "hosted"),
+		procs:     map[string]*hostedProc{},
+		ftp:       map[string]*ftpServer{},
+		diskMemo:  map[string]diskMemo{},
+		usageMemo: map[string]usageMemoT{},
+	}
+	if err := os.MkdirAll(m.root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hostMgrV = m
+	hostOnce = sync.Once{}
+	hostOnce.Do(func() {}) // consume: hostMgr() must return the injected manager
+}
+
+func TestServerIDResolutionWithoutQuoteWrapping(t *testing.T) {
+	h := setupTest(t)
+	resetHostMgr(t)
+
+	// The two exact ids from the live incident, bound exactly as reported:
+	// h219273000 -> UID 2, h62716100 -> UID 1 (uid 1 is the seeded founder).
+	sessionFor(t, h, "id_owner_one") // first registered account gets uid 2
+	var uid1, uid2 int64 = 1, 2
+	accMu.Lock()
+	found := map[int64]bool{}
+	for i := range acc.Users {
+		found[acc.Users[i].ID] = true
+	}
+	acc.Sessions["test-sess-uid1"] = Session{UserID: uid1, Expires: time.Now().Add(time.Hour).Unix()}
+	acc.Sessions["test-sess-uid2"] = Session{UserID: uid2, Expires: time.Now().Add(time.Hour).Unix()}
+	accMu.Unlock()
+	if !found[uid1] || !found[uid2] {
+		t.Fatalf("incident mapping needs uid 1 and uid 2 to exist, have %v", found)
+	}
+	sess1, sess2 := "test-sess-uid1", "test-sess-uid2"
+
+	m := hostMgr()
+	m.mu.Lock()
+	for _, fx := range []*HostedServer{
+		{ID: "h219273000", Owner: uid2, OwnerName: "uid2", Name: "incident-one", CreatedAt: time.Now().Unix(), Status: hostOffline},
+		{ID: "h62716100", Owner: uid1, OwnerName: "uid1", Name: "incident-two", CreatedAt: time.Now().Unix(), Status: hostOffline},
+	} {
+		if err := os.MkdirAll(m.dirOf(fx), 0o755); err != nil {
+			m.mu.Unlock()
+			t.Fatal(err)
+		}
+		m.st.Servers = append(m.st.Servers, fx)
+	}
+	m.saveLocked()
+	m.mu.Unlock()
+
+	auth := func(sess string) map[string]string { return map[string]string{"X-NSM-Session": sess} }
+
+	// 1. Both live ids resolve for their owners: overview/stats AND console.
+	for _, tc := range []struct{ id, sess string }{
+		{"h219273000", sess2},
+		{"h62716100", sess1},
+	} {
+		w := requestAuth(h, "GET", "/api/host/"+tc.id+"/stats", "", auth(tc.sess))
+		if w.Code != 200 || strings.Contains(w.Body.String(), `"error"`) {
+			t.Fatalf("stats %s for owner must work: %d %s", tc.id, w.Code, w.Body.String())
+		}
+		w = requestAuth(h, "GET", "/api/host/"+tc.id+"/console?since=0", "", auth(tc.sess))
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"lines"`) {
+			t.Fatalf("console %s for owner must work: %d %s", tc.id, w.Code, w.Body.String())
+		}
+	}
+
+	// 2. Regression: cached panel pages sent JSON-quoted ids
+	//    (/api/host/%22h219273000%22/…). The boundary must normalize them.
+	w := requestAuth(h, "GET", "/api/host/%22h219273000%22/stats", "", auth(sess2))
+	if w.Code != 200 || strings.Contains(w.Body.String(), `"error"`) {
+		t.Fatalf("quoted id must resolve exactly like the clean id: %d %s", w.Code, w.Body.String())
+	}
+	w = requestAuth(h, "GET", "/api/host/%22h62716100%22/console?since=0", "", auth(sess1))
+	if w.Code != 200 {
+		t.Fatalf("quoted console id must resolve: %d %s", w.Code, w.Body.String())
+	}
+
+	// 3. Ownership still holds: never one account on another's server.
+	w = requestAuth(h, "GET", "/api/host/h219273000/stats", "", auth(sess1))
+	if w.Code != 404 || !strings.Contains(w.Body.String(), "belongs to a different account") {
+		t.Fatalf("cross-account access must fail with the ownership message: %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "pid") || strings.Contains(w.Body.String(), "servers loaded") {
+		t.Fatalf("client message must not leak host diagnostics: %s", w.Body.String())
+	}
+
+	// 4. Root fix: the panel page embeds the id as a plain JS string.
+	w = requestAuth(h, "GET", "/dashboard/h219273000", "", auth(sess2))
+	if w.Code != 200 {
+		t.Fatalf("dashboard page for owned server must load: %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "var ID = \"h219273000\";") {
+		t.Fatalf("dashboard must embed the plain id, got: %s", idSnippet(body))
+	}
+	if strings.Contains(body, "var ID = \"\\\"") {
+		t.Fatalf("dashboard id is still double-quoted: %s", idSnippet(body))
+	}
+
+	// 5. Registration survives a host restart (registry reload from disk).
+	m.mu.Lock()
+	state := m.st
+	m.mu.Unlock()
+	if b, err := os.ReadFile(m.path); err != nil || len(b) == 0 {
+		t.Fatalf("registry must persist to disk: %v", err)
+	}
+	m2 := &hostingManager{path: m.path, root: m.root, procs: map[string]*hostedProc{}, ftp: map[string]*ftpServer{}, diskMemo: map[string]diskMemo{}, usageMemo: map[string]usageMemoT{}}
+	if b, err := os.ReadFile(m2.path); err == nil {
+		_ = json.Unmarshal(b, &m2.st)
+	}
+	if m2.findOwned("h219273000", uid2) == nil || m2.findOwned("h62716100", uid1) == nil {
+		t.Fatalf("ids must resolve after restart reload: %+v", m2.st.Servers)
+	}
+	if len(m2.st.Servers) != len(state.Servers) {
+		t.Fatalf("restart must reload every server: %d != %d", len(m2.st.Servers), len(state.Servers))
+	}
+}
+
+func idSnippet(body string) string {
+	i := strings.Index(body, "var ID = ")
+	if i < 0 {
+		return "<var ID missing>"
+	}
+	s := body[i:]
+	if len(s) > 60 {
+		s = s[:60]
+	}
+	return s
+}
