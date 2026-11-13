@@ -151,11 +151,18 @@ func findServerExeShallow(dir string) string {
 	return ""
 }
 
-func downloadServerFiles(logf func(string)) (string, error) {
-	raw := os.Getenv("NSM_SERVER_ZIP_URL")
-	if raw == "" {
-		raw = defaultServerZipURL
+// serverZipURL is the one source of truth for the official NSM server
+// package — the hosting installer downloads exactly this, and the homepage
+// self-hosted download button serves exactly this.
+func serverZipURL() string {
+	if raw := strings.TrimSpace(os.Getenv("NSM_SERVER_ZIP_URL")); raw != "" {
+		return raw
 	}
+	return defaultServerZipURL
+}
+
+func downloadServerFiles(logf func(string)) (string, error) {
+	raw := serverZipURL()
 	u, err := url.Parse(raw)
 	if err != nil {
 		return "", fmt.Errorf("invalid server package URL: %w", err)

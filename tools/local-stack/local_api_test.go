@@ -2370,3 +2370,276 @@ func TestHostResourceLimitsEnforcementAndVPSMetrics(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// FTP (item 8): real control+data conversations over real sockets.
+// ---------------------------------------------------------------------------
+
+type ftpTestClient struct {
+	c   net.Conn
+	r   *bufio.Reader
+}
+
+func ftpDial(t *testing.T, port int) *ftpTestClient {
+	t.Helper()
+	c, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Fatalf("ftp dial: %v", err)
+	}
+	cl := &ftpTestClient{c: c, r: bufio.NewReader(c)}
+	if code := cl.read(); code != 220 {
+		t.Fatalf("greeting: %d", code)
+	}
+	return cl
+}
+
+func (f *ftpTestClient) read() int {
+	line, err := f.r.ReadString('\n')
+	if err != nil {
+		return -1
+	}
+	var code int
+	fmt.Sscanf(line, "%d", &code)
+	return code
+}
+
+func (f *ftpTestClient) cmd(t *testing.T, format string, args ...interface{}) int {
+	t.Helper()
+	fmt.Fprintf(f.c, format+"\r\n", args...)
+	return f.read()
+}
+
+func (f *ftpTestClient) pasv(t *testing.T) net.Conn {
+	t.Helper()
+	fmt.Fprintf(f.c, "PASV\r\n")
+	line, err := f.r.ReadString('\n')
+	if err != nil {
+		t.Fatalf("pasv read: %v", err)
+	}
+	var a, b, c, d, p1, p2 int
+	if _, err := fmt.Sscanf(line, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)", &a, &b, &c, &d, &p1, &p2); err != nil {
+		t.Fatalf("pasv parse %q: %v", line, err)
+	}
+	addr := fmt.Sprintf("%d.%d.%d.%d:%d", a, b, c, d, p1*256+p2)
+	if addr == "127.0.0.1:0" {
+		t.Fatal("pasv advertised nothing")
+	}
+	dconn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("pasv data dial %s: %v", addr, err)
+	}
+	return dconn
+}
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	_ = l.Close()
+	return port
+}
+
+func TestFTPCredentialsTransfersAndIsolation(t *testing.T) {
+	setupTest(t)
+	resetHostMgr(t)
+	m := hostMgr()
+
+	mk := func(id, user, pass string) *HostedServer {
+		s := &HostedServer{ID: id, Owner: 2, OwnerName: "u2", Name: id, CreatedAt: time.Now().Unix(), Status: hostOffline,
+			FTPUser: user, FTPPass: pass, FTPPort: freePort(t), PassivePort: freePort(t)}
+		if err := os.MkdirAll(m.dirOf(s), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		m.mu.Lock()
+		m.st.Servers = append(m.st.Servers, s)
+		m.mu.Unlock()
+		m.startFTP(s)
+		return s
+	}
+	sA := mk("ftp-a", "user_a", "pass_a_123")
+	sB := mk("ftp-b", "user_b", "pass_b_456")
+
+	// 1. Login with the generated credentials works; wrong password is refused.
+	cl := ftpDial(t, sA.FTPPort)
+	if code := cl.cmd(t, "USER user_a"); code != 331 {
+		t.Fatalf("USER: %d", code)
+	}
+	if code := cl.cmd(t, "PASS wrong"); code != 530 {
+		t.Fatalf("wrong password must be refused: %d", code)
+	}
+	if code := cl.cmd(t, "USER user_a"); code != 331 {
+		t.Fatalf("USER again: %d", code)
+	}
+	if code := cl.cmd(t, "PASS pass_a_123"); code != 230 {
+		t.Fatalf("login must succeed: %d", code)
+	}
+
+	// 2. Upload (STOR), directory listing (LIST), download (RETR) round-trip.
+	if code := cl.cmd(t, "TYPE I"); code != 200 {
+		t.Fatalf("TYPE: %d", code)
+	}
+	d := cl.pasv(t)
+	if code := cl.cmd(t, "STOR hello.txt"); code != 150 {
+		t.Fatalf("STOR: %d", code)
+	}
+	payload := "hello from the ftp test"
+	if _, err := d.Write([]byte(payload)); err != nil {
+		t.Fatal(err)
+	}
+	_ = d.Close()
+	if code := cl.read(); code != 226 {
+		t.Fatalf("STOR complete: %d", code)
+	}
+	if b, err := os.ReadFile(filepath.Join(m.serverRoot(sA), "hello.txt")); err != nil || string(b) != payload {
+		t.Fatalf("uploaded file wrong: %v %q", err, b)
+	}
+
+	d = cl.pasv(t)
+	if code := cl.cmd(t, "LIST"); code != 150 {
+		t.Fatalf("LIST: %d", code)
+	}
+	listing, _ := io.ReadAll(d)
+	_ = d.Close()
+	if code := cl.read(); code != 226 {
+		t.Fatalf("LIST complete: %d", code)
+	}
+	if !strings.Contains(string(listing), "hello.txt") {
+		t.Fatalf("listing must show the uploaded file: %q", listing)
+	}
+
+	d = cl.pasv(t)
+	if code := cl.cmd(t, "RETR hello.txt"); code != 150 {
+		t.Fatalf("RETR: %d", code)
+	}
+	got, _ := io.ReadAll(d)
+	_ = d.Close()
+	if code := cl.read(); code != 226 {
+		t.Fatalf("RETR complete: %d", code)
+	}
+	if string(got) != payload {
+		t.Fatalf("download mismatch: %q", got)
+	}
+
+	// 3. Password change applies to the very next login (live credentials).
+	m.mu.Lock()
+	m.find("ftp-a").FTPPass = "brand_new_789"
+	m.mu.Unlock()
+	cl2 := ftpDial(t, sA.FTPPort)
+	if code := cl2.cmd(t, "USER user_a"); code != 331 {
+		t.Fatalf("USER: %d", code)
+	}
+	if code := cl2.cmd(t, "PASS brand_new_789"); code != 230 {
+		t.Fatalf("new password must work immediately: %d", code)
+	}
+	_ = cl2.c.Close()
+
+	// 4. Isolation: server B's credentials never open server A's endpoint.
+	cl3 := ftpDial(t, sA.FTPPort)
+	if code := cl3.cmd(t, "USER user_b"); code != 331 {
+		t.Fatalf("USER: %d", code)
+	}
+	if code := cl3.cmd(t, "PASS pass_b_456"); code != 530 {
+		t.Fatalf("cross-user login must fail: %d", code)
+	}
+	_ = cl3.c.Close()
+	cl5 := ftpDial(t, sB.FTPPort)
+	if code := cl5.cmd(t, "USER user_a"); code != 331 {
+		t.Fatalf("USER: %d", code)
+	}
+	if code := cl5.cmd(t, "PASS brand_new_789"); code != 530 {
+		t.Fatalf("reverse cross-user login must fail: %d", code)
+	}
+	_ = cl5.c.Close()
+
+	// 5. Reconnect after an FTP service restart.
+	m.mu.Lock()
+	if fs, ok := m.ftp["ftp-a"]; ok {
+		fs.Close()
+		delete(m.ftp, "ftp-a")
+	}
+	m.mu.Unlock()
+	m.startFTP(sA)
+	cl4 := ftpDial(t, sA.FTPPort)
+	if code := cl4.cmd(t, "USER user_a"); code != 331 {
+		t.Fatalf("USER after restart: %d", code)
+	}
+	if code := cl4.cmd(t, "PASS brand_new_789"); code != 230 {
+		t.Fatalf("login after restart: %d", code)
+	}
+	_ = cl4.c.Close()
+	_ = cl.c.Close()
+}
+
+// ---------------------------------------------------------------------------
+// CPU sampling bookkeeping + server clock in the API payloads.
+// ---------------------------------------------------------------------------
+
+func TestCPUSamplingAndServerTimePayloads(t *testing.T) {
+	hh := setupTest(t)
+	resetHostMgr(t)
+	m := hostMgr()
+	sess := "test-sess-metrics"
+	sessionFor(t, hh, "metrics_owner")
+	var uid int64
+	accMu.Lock()
+	for i := range acc.Users {
+		if strings.EqualFold(acc.Users[i].Username, "metrics_owner") {
+			uid = acc.Users[i].ID
+		}
+	}
+	acc.Sessions[sess] = Session{UserID: uid, Expires: time.Now().Add(time.Hour).Unix()}
+	accMu.Unlock()
+
+	srv := &HostedServer{ID: "hmetrics1", Owner: uid, OwnerName: "metrics_owner", Name: "metrics", CreatedAt: time.Now().Unix(), Status: hostOffline}
+	m.mu.Lock()
+	m.st.Servers = append(m.st.Servers, srv)
+	m.mu.Unlock()
+
+	// 1. Stats carries the authoritative server clock for the dashboard.
+	w := requestAuth(hh, "GET", "/api/host/hmetrics1/stats", "", map[string]string{"X-NSM-Session": sess})
+	if w.Code != 200 {
+		t.Fatalf("stats: %d", w.Code)
+	}
+	var payload struct {
+		ServerTime int64  `json:"serverTime"`
+		ServerTz   string `json:"serverTz"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UnixMilli()
+	if payload.ServerTime < now-5000 || payload.ServerTime > now+5000 {
+		t.Fatalf("serverTime must be the host clock, got %d (now %d)", payload.ServerTime, now)
+	}
+	if payload.ServerTz == "" {
+		t.Fatal("serverTz must name the host timezone")
+	}
+
+	// 2. CPU sampling keeps its raw-tick baseline across calls (regression:
+	// the percentage used to overwrite the baseline and read 0% afterwards).
+	if runtime.GOOS == "linux" {
+		cmd := exec.Command("sh", "-c", "while :; do :; done")
+		if err := cmd.Start(); err != nil {
+			t.Skip("no sh:", err)
+		}
+		defer cmd.Process.Kill()
+		p := &hostedProc{cmd: cmd, lastTime: time.Now(), lastCPU: 0}
+		time.Sleep(700 * time.Millisecond)
+		c1, _ := procUsage(cmd.Process.Pid, p)
+		base1 := p.lastCPU
+		time.Sleep(700 * time.Millisecond)
+		c2, _ := procUsage(cmd.Process.Pid, p)
+		if base1 <= 0 {
+			t.Fatalf("baseline must hold raw ticks, got %v", base1)
+		}
+		if p.lastCPU <= base1 {
+			t.Fatalf("ticks must advance: %v -> %v", base1, p.lastCPU)
+		}
+		if c1 < 0 || c2 < 0 || c2 > 200 {
+			t.Fatalf("busy-loop cpu must be plausible: %v %v", c1, c2)
+		}
+	}
+}

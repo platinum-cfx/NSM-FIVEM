@@ -1188,9 +1188,10 @@ func (m *hostingManager) usage(s *HostedServer) hostUsage {
 		u.CPUPct, u.RAMMB = cpu, ram
 		m.mu.Lock()
 		if cur, ok := m.procs[s.ID]; ok && cur == p {
-			if cpu >= 0 {
-				cur.lastCPU = cpu
-			}
+			// NOTE: procUsage owns cur.lastCPU (raw scheduler ticks / 100ns
+			// units) — overwriting it here with the computed percentage used
+			// to corrupt the baseline and made CPU read 0% or nonsense from
+			// the second poll on. Only the sample timestamp is ours.
 			cur.lastTime = time.Now()
 		}
 		m.mu.Unlock()
@@ -1270,44 +1271,9 @@ func procUsage(pid int, p *hostedProc) (float64, int64) {
 		}
 		return cpu, ram
 	}
-	// Windows: real numbers from tasklist / wmic, best effort
-	ram := int64(-1)
-	tctx, tcancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer tcancel()
-	if out, err := exec.CommandContext(tctx, "tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV", "/NH").Output(); err == nil {
-		line := strings.TrimSpace(string(out))
-		if i := strings.LastIndex(line, `","`); i > 0 {
-			mem := strings.Trim(line[i+3:], `"\r`)
-			mem = strings.ReplaceAll(mem, ",", "")
-			mem = strings.ReplaceAll(mem, " K", "")
-			if kb, err := strconv.ParseInt(strings.TrimSpace(mem), 10, 64); err == nil {
-				ram = kb / 1024
-			}
-		}
-	}
-	cpu := -1.0
-	wctx, wcancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer wcancel()
-	if out, err := exec.CommandContext(wctx, "wmic", "process", "where", fmt.Sprintf("processid=%d", pid), "get", "UserModeTime,KernelModeTime", "/format:csv").Output(); err == nil {
-		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-		if len(lines) >= 2 {
-			parts := strings.Split(strings.TrimSpace(lines[len(lines)-1]), ",")
-			if len(parts) >= 3 {
-				ut, _ := strconv.ParseFloat(parts[1], 64)
-				kt, _ := strconv.ParseFloat(parts[2], 64)
-				ticks := (ut + kt) / 1e7 // 100ns -> seconds
-				elapsed := time.Since(p.lastTime).Seconds()
-				if p.lastCPU >= 0 && elapsed > 0.5 {
-					cpu = (ticks - p.lastCPU) / elapsed * 100
-					if cpu < 0 {
-						cpu = 0
-					}
-				}
-				p.lastCPU = ticks
-			}
-		}
-	}
-	return cpu, ram
+	// Windows: real numbers from the Win32 API (no shell tools — WMIC is
+	// gone on current Windows Server builds).
+	return winProcUsage(pid, p)
 }
 
 // hostFacts reports the real hardware of this machine (the VPS). Used to
@@ -1483,7 +1449,7 @@ func dashboardServerPage(w http.ResponseWriter, r *http.Request) {
 		"Title": snap.Name + " - NSM Hosting", "S": snap, "PKG": hostingPackage,
 		"Tab": panelTab(r.URL.Query().Get("tab")), "Players": players,
 		"First": hostingPortFirst, "Last": hostingPortLast,
-		"Host": publicHostOf(snap), "JoinBase": joinBaseURL(r),
+		"Host": publicHostOf(snap), "FTPHost": ftpHostOf(snap), "JoinBase": joinBaseURL(r),
 		"Firewall": m.firewallNote, "PkgWarn": serverFilesWarning(),
 		"Net": hostNetInfo(), "PlanTier": planTier, "PlanUpvotes": planUp,
 		"Apps": oneClickApps, "Tiers": planTiers,
@@ -1606,7 +1572,24 @@ func apiHostUsage(w http.ResponseWriter, r *http.Request) {
 		"online": su.Online, "cpu": su.CPUPct, "ramMB": su.RAMMB,
 		"diskMB": su.DiskMB, "uptimeSec": su.UptimeSec,
 		"limits": s.Limits, "vps": hostVPSUsage(),
+		"serverTime": time.Now().UnixMilli(), "serverTz": serverTZLabel(),
 	})
+}
+
+// serverTZLabel is the timezone the host clock actually runs in — the panel
+// renders every timestamp in this zone so users see the same time the server
+// reports, not their own PC's clock.
+func serverTZLabel() string {
+	name, off := time.Now().Zone()
+	if name == "" || name == "Local" {
+		sign := "+"
+		if off < 0 {
+			sign = "-"
+			off = -off
+		}
+		return fmt.Sprintf("UTC%s%02d:%02d", sign, off/3600, (off%3600)/60)
+	}
+	return name
 }
 
 func apiHostDelete(w http.ResponseWriter, r *http.Request) {
@@ -1906,7 +1889,7 @@ func apiHostFilezilla(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	host := publicHostOf(snap)
+	host := ftpHostOf(snap)
 	xml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <FileZilla3 version="3.65.0" platform="windows">
   <Servers>
@@ -1974,17 +1957,57 @@ func publicHostOf(s *HostedServer) string {
 	return "127.0.0.1"
 }
 
+// ftpHostOf returns the address FTP clients should dial: the configured
+// public IP when numeric, then the endpoint host when it is an IP literal,
+// then a one-shot DNS resolution of that host. The website hostname is a
+// last resort — hosted DNS may proxy web traffic while raw FTP ports are
+// not proxied at all, which made "ftp://nsmultiplayer:port" fail to connect.
+func ftpHostOf(s *HostedServer) string {
+	if h := strings.TrimSpace(os.Getenv("NSM_PUBLIC_IP")); h != "" {
+		if net.ParseIP(h) != nil {
+			return h
+		}
+	}
+	if s.Endpoint != "" {
+		if host, _, err := net.SplitHostPort(s.Endpoint); err == nil && host != "" {
+			if net.ParseIP(host) != nil {
+				return host
+			}
+			if ips, err := net.LookupIP(host); err == nil {
+				for _, ip := range ips {
+					if v4 := ip.To4(); v4 != nil && !ip.IsLoopback() {
+						return v4.String()
+					}
+				}
+			}
+			return host
+		}
+	}
+	if h := strings.TrimSpace(os.Getenv("NSM_PUBLIC_IP")); h != "" {
+		return h
+	}
+	return "127.0.0.1"
+}
+
 // startFTP brings up the FileZilla endpoint for an instance. Callers hold
 // m.mu (same convention as logNL).
 func (m *hostingManager) startFTP(s *HostedServer) {
 	if _, ok := m.ftp[s.ID]; ok || s.FTPPort <= 0 {
 		return
 	}
-	fs, err := startFTPServer(s.FTPPort, s.PassivePort, s.FTPUser, s.FTPPass, func() string {
-			m.mu.Lock()
-			defer m.mu.Unlock()
-			return m.serverRoot(s)
-		}, func(msg string) {
+	sid := s.ID
+	fs, err := startFTPServer(s.FTPPort, s.PassivePort, func() (string, string) {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if cur := m.find(sid); cur != nil {
+			return cur.FTPUser, cur.FTPPass
+		}
+		return "", ""
+	}, ftpHostOf(s), func() string {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.serverRoot(s)
+	}, func(msg string) {
 		m.appendLog(s, msg)
 	})
 	if err != nil {
@@ -1992,7 +2015,7 @@ func (m *hostingManager) startFTP(s *HostedServer) {
 		return
 	}
 	m.ftp[s.ID] = fs
-	m.logNL(s, fmt.Sprintf("FileZilla: ftp://%s:%d (user %s) — full address on the Files tab", publicHostOf(s), s.FTPPort, s.FTPUser))
+	m.logNL(s, fmt.Sprintf("FileZilla: ftp://%s:%d (user %s) — full address on the Files tab", ftpHostOf(s), s.FTPPort, s.FTPUser))
 }
 
 // ---------------------------------------------------------------------------
@@ -2003,6 +2026,9 @@ func registerHostingRoutes(mux *http.ServeMux) {
 	// bring up hosted-city state + FileZilla endpoints at boot
 	hostMgr()
 	mux.HandleFunc("GET /hosting", hostingPage)
+	mux.HandleFunc("GET /download/server", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, serverZipURL(), http.StatusFound)
+	})
 	mux.HandleFunc("GET /hosting/create", hostingCreatePage)
 	mux.HandleFunc("POST /hosting/create", hostingCreateSubmit)
 	mux.HandleFunc("GET /hosting/manage", hostingManagePage)

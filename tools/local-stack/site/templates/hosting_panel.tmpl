@@ -18,6 +18,40 @@
 {{end}}
 
 {{define "panel-foot"}}<script>
+// ITEM 6 — every displayed time is anchored to the SERVER clock. Each poll
+// re-syncs an offset; the visible values tick from that anchor instead of the
+// PC's own clock, so a wrong user clock can never skew the dashboard.
+window.__srvOff = 0; window.__srvTz = '';
+window.pnlSyncTime = function (d) {
+  if (d && typeof d.serverTime === 'number') {
+    window.__srvOff = d.serverTime - Date.now();
+    window.__srvTz = d.serverTz || '';
+  }
+};
+window.pnlSrvNow = function () { return new Date(Date.now() + (window.__srvOff || 0)); };
+window.pnlFmtClock = function (ms) {
+  var d = new Date((ms || Date.now()) + (window.__srvOff || 0));
+  var t = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+  return t + (window.__srvTz ? ' ' + window.__srvTz : '');
+};
+window.pnlFmtWhen = function (sec) {
+  if (!sec) return 'offline';
+  var d = new Date(sec * 1000 + (window.__srvOff || 0));
+  return d.toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}) + (window.__srvTz ? ' ' + window.__srvTz : '');
+};
+(function(){
+  // keep visible "updated …" timestamps ticking between polls
+  setInterval(function () {
+    var els = document.querySelectorAll('[data-srv-clock]');
+    for (var i = 0; i < els.length; i++) {
+      els[i].textContent = window.pnlFmtClock();
+    }
+    var up = document.querySelectorAll('[data-uptime][data-t]');
+    for (var j = 0; j < up.length; j++) {
+      up[j].textContent = 'since ' + window.pnlFmtWhen(parseInt(up[j].getAttribute('data-t'), 10));
+    }
+  }, 1000);
+})();
 (function(){
   // ITEM 1 — restore the profile-card colour everywhere it appears
   try{var c=JSON.parse(localStorage.getItem('nsmPassColor')||'null');
@@ -119,7 +153,7 @@ function supFilter(f){
 
 {{define "panel-rail"}}
 <aside class="pnl-rail" id="pnl-rail">
-  <a class="pnl-logo" href="/hosting/dashboard"><span class="nsm">NSM</span> <span style="font-size:.8rem;opacity:.7">HOSTING</span></a>
+  <a class="pnl-logo" href="/"><span class="nsm">NSM</span> <span style="font-size:.8rem;opacity:.7">HOSTING</span></a>
   <a class="pnl-rail-item{{if eq .Active "dashboard"}} pnl-on{{end}}" href="/hosting/dashboard" onclick="pnlServices(event)"><span class="material-icons-outlined pnl-ric">dashboard</span> Dashboard</a>
   <a class="pnl-rail-item{{if eq .Active "services"}} pnl-on{{end}}" href="/hosting/dashboard#services"><span class="material-icons-outlined pnl-ric">dns</span> My services <span class="cnt">{{.ServiceCount}}</span></a>
   <a class="pnl-rail-item{{if eq .Active "support"}} pnl-on{{end}}" href="/hosting/support"><span class="material-icons-outlined pnl-ric">support_agent</span> Support {{if .SupportOpen}}<span class="cnt">{{.SupportOpen}}</span>{{end}}</a>
@@ -162,7 +196,7 @@ function supFilter(f){
             <div class="pnl-pass-banner"></div>
             <div class="pnl-pass-glow"></div>
             <img class="av pav" src="/avatars/u/{{.User.Username}}/128.png?v=1" alt="" onerror="this.style.display='none'">
-            <div>
+            <div class="pnl-pass-info">
               <div class="lbl">Pulse Pass</div>
               <div class="nm">{{.User.Username}} <span class="pnl-arr">&#8250;</span></div>
               <div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">NSM Hosting</span></div>
@@ -230,7 +264,7 @@ function supFilter(f){
                 <div class="pu-row"><span class="pu-k">Disk</span><div class="pu-bar"><i data-b="disk"></i></div><span class="pu-v" data-v="disk">—</span></div>
               </div>
               <div class="r"><span class="k"><span class="material-icons-outlined">location_on</span> Location</span><span class="v">{{.Region}}</span></div>
-              <div class="r"><span class="k"><span class="material-icons-outlined">schedule</span> Uptime</span><span class="v" data-uptime="{{.ID}}">{{if .LastStarted}}since {{.LastStarted}}{{else}}offline{{end}}</span></div>
+              <div class="r"><span class="k"><span class="material-icons-outlined">schedule</span> Uptime</span><span class="v" data-uptime="{{.ID}}"{{if .LastStarted}} data-t="{{.LastStarted}}"{{end}}>{{if .LastStarted}}since {{.LastStarted}}{{else}}offline{{end}}</span></div>
             </div>
             <div class="pnl-card-actions" data-pwr-row="{{.ID}}">
               <a class="pnl-mini-btn green" href="/dashboard/{{.ID}}">Manage</a>
@@ -311,6 +345,7 @@ function pnlCardPoll(){
       el.textContent=d.status;el.className='pnl-pill '+(d.status==='online'?'ok':d.status==='error'?'bad':'off');
       pnlApplyCard(id,d.status);
       if(window.pnlFillUsage)window.pnlFillUsage(document.getElementById('use-'+id),d,d.limits);
+      window.pnlSyncTime&&window.pnlSyncTime(d);
     }).catch(function(){});
   });
 }
@@ -378,7 +413,7 @@ pnlCardPoll();
               <div><div class="lbl">System</div><div class="val">Custom NSM System</div></div>
               <div><div class="lbl">Join privately</div><div class="val"><a href="/join/{{$s.JoinCode}}" style="color:#18E888">/join/{{$s.JoinCode}}</a></div></div>
             </div>
-            <div class="pnl-live-note" id="srv-live">Uptime since — &middot; updated just now</div>
+            <div class="pnl-live-note" id="srv-live">Uptime since — &middot; updated <span data-srv-clock>just now</span></div>
           </div>
 
           <!-- live resource monitoring: this server vs its configured maximums,
@@ -642,7 +677,7 @@ pnlCardPoll();
 
           {{if eq $tab "files"}}
           <div class="pnl-panel">
-            <h3>Files</h3><p class="hint">Manager + FileZilla. FTP: <code>{{.Host}}:{{$s.FTPPort}}</code> (user <code>{{$s.FTPUser}}</code>) — greeting must say <code>220 NSM Hosting FTP ready</code>.</p>
+            <h3>Files</h3><p class="hint">Manager + FileZilla. FTP: <code>{{.FTPHost}}:{{$s.FTPPort}}</code> (user <code>{{$s.FTPUser}}</code>) — greeting must say <code>220 NSM Hosting FTP ready</code>. Connect to the IP address shown here (not the website domain — web proxies do not forward raw FTP ports). If the connection times out, allow TCP {{$s.FTPPort}} and TCP {{$s.PassivePort}} through the machine's firewall.</p>
             <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
               <button class="pnl-mini-btn" onclick="fmUp()">&#8593; up</button>
               <button class="pnl-mini-btn" onclick="fmNew()">+ new file</button>
@@ -811,8 +846,9 @@ function pnlStats(){
     if(cv){var x=cv.getContext('2d'),w=cv.width=cv.offsetWidth,h=cv.height=90;x.clearRect(0,0,w,h);x.strokeStyle='#18E888';x.beginPath();
       hist.forEach(function(v,i){var px=i/59*w,py=h-v/100*h*0.95;i?x.lineTo(px,py):x.moveTo(px,py);});x.stroke();}
     pnlApplySrvStatus(d);
+    window.pnlSyncTime&&window.pnlSyncTime(d);
     var live=document.getElementById('srv-live');
-    if(live)live.textContent=(d.online?'Uptime '+fmtUp(d.uptimeSec):'Server is '+d.status)+' · updated '+new Date().toLocaleTimeString();
+    if(live)live.innerHTML=(d.online?'Uptime '+fmtUp(d.uptimeSec):'Server is '+d.status)+' · updated <span data-srv-clock>'+window.pnlFmtClock()+'</span>';
     var ga=document.getElementById('guest-agent'); if(ga){ga.textContent=d.guestAgent?'connected':'idle';ga.style.color=d.guestAgent?'#18E888':'#8fa0b2';}
   }).catch(function(e){
     var live=document.getElementById('srv-live');
@@ -914,7 +950,7 @@ function pnlBackups(){
     el.innerHTML='';
     d.backups.forEach(function(b){
       var div=document.createElement('div');div.className='pnl-ticket';
-      div.innerHTML='<span class="id">'+b.id+'</span><span class="subj">'+b.name+'</span><span class="when">'+new Date(b.created*1000).toLocaleString()+' · '+b.sizeMB+' MB</span>'+
+      div.innerHTML='<span class="id">'+b.id+'</span><span class="subj">'+b.name+'</span><span class="when">'+window.pnlFmtWhen(b.created)+' · '+b.sizeMB+' MB</span>'+
         '<button class="pnl-mini-btn" onclick="pnlBackupOp(\''+b.id+'\',\'restore\')">Restore</button>'+
         '<button class="pnl-mini-btn red" onclick="pnlBackupOp(\''+b.id+'\',\'delete\')">Delete</button>';
       el.appendChild(div);
@@ -1181,7 +1217,7 @@ function pnlCloseTicket(id){fetch('/api/hosting/support/'+id+'/close',{method:'P
         <div class="pnl-sub">Your NSM pass — every hosting feature is included free.</div>
         <a class="pnl-btn-green" href="/u/{{.User.Username}}">Manage profile</a>
       </div>
-      <div class="pnl-pass"><img class="av pav" src="/avatars/u/{{.User.Username}}/128.png?v=1" alt="" onerror="this.style.display='none'"><div><div class="lbl">Pulse Pass</div><div class="nm">{{.User.Username}} <span class="pnl-arr">&#8250;</span></div><div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">Free forever</span></div></div></div>
+      <div class="pnl-pass"><img class="av pav" src="/avatars/u/{{.User.Username}}/128.png?v=1" alt="" onerror="this.style.display='none'"><div class="pnl-pass-info"><div class="lbl">Pulse Pass</div><div class="nm">{{.User.Username}} <span class="pnl-arr">&#8250;</span></div><div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">Free forever</span></div></div></div>
     </div>
     <div class="pnl-panel"><h3>What's included</h3><p class="hint">Up to 5 servers, 2048 slots each, backups, schedules, one-click apps, the Plus scripting agent and hosting support chat.</p></div>
 

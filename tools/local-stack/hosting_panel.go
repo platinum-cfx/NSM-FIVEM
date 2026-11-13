@@ -728,6 +728,7 @@ func apiHostStats(w http.ResponseWriter, r *http.Request) {
 		"rxBytes": rx, "txBytes": tx, "updated": time.Now().Unix(),
 		"guestAgent": u.Online, "name": snap.Name,
 		"limits": snap.Limits, "vps": hostVPSUsage(),
+		"serverTime": time.Now().UnixMilli(), "serverTz": serverTZLabel(),
 	})
 }
 

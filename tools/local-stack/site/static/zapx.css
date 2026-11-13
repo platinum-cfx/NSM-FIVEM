@@ -38,7 +38,7 @@ html { scroll-behavior: smooth; }
 body {
   background: var(--zx-ink);
   background-image:
-    radial-gradient(1100px 520px at 82% -120px, rgba(0, 214, 143, 0.12), transparent 60%),
+    radial-gradient(1100px 520px at 82% -120px, rgba(59, 130, 246, 0.12), transparent 60%),
     radial-gradient(900px 480px at -180px 340px, rgba(63, 182, 201, 0.07), transparent 60%);
   background-attachment: fixed;
   color: var(--zx-mut);
@@ -134,7 +134,7 @@ footer ul.links a:hover { color: var(--zx-green); }
 }
 .hero.zx-hero::after {
   content: ""; position: absolute; inset: auto -10% -55% -10%; height: 420px;
-  background: radial-gradient(600px 220px at 50% 0, rgba(0, 214, 143, 0.12), transparent 70%);
+  background: radial-gradient(600px 220px at 50% 0, rgba(59, 130, 246, 0.12), transparent 70%);
   pointer-events: none;
 }
 .zx-hero-grid {
@@ -1387,7 +1387,7 @@ h1, h2, h3, h4 { font-family: var(--font-header); }
 .hero.zx-hero {
   background:
     radial-gradient(1100px 460px at 78% -140px, rgba(0, 255, 255, 0.1), transparent 60%),
-    radial-gradient(900px 420px at 12% -80px, rgba(24, 232, 136, 0.16), transparent 62%),
+    radial-gradient(900px 420px at 12% -80px, rgba(59, 130, 246, 0.16), transparent 62%),
     linear-gradient(#10141ce6, #0c0e14f2) padding-box,
     var(--zx-grad) border-box;
 }
@@ -1813,7 +1813,7 @@ header.nsm-top-header ul.links a.active, .drop-trigger.active { background: var(
 /* hero on light */
 .hero.zx-hero, .zx-hero {
   background:
-    radial-gradient(900px 380px at 82% -120px, rgba(24,232,136,0.14), transparent 60%),
+    radial-gradient(900px 380px at 82% -120px, rgba(59,130,246,0.14), transparent 60%),
     radial-gradient(760px 340px at 8% -90px, rgba(0,255,255,0.08), transparent 60%),
     linear-gradient(#fbfcfc, #f0f0f0) padding-box,
     var(--zx-grad) border-box;
@@ -2168,7 +2168,7 @@ header.nsm-top-header ul.links a.active, .drop-trigger.active { background: var(
 .hero.zx-hero, .zx-hero {
   background:
     radial-gradient(1100px 460px at 78% -140px, rgba(0, 255, 255, 0.1), transparent 60%),
-    radial-gradient(900px 420px at 12% -80px, rgba(24, 232, 136, 0.16), transparent 62%),
+    radial-gradient(900px 420px at 12% -80px, rgba(59, 130, 246, 0.16), transparent 62%),
     linear-gradient(#10141ce6, #0c0e14f2) padding-box,
     var(--zx-grad) border-box !important;
 }
@@ -2383,3 +2383,19 @@ header.nsm-top-header input, header.nsm-top-header select { color: #ffffff !impo
   box-shadow: 0 16px 44px rgba(0,0,0,0.35);
 }
 .zx-hero-title-black em { color: #000000 !important; }
+
+/* ===== /hosting — text sizing so the page fits and stays balanced ===== */
+.hosting-scope .lead {
+  font-size: 1.05rem; line-height: 1.62; max-width: 64ch; font-weight: 400;
+}
+.hosting-scope .zx-hero-title {
+  font-size: clamp(1.9rem, 4.2vw, 3.1rem); max-width: 24ch;
+}
+.hosting-scope h2 {
+  font-size: clamp(1.35rem, 2.4vw, 1.8rem); line-height: 1.25;
+}
+.hosting-scope p { line-height: 1.62; max-width: 72ch; }
+@media (max-width: 640px) {
+  .hosting-scope .zx-hero-title { font-size: 1.72rem; }
+  .hosting-scope .lead { font-size: 0.98rem; }
+}

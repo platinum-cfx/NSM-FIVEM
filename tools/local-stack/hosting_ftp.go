@@ -96,21 +96,25 @@ func loadOrCreateFTPCert() (tls.Certificate, error) {
 }
 
 type ftpServer struct {
-	ln           net.Listener
-	port         int
-	passivePort  int
-	user, pass   string
-	rootFn       func() string
-	logf         func(string)
+	ln          net.Listener
+	port        int
+	passivePort int
+	credsFn     func() (string, string) // live credentials (user, pass)
+	pubHost     string                  // hostname/IP clients connect to (PASV advertise)
+	rootFn      func() string
+	logf        func(string)
 }
 
 // startFTPServer binds the control port and serves connections until Close.
-func startFTPServer(port int, passivePort int, user, pass string, rootFn func() string, logf func(string)) (*ftpServer, error) {
+// Credentials are fetched through credsFn on every login so a password change
+// applies to the next connection without restarting the endpoint — copying
+// the password here used to leave the old one live after a change.
+func startFTPServer(port int, passivePort int, credsFn func() (string, string), pubHost string, rootFn func() string, logf func(string)) (*ftpServer, error) {
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return nil, err
 	}
-	fs := &ftpServer{ln: ln, port: port, passivePort: passivePort, user: user, pass: pass, rootFn: rootFn, logf: logf}
+	fs := &ftpServer{ln: ln, port: port, passivePort: passivePort, credsFn: credsFn, pubHost: pubHost, rootFn: rootFn, logf: logf}
 	go fs.acceptLoop()
 	return fs, nil
 }
@@ -160,6 +164,9 @@ func (fc *ftpConn) upgradeTLS() error {
 
 func (fs *ftpServer) handle(c net.Conn) {
 	fc := &ftpConn{fs: fs, c: c, r: bufio.NewReader(c), cwd: "/", root: filepath.Clean(fs.rootFn())}
+	// The city folder is the owner's file space — make sure it exists so an
+	// empty server still lists/uploads instead of failing every command.
+	_ = os.MkdirAll(fc.root, 0o755)
 	defer func() {
 		if fc.passive != nil {
 			_ = fc.passive.Close()
@@ -200,13 +207,18 @@ func (fs *ftpServer) handle(c net.Conn) {
 				fc.user = arg
 				fc.reply("331 password required")
 			case "PASS":
-				if fc.user == fc.fs.user && arg == fc.fs.pass {
+				lu, lp := fc.fs.credsFn()
+				if fc.user == lu && arg == lp && lu != "" {
 					fc.authed = true
 					fc.reply("230 logged in")
 					if fc.fs.logf != nil {
 						fc.fs.logf("FileZilla session opened for " + fc.user)
 					}
 				} else {
+					if fc.fs.logf != nil {
+						remote := fc.c.RemoteAddr().String()
+						fc.fs.logf("[ftp] failed login for user " + fc.user + " from " + remote)
+					}
 					fc.reply("530 login incorrect")
 				}
 			case "QUIT":
@@ -408,18 +420,48 @@ func (fc *ftpConn) chdir(rel string) bool {
 	return true
 }
 
+// pasvIP returns the address clients must dial for passive data transfers.
+// Order: the routable interface the client already reached us on, then
+// loopback when the client is local, then the configured public endpoint
+// (NAT/proxy hosts), then the raw local address. Advertising loopback or an
+// internal interface to an internet client is what made listings time out.
 func (fc *ftpConn) pasvIP() [4]byte {
-	var out [4]byte
-	host, _, err := net.SplitHostPort(fc.c.LocalAddr().String())
-	if err == nil {
+	out := [4]byte{127, 0, 0, 1}
+	var local [4]byte
+	haveLocal := false
+	if host, _, err := net.SplitHostPort(fc.c.LocalAddr().String()); err == nil {
 		if ip := net.ParseIP(host); ip != nil {
 			if v4 := ip.To4(); v4 != nil {
+				copy(local[:], v4)
+				haveLocal = true
+				if !ip.IsLoopback() && !ip.IsPrivate() {
+					return local
+				}
+				if ip.IsLoopback() {
+					return out
+				}
+			}
+		}
+	}
+	if h := fc.fs.pubHost; h != "" {
+		if ip := net.ParseIP(h); ip != nil {
+			if v4 := ip.To4(); v4 != nil && !ip.IsLoopback() {
 				copy(out[:], v4)
 				return out
 			}
 		}
+		if ips, err := net.LookupIP(h); err == nil {
+			for _, ip := range ips {
+				if v4 := ip.To4(); v4 != nil && !ip.IsLoopback() {
+					copy(out[:], v4)
+					return out
+				}
+			}
+		}
 	}
-	out = [4]byte{127, 0, 0, 1}
+	if haveLocal {
+		return local
+	}
 	return out
 }
 

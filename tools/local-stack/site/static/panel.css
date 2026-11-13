@@ -599,3 +599,17 @@ body.nsm-swap-fade { animation: nsmFadeIn .18s ease; }
 .pnl-usage-mini .pu-row { grid-template-columns: 38px minmax(0,1fr) auto; gap: 8px; }
 .pnl-usage-mini .pu-bar { height: 7px; }
 .pnl-usage-mini .pu-v { font-size: 0.72rem; }
+
+/* ===== top-right profile card — content fits the card at every size ===== */
+.pnl-pass { min-width: 0; }
+.pnl-pass .pnl-pass-info { min-width: 0; overflow-wrap: anywhere; }
+.pnl-pass .nm { overflow-wrap: anywhere; }
+.pnl-pass .foot { padding-right: 92px; overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .pnl-pass {
+    min-width: 0; flex-wrap: wrap; padding: 18px 18px 44px;
+  }
+  .pnl-pass .manage { margin-left: 0; align-self: center; }
+  .pnl-pass .foot { padding-right: 0; }
+  .pnl-pass-colors { left: 22px; right: auto; bottom: 12px; }
+}

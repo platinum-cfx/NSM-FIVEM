@@ -10,7 +10,6 @@ package main
 import (
 	"fmt"
 	"runtime"
-	"strconv"
 	"syscall"
 	"unsafe"
 )
@@ -61,23 +60,14 @@ type jobObjectExtendedLimitInformation struct {
 	PeakJobMemoryUsed     uintptr
 }
 
-// hostVolumeUsage reports used/total MB of the C: volume (the VPS system
-// drive that hosts the cities).
+// hostVolumeUsage reports used/total MB of the volume holding the working
+// directory (the hosting root) via GetDiskFreeSpaceExW.
 func hostVolumeUsage() (int64, int64, bool) {
-	out, err := runWmic("logicaldisk", "where", "DeviceID=\"C:\"", "get", "FreeSpace,Size", "/format:csv")
-	if err != nil {
+	used, total := winVolumeUsage(".")
+	if total <= 0 {
 		return -1, -1, false
 	}
-	parts := wmicLastRow(out)
-	if len(parts) < 3 {
-		return -1, -1, false
-	}
-	freeB, _ := strconv.ParseInt(parts[1], 10, 64)
-	sizeB, _ := strconv.ParseInt(parts[2], 10, 64)
-	if sizeB <= 0 {
-		return -1, -1, false
-	}
-	return (sizeB - freeB) / (1 << 20), sizeB / (1 << 20), true
+	return used, total, true
 }
 
 func applyChildLimits(pid int, l hostLimits) string {

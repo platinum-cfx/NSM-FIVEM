@@ -27,6 +27,9 @@ type vpsUsage struct {
 }
 
 var (
+	winPrevBusy  float64
+	winPrevTotal float64
+
 	vpsMu       sync.Mutex
 	vpsMemo     vpsUsage
 	vpsMemoAt   time.Time
@@ -99,35 +102,13 @@ func hostVPSUsage() vpsUsage {
 			}
 		}
 	} else if runtime.GOOS == "windows" {
-		if out, err := runWmic("cpu", "get", "loadpercentage", "/format:csv"); err == nil {
-			if v := wmicLastInt(out); v >= 0 {
-				u.CPUPct = float64(v)
-			}
+		if pct := winSystemCPU(&winPrevBusy, &winPrevTotal); pct >= 0 {
+			u.CPUPct = pct
 		}
-		if out, err := runWmic("OS", "get", "FreePhysicalMemory,TotalVisibleMemorySize", "/format:csv"); err == nil {
-			parts := wmicLastRow(out)
-			if len(parts) >= 3 {
-				freeKB, _ := strconv.ParseInt(parts[1], 10, 64)
-				totalKB, _ := strconv.ParseInt(parts[2], 10, 64)
-				if totalKB > 0 {
-					u.RAMTotalMB = totalKB / 1024
-					u.RAMMB = (totalKB - freeKB) / 1024
-				}
-			}
-		}
-		if out, err := runWmic("logicaldisk", "where", "DeviceID=\"C:\"", "get", "FreeSpace,Size", "/format:csv"); err == nil {
-			parts := wmicLastRow(out)
-			if len(parts) >= 3 {
-				freeB, _ := strconv.ParseInt(parts[1], 10, 64)
-				sizeB, _ := strconv.ParseInt(parts[2], 10, 64)
-				if sizeB > 0 {
-					u.DiskTotalMB = sizeB / (1 << 20)
-					u.DiskMB = (sizeB - freeB) / (1 << 20)
-				}
-			}
+		if used, total := winSystemMemory(); total > 0 {
+			u.RAMMB, u.RAMTotalMB = used, total
 		}
 	}
-
 	if du, dt, ok := hostVolumeUsage(); ok {
 		u.DiskMB, u.DiskTotalMB = du, dt
 	}
