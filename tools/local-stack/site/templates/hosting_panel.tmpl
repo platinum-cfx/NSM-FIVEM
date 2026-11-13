@@ -1135,6 +1135,77 @@ function pnlCloseTicket(id){fetch('/api/hosting/support/'+id+'/close',{method:'P
       <div class="pnl-pass"><img class="av pav" src="/avatars/u/{{.User.Username}}/128.png?v=1" alt="" onerror="this.style.display='none'"><div><div class="lbl">Pulse Pass</div><div class="nm">{{.User.Username}} <span class="pnl-arr">&#8250;</span></div><div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">Free forever</span></div></div></div>
     </div>
     <div class="pnl-panel"><h3>What's included</h3><p class="hint">Up to 5 servers, 2048 slots each, backups, schedules, one-click apps, the Plus scripting agent and hosting support chat.</p></div>
+
+    <!-- AFX Pulse subscription — same content and state as /u/<you>?tab=pulse -->
+    <div class="pnl-panel pnl-pulse-sub">
+      <div class="pnl-pulse-banner">
+        <div style="flex:1;min-width:0">
+          <div class="pnl-eyebrow">&#9889; AFX Pulse Membership &amp; Server Upvotes</div>
+          <h3 style="margin:2px 0 6px;font-size:1.35rem">Unlock Profile Colors, Animated Effects &amp; Server Upvote Power</h3>
+          <p class="hint" style="max-width:680px">AFX Pulse Pro &amp; Sovereign unlock full-page Style Profile Layout Colors, animated GIF avatars &amp; banners, Neon Cyber Cat Ears, moving profile effects, and NSM Server Upvotes (+1 Upvote with Pro, +4 Upvotes with Sovereign; Core gets 0 Upvotes).</p>
+        </div>
+        <div class="pnl-pulse-status">
+          <span class="k">Active tier for @{{.User.Username}}</span>
+          <strong class="tier-now">{{.PtierLabel}}</strong>
+          <span class="k">Server upvote allowance</span>
+          <strong class="up-now">{{.UpvoteAllowance}} Upvotes</strong>
+          {{if .PulseFounder}}<span class="pnl-pulse-founder">&#9813; Permanent Founder Access — Active Forever</span>{{end}}
+        </div>
+      </div>
+
+      <div class="pnl-pulse-closed">
+        <div style="min-width:0">
+          <strong>&#128274; AFX Pulse Subscriptions Are Currently Closed</strong>
+          <div class="hint">AFX Pulse is not open for public purchase right now. Stay tuned for the official launch announcement!</div>
+        </div>
+        <span class="pnl-pulse-closed-pill">Closed — Coming Soon</span>
+      </div>
+
+      <div class="pnl-pulse-tiers">
+        <div class="pnl-pulse-tier{{if eq .Ptier "core"}} active-tier{{end}}">
+          <div class="pt-head"><h4>AFX Pulse Core</h4><div class="pt-price">$4.99<span>/mo</span></div></div>
+          <ul class="pt-perks">
+            <li>&#10004; Exclusive <strong>AFX Pulse Subscriber</strong> Badge on Profile &amp; Posts</li>
+            <li>&#10004; Animated <strong>GIF Avatar</strong> Uploads &amp; External GIF Links</li>
+            <li>&#10004; Custom <strong>Avatar Decorations</strong> including <strong>Neon Cyber Cat Ears</strong></li>
+            <li class="no">&#10008; <strong>0 Server Upvotes</strong> (Upgrade to Pro for +1 Upvote or Sovereign for +4 Upvotes)</li>
+            <li class="no">&#10008; Basic Default Profile Theme (Upgrade to Pro to change Profile Colors)</li>
+          </ul>
+          <button type="button" class="pnl-mini-btn" style="width:100%;opacity:.6;cursor:not-allowed" disabled>{{if .PulseFounder}}Included in Founder Eternal{{else}}&#128274; AFX Pulse Closed — Coming Soon{{end}}</button>
+        </div>
+
+        <div class="pnl-pulse-tier featured{{if eq .Ptier "pro"}} active-tier{{end}}">
+          <div class="pt-tag">MOST POPULAR</div>
+          <div class="pt-head"><h4>AFX Pulse Pro</h4><div class="pt-price">$9.99<span>/mo</span></div></div>
+          <ul class="pt-perks">
+            <li>&#10004; <strong>Unlocks Full-Page Style Profile Layout Colors</strong> (Transforms your entire <code>/u/</code> tab!)</li>
+            <li>&#10004; <strong>+1 NSM Server Upvote Power</strong> on the Masterlist</li>
+            <li>&#10004; Animated <strong>GIF Avatars &amp; Animated GIF Profile Banners</strong></li>
+            <li>&#10004; All <strong>Moving Profile Effects</strong> (Aurora Waves, Cyber Grid, Starlight Warp, Volt Storm)</li>
+            <li>&#10004; All 7 <strong>Avatar Decorations</strong> (Cat Ears, Sovereign Crown, Cyber Visor, Plasma Aura)</li>
+          </ul>
+          <button type="button" class="pnl-mini-btn" style="width:100%;opacity:.6;cursor:not-allowed" disabled>{{if .PulseFounder}}Included in Founder Eternal{{else}}&#128274; AFX Pulse Closed — Coming Soon{{end}}</button>
+        </div>
+
+        <div class="pnl-pulse-tier sovereign{{if or (eq .Ptier "sovereign") (eq .Ptier "eternal")}} active-tier{{end}}">
+          <div class="pt-tag max">MAX OVERDRIVE (+4 UPVOTES)</div>
+          <div class="pt-head"><h4>AFX Pulse Sovereign</h4><div class="pt-price">{{if .PulseFounder}}FREE FOREVER{{else}}$19.99<span>/mo</span>{{end}}</div></div>
+          <ul class="pt-perks">
+            <li>&#10004; Everything in <strong>AFX Pulse Pro</strong> (Full-Page Profile Color Themes &amp; Moving FX)</li>
+            <li>&#10004; <strong>+4 NSM Server Upvotes Power</strong> on the NSM Server List + <strong>AFX Server Upvoter Badge</strong></li>
+            <li>&#10004; Mythic <strong>Sovereign Pulse Badge</strong> &amp; Holographic Prism Profile Shimmer</li>
+            <li>&#10004; Priority Server Upvote Weight on the NSM Masterlist</li>
+            <li>&#10004; <strong>@nta~ Founder Account has Sovereign Eternal Unlocked Forever!</strong></li>
+          </ul>
+          {{if .PulseFounder}}
+          <button type="button" class="pnl-btn-green" style="width:100%" disabled>&#9813; Founder Eternal Active Forever</button>
+          {{else}}
+          <button type="button" class="pnl-mini-btn" style="width:100%;opacity:.6;cursor:not-allowed" disabled>&#128274; AFX Pulse Closed — Coming Soon</button>
+          {{end}}
+        </div>
+      </div>
+      <p class="hint" style="margin:14px 0 0">Full membership details and your profile perks live on your <a href="/u/{{.User.Username}}?tab=pulse" style="color:#18E888">profile Pulse tab</a>.</p>
+    </div>
     <div class="pnl-panel">
       <h3>Pulse plans</h3>
       <p class="hint">Your plan lights up and stays selected — pick another any time from a server's Manage plan.</p>

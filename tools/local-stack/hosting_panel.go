@@ -450,7 +450,9 @@ func hostingPassPage(w http.ResponseWriter, r *http.Request) {
 	}
 	m2.mu.Unlock()
 	data := map[string]interface{}{"Title": "Pulse - NSM Hosting", "PassTier": pulseTierName(u),
-		"Tiers": planTiers, "PlanTier": curTier, "PlanUpvotes": curUp}
+		"Tiers": planTiers, "PlanTier": curTier, "PlanUpvotes": curUp,
+		"PtierLabel": u.EffectivePulseTierLabel(), "Ptier": u.EffectivePulseTier(),
+		"UpvoteAllowance": u.UpvoteAllowance(), "PulseFounder": u.IsFounderAccount()}
 	for k, v := range panelNav("pass", u) {
 		if _, ok := data[k]; !ok {
 			data[k] = v
