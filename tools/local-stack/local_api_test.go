@@ -21,10 +21,13 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -2245,4 +2248,125 @@ func idSnippet(body string) string {
 		s = s[:60]
 	}
 	return s
+}
+
+// ---------------------------------------------------------------------------
+// Resource limits (14) + live server/VPS monitoring (13, 15)
+// ---------------------------------------------------------------------------
+
+func TestHostResourceLimitsEnforcementAndVPSMetrics(t *testing.T) {
+	h := setupTest(t)
+	resetHostMgr(t)
+
+	// 1. Configured maximums: 64 cores / 32 GB / 120 GB everywhere.
+	lim := defaultHostLimits()
+	if lim.CPUCores != 64 || lim.RAMMB != 32*1024 || lim.DiskMB != 120*1024 {
+		t.Fatalf("configured maximums must be 64 cores / 32768 MB / 122880 MB, got %+v", lim)
+	}
+
+	// 2. Older records are backfilled on load (host restart path).
+	m := hostMgr()
+	m.mu.Lock()
+	srv := &HostedServer{ID: "hlimits01", Owner: 2, OwnerName: "u2", Name: "limits", CreatedAt: time.Now().Unix(), Status: hostOffline}
+	if err := os.MkdirAll(m.dirOf(srv), 0o755); err != nil {
+		m.mu.Unlock()
+		t.Fatal(err)
+	}
+	m.st.Servers = append(m.st.Servers, srv)
+	m.normalizeLocked()
+	if got := m.find("hlimits01").Limits; got != lim {
+		t.Fatalf("normalizeLocked must backfill limits, got %+v", got)
+	}
+	m.saveLocked()
+	m.mu.Unlock()
+
+	// 3. The stats API reports limits and whole-VPS readings alongside the
+	//    server's own usage (permission: the owner's session).
+	sessionFor(t, h, "limits_owner")
+	var limUID int64
+	accMu.Lock()
+	for i := range acc.Users {
+		if strings.EqualFold(acc.Users[i].Username, "limits_owner") {
+			limUID = acc.Users[i].ID
+		}
+	}
+	accMu.Unlock()
+	if limUID == 0 {
+		t.Fatal("limits_owner must exist")
+	}
+	m.mu.Lock()
+	m.find("hlimits01").Owner = limUID
+	m.mu.Unlock()
+	sess := "test-sess-limits"
+	accMu.Lock()
+	acc.Sessions[sess] = Session{UserID: limUID, Expires: time.Now().Add(time.Hour).Unix()}
+	accMu.Unlock()
+	w := requestAuth(h, "GET", "/api/host/hlimits01/stats", "", map[string]string{"X-NSM-Session": sess})
+	if w.Code != 200 {
+		t.Fatalf("stats must load for owner: %d %s", w.Code, w.Body.String())
+	}
+	var payload struct {
+		Limits hostLimits `json:"limits"`
+		VPS    struct {
+			Cores       int   `json:"cores"`
+			RAMTotalMB  int64 `json:"ramTotalMB"`
+			DiskTotalMB int64 `json:"diskTotalMB"`
+		} `json:"vps"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Limits != lim {
+		t.Fatalf("stats must carry the configured maximums, got %+v", payload.Limits)
+	}
+	if payload.VPS.Cores <= 0 {
+		t.Fatalf("vps readings must report real core count, got %+v", payload.VPS)
+	}
+	if runtime.GOOS == "linux" && (payload.VPS.RAMTotalMB <= 0 || payload.VPS.DiskTotalMB <= 0) {
+		t.Fatalf("on linux the vps ram/disk totals must be real, got %+v", payload.VPS)
+	}
+
+	// 4. The storage maximum is enforced at the write path — a city at its
+	//    cap refuses new writes instead of silently filling the disk.
+	m.mu.Lock()
+	cur := m.find("hlimits01")
+	cur.Limits.DiskMB = 1 // one megabyte cap for the test
+	m.mu.Unlock()
+	_ = os.WriteFile(filepath.Join(m.dirOf(cur), "pad.bin"), make([]byte, 2<<20), 0o600)
+	m.mu.Lock()
+	m.diskMemo[cur.ID] = diskMemo{}
+	m.mu.Unlock()
+	w = requestAuth(h, "POST", "/api/host/hlimits01/file/write",
+		`{"path":"server.cfg","content":"test"}`, map[string]string{"X-NSM-Session": sess})
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "storage limit reached") {
+		t.Fatalf("over-cap write must be refused with the limit message: %d %s", w.Code, w.Body.String())
+	}
+
+	// 5. Real child-process enforcement on Linux: the memory cap lands in the
+	//    child's RLIMIT_AS.
+	if runtime.GOOS == "linux" {
+		cmd := exec.Command("sleep", "2")
+		if err := cmd.Start(); err != nil {
+			t.Skip("no sleep binary:", err)
+		}
+		defer cmd.Process.Kill()
+		if applied := applyChildLimits(cmd.Process.Pid, hostLimits{CPUCores: 1, RAMMB: 512}); applied == "" {
+			t.Fatal("child limits must report what they applied")
+		}
+		var rl syscall.Rlimit
+		if err := prlimit64(cmd.Process.Pid, syscall.RLIMIT_AS, nil, &rl); err != nil {
+			t.Fatal("read back rlimit:", err)
+		}
+		if rl.Cur != 512<<20 {
+			t.Fatalf("child RLIMIT_AS must be the configured cap, got %d", rl.Cur)
+		}
+	}
+
+	// 6. hostVPSUsage is real on Linux: non-trivial totals, coherent values.
+	if runtime.GOOS == "linux" {
+		v := hostVPSUsage()
+		if v.Cores <= 0 || v.RAMTotalMB <= 0 || v.DiskTotalMB <= 0 || v.RAMMB < 0 || v.DiskMB < 0 {
+			t.Fatalf("linux vps metrics must be real and non-negative: %+v", v)
+		}
+	}
 }

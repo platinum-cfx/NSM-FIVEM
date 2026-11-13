@@ -727,6 +727,7 @@ func apiHostStats(w http.ResponseWriter, r *http.Request) {
 		"diskMB": u.DiskMB, "uptimeSec": u.UptimeSec, "players": players,
 		"rxBytes": rx, "txBytes": tx, "updated": time.Now().Unix(),
 		"guestAgent": u.Online, "name": snap.Name,
+		"limits": snap.Limits, "vps": hostVPSUsage(),
 	})
 }
 
@@ -918,6 +919,10 @@ func apiHostBackups(w http.ResponseWriter, r *http.Request) {
 func apiHostBackupCreate(w http.ResponseWriter, r *http.Request) {
 	m, snap, _, ok := panelOwned(w, r)
 	if !ok {
+		return
+	}
+	if err := m.checkDiskAllowance(snap, 1); err != nil {
+		sendJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
 	}
 	root := m.serverRoot(snap)
@@ -1200,6 +1205,11 @@ func apiHostApps(w http.ResponseWriter, r *http.Request) {
 func apiHostAppInstall(w http.ResponseWriter, r *http.Request) {
 	m, snap, _, ok := panelOwned(w, r)
 	if !ok {
+		return
+	}
+	// ITEM 14 — configured storage maximum is enforced on app installs too
+	if err := m.checkDiskAllowance(snap, 1); err != nil {
+		sendJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
 	}
 	id := r.PathValue("app")

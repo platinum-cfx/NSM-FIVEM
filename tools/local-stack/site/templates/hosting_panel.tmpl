@@ -88,6 +88,23 @@
     el.style.setProperty('--ry','0deg');
   },{passive:true});
 })();
+// ITEM 13/15 — progress bars for per-server and VPS resource usage.
+// -1 (or missing) values render an explicit unavailable state, never a fake 0.
+window.pnlFillUsage=function(box,d,limits,isVps){
+  if(!box||!d)return;
+  var lim=limits||{cpuCores:64,ramMB:32768,diskMB:122880};
+  var cpu=(typeof d.cpu==='number')?d.cpu:(typeof d.cpuPct==='number'?d.cpuPct:-1);
+  var ram=(typeof d.ramMB==='number')?d.ramMB:-1;
+  var disk=(typeof d.diskMB==='number')?d.diskMB:-1;
+  var set=function(k,pct,text){
+    var bar=box.querySelector('[data-b="'+k+'"]'),val=box.querySelector('[data-v="'+k+'"]');
+    if(bar){bar.style.width=(pct<0?0:Math.min(100,pct))+'%';bar.classList.toggle('na',pct<0);}
+    if(val)val.textContent=text;
+  };
+  set('cpu', cpu<0?-1:Math.min(100,cpu), cpu<0?'unavailable':Math.round(cpu)+'%'+(isVps?'':' of max '+(lim.cpuCores||64)+' cores'));
+  set('ram', ram<0?-1:ram/Math.max(1,lim.ramMB)*100, ram<0?'unavailable':(isVps?(ram+' / '+(d.ramTotalMB>0?d.ramTotalMB+' MB':'?')):(ram+' / '+lim.ramMB+' MB')));
+  set('disk', disk<0?-1:disk/Math.max(1,lim.diskMB)*100, disk<0?'unavailable':(isVps?(disk+' / '+(d.diskTotalMB>0?d.diskTotalMB+' MB':'?')):(disk+' / '+lim.diskMB+' MB')));
+};
 function supFilter(f){
   if(!document.getElementById('sup-list'))return;
   document.querySelectorAll('.pnl-tab-chip[data-f]').forEach(function(b){b.classList.toggle('pnl-on',b.getAttribute('data-f')===f);});
@@ -207,6 +224,11 @@ function supFilter(f){
               <div class="r"><span class="k"><span class="material-icons-outlined">lan</span> IP / Port</span><span class="v">{{$.HostPublic}} : {{.GameTCPPort}} <button class="pnl-copy" onclick="pnlCopy('{{$.HostPublic}}:{{.GameTCPPort}}')">&#128203;</button></span></div>
               <div class="r"><span class="k"><span class="material-icons-outlined">inventory_2</span> Package</span><span class="v">{{$.PKG.Slots}} slots &middot; {{$.PKG.RAMGB}} GB RAM &middot; {{$.PKG.DiskGB}} GB</span></div>
               <div class="r"><span class="k"><span class="material-icons-outlined">desktop_windows</span> System</span><span class="v">{{$.SystemName}}</span></div>
+              <div class="pnl-usage pnl-usage-mini" id="use-{{.ID}}">
+                <div class="pu-row"><span class="pu-k">CPU</span><div class="pu-bar"><i data-b="cpu"></i></div><span class="pu-v" data-v="cpu">—</span></div>
+                <div class="pu-row"><span class="pu-k">RAM</span><div class="pu-bar"><i data-b="ram"></i></div><span class="pu-v" data-v="ram">—</span></div>
+                <div class="pu-row"><span class="pu-k">Disk</span><div class="pu-bar"><i data-b="disk"></i></div><span class="pu-v" data-v="disk">—</span></div>
+              </div>
               <div class="r"><span class="k"><span class="material-icons-outlined">location_on</span> Location</span><span class="v">{{.Region}}</span></div>
               <div class="r"><span class="k"><span class="material-icons-outlined">schedule</span> Uptime</span><span class="v" data-uptime="{{.ID}}">{{if .LastStarted}}since {{.LastStarted}}{{else}}offline{{end}}</span></div>
             </div>
@@ -288,6 +310,7 @@ function pnlCardPoll(){
     fetch('/api/host/'+id+'/stats').then(function(r){return r.json();}).then(function(d){
       el.textContent=d.status;el.className='pnl-pill '+(d.status==='online'?'ok':d.status==='error'?'bad':'off');
       pnlApplyCard(id,d.status);
+      if(window.pnlFillUsage)window.pnlFillUsage(document.getElementById('use-'+id),d,d.limits);
     }).catch(function(){});
   });
 }
@@ -356,6 +379,30 @@ pnlCardPoll();
               <div><div class="lbl">Join privately</div><div class="val"><a href="/join/{{$s.JoinCode}}" style="color:#18E888">/join/{{$s.JoinCode}}</a></div></div>
             </div>
             <div class="pnl-live-note" id="srv-live">Uptime since — &middot; updated just now</div>
+          </div>
+
+          <!-- live resource monitoring: this server vs its configured maximums,
+               and the whole VPS separately (values come from real OS counters) -->
+          <div class="pnl-panel pnl-usage-wrap">
+            <div class="pnl-usage-cols">
+              <div>
+                <h3 class="pu-title">Server usage <span class="pu-sub">this city &middot; configured maximum CPU 64 cores &middot; RAM 32 GB &middot; storage 120 GB</span></h3>
+                <div class="pnl-usage" id="srv-usage">
+                  <div class="pu-row"><span class="pu-k">CPU</span><div class="pu-bar"><i data-b="cpu"></i></div><span class="pu-v" data-v="cpu">—</span></div>
+                  <div class="pu-row"><span class="pu-k">RAM</span><div class="pu-bar"><i data-b="ram"></i></div><span class="pu-v" data-v="ram">—</span></div>
+                  <div class="pu-row"><span class="pu-k">Disk</span><div class="pu-bar"><i data-b="disk"></i></div><span class="pu-v" data-v="disk">—</span></div>
+                </div>
+              </div>
+              <div>
+                <h3 class="pu-title">VPS usage <span class="pu-sub">whole machine &middot; all hosted cities</span></h3>
+                <div class="pnl-usage" id="vps-usage">
+                  <div class="pu-row"><span class="pu-k">CPU</span><div class="pu-bar pu-vps"><i data-b="cpu"></i></div><span class="pu-v" data-v="cpu">—</span></div>
+                  <div class="pu-row"><span class="pu-k">RAM</span><div class="pu-bar pu-vps"><i data-b="ram"></i></div><span class="pu-v" data-v="ram">—</span></div>
+                  <div class="pu-row"><span class="pu-k">Disk</span><div class="pu-bar pu-vps"><i data-b="disk"></i></div><span class="pu-v" data-v="disk">—</span></div>
+                </div>
+              </div>
+            </div>
+            <p class="pu-note" id="pu-note">Configured maximums are caps for each city, not reserved hardware — the VPS block shows what the machine is actually using.</p>
           </div>
 
           {{if eq $tab "overview"}}
@@ -746,7 +793,8 @@ var hist=[];
 function pnlStats(){
   fetch('/api/host/'+ID+'/stats?_='+Date.now(),{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
     if(d&&d.error){throw new Error(d.error);}
-    var cpu=d.cpu<0?0:d.cpu, ram=d.ramMB<0?0:Math.min(100,d.ramMB/(8*1024)*100), disk=Math.min(100,d.diskMB/(50*1024)*100);
+    var lim=d.limits||{cpuCores:64,ramMB:32768,diskMB:122880};
+    var cpu=d.cpu<0?0:d.cpu, ram=d.ramMB<0?0:Math.min(100,d.ramMB/lim.ramMB*100), disk=Math.min(100,d.diskMB/lim.diskMB*100);
     function set(g,b,v,txt){var e=document.getElementById(g),p=document.getElementById(b);if(e)e.textContent=txt;if(p)p.style.width=(v>0?v:0)+'%';}
     var cpuT=d.cpu<0?'n/a — offline':cpu.toFixed(0)+'%', ramT=d.ramMB<0?'n/a — offline':(d.ramMB/1024).toFixed(2)+' GB';
     set('g-cpu','b-cpu',cpu,cpuT); set('g-cpu2','b-cpu2',cpu,cpuT);
@@ -754,7 +802,8 @@ function pnlStats(){
     set('g-disk','b-disk',disk,(d.diskMB/1024).toFixed(1)+' GB'); set('g-disk2','b-disk2',disk,(d.diskMB/1024).toFixed(1)+' GB');
     var gn=document.getElementById('g-net'); if(gn)gn.textContent=fmtBytes(d.rxBytes)+' ↓ / '+fmtBytes(d.txBytes)+' ↑';
     var tr=document.getElementById('t-rx'),tt=document.getElementById('t-tx');if(tr)tr.textContent=fmtBytes(d.rxBytes);if(tt)tt.textContent=fmtBytes(d.txBytes);
-    var qd=document.getElementById('q-disk'),qb=document.getElementById('q-bar');if(qd)qd.textContent=(d.diskMB/1024).toFixed(2)+' GB / 50 GB';if(qb)qb.style.width=disk+'%';
+    var qd=document.getElementById('q-disk'),qb=document.getElementById('q-bar');if(qd)qd.textContent=(d.diskMB/1024).toFixed(2)+' GB / '+(lim.diskMB/1024)+' GB';if(qb)qb.style.width=disk+'%';
+    if(window.pnlFillUsage){window.pnlFillUsage(document.getElementById('srv-usage'),d,lim);window.pnlFillUsage(document.getElementById('vps-usage'),d.vps,null,true);}
     var mc=document.getElementById('m-cpu'),mr=document.getElementById('m-ram'),mp=document.getElementById('m-players');
     if(mc)mc.textContent=d.cpu<0?'n/a':cpu.toFixed(1)+'%';if(mr)mr.textContent=d.ramMB<0?'n/a':(d.ramMB/1024).toFixed(2)+' GB';if(mp)mp.textContent=d.players;
     hist.push(cpu); if(hist.length>60)hist.shift();

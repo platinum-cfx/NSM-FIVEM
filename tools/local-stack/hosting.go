@@ -53,6 +53,7 @@ const (
 type HostingPackage struct {
 	Name     string
 	Slots    int
+	CPUCores int
 	RAMGB    int
 	DiskGB   int
 	Ports    int
@@ -61,9 +62,10 @@ type HostingPackage struct {
 
 var hostingPackage = HostingPackage{
 	Name:   "NSM Standard",
-	Slots:  2048,
-	RAMGB:  8,
-	DiskGB: 50,
+	Slots:    2048,
+	CPUCores: 64,
+	RAMGB:    32,
+	DiskGB:   120,
 	Ports:  5,
 	Blurb:  "The one and only NSM hosting package — full-power cities for everyone.",
 }
@@ -101,6 +103,7 @@ type HostedServer struct {
 	Note        string   `json:"note,omitempty"`
 	ExeRel      string   `json:"exeRel,omitempty"`
 	CreatedAt   int64    `json:"createdAt"`
+	Limits      hostLimits `json:"limits"`
 	LastStarted int64    `json:"lastStarted,omitempty"`
 	Console     []string `json:"console,omitempty"`
 	ConsoleSeq  int64    `json:"consoleSeq"`
@@ -115,6 +118,19 @@ type hostingState struct {
 }
 
 var errAlreadyOwns = errors.New("each NSM account can run up to 5 servers")
+
+// hostLimits are the CONFIGURED MAXIMUMS every NSM hosted server runs under.
+// They are caps, not reservations — the physical VPS may have less capacity
+// (hostVPSUsage reports that separately and the panel labels both clearly).
+type hostLimits struct {
+	CPUCores int   `json:"cpuCores"` // configured maximum CPU cores
+	RAMMB    int64 `json:"ramMB"`    // configured maximum memory, MB
+	DiskMB   int64 `json:"diskMB"`   // configured maximum storage, MB
+}
+
+func defaultHostLimits() hostLimits {
+	return hostLimits{CPUCores: 64, RAMMB: 32 * 1024, DiskMB: 120 * 1024}
+}
 
 type hostedProc struct {
 	cmd      *exec.Cmd
@@ -205,6 +221,9 @@ func (m *hostingManager) normalizeLocked() {
 		seen[s.Owner]++
 		if s.Status == "" {
 			s.Status = hostOffline
+		}
+		if s.Limits.CPUCores == 0 && s.Limits.RAMMB == 0 && s.Limits.DiskMB == 0 {
+			s.Limits = defaultHostLimits()
 		}
 		kept = append(kept, s)
 	}
@@ -606,6 +625,7 @@ func (m *hostingManager) deploy(u *User, name, region, reqHost string) (*HostedS
 		Name:      name,
 		Region:    region,
 		CreatedAt: time.Now().Unix(),
+		Limits:    defaultHostLimits(),
 		Status:    hostPending,
 		FTPUser:   sanitizeFTPUser(u.Username),
 		FTPPass:   hostRandToken(14),
@@ -1023,6 +1043,9 @@ func (m *hostingManager) start(s *HostedServer) error {
 		m.appendLog(s, "[error] failed to start server process: "+err.Error())
 		return err
 	}
+	if applied := applyChildLimits(cmd.Process.Pid, s.Limits); applied != "" {
+		m.appendLog(s, "[system] resource limits applied: "+applied)
+	}
 	m.mu.Lock()
 	p := &hostedProc{cmd: cmd, in: stdin, done: make(chan struct{}), lastTime: time.Now()}
 	m.procs[s.ID] = p
@@ -1176,6 +1199,21 @@ func (m *hostingManager) usage(s *HostedServer) hostUsage {
 	m.usageMemo[s.ID] = usageMemoT{u: u, at: time.Now()}
 	m.mu.Unlock()
 	return u
+}
+
+// checkDiskAllowance enforces the configured storage maximum: any host write
+// path (file save, upload, backup, app install) refuses once the city is at
+// its configured cap instead of silently filling the VPS.
+func (m *hostingManager) checkDiskAllowance(s *HostedServer, incomingMB int64) error {
+	limit := s.Limits.DiskMB
+	if limit <= 0 {
+		limit = defaultHostLimits().DiskMB
+	}
+	used := m.diskUsage(s)
+	if used+incomingMB > limit {
+		return fmt.Errorf("storage limit reached: %d MB of %d MB configured maximum used — delete files or backups before writing more", used, limit)
+	}
+	return nil
 }
 
 func (m *hostingManager) diskUsage(s *HostedServer) int64 {
@@ -1560,7 +1598,15 @@ func apiHostUsage(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
 		return
 	}
-	sendJSON(w, http.StatusOK, m.usage(s))
+	// ITEM 13/14/15 — per-server usage, its configured maximums, and the
+	// whole-VPS readings in one payload (vps values are host-wide, not this
+	// server's; -1 means the OS would not report it).
+	su := m.usage(s)
+	sendJSON(w, http.StatusOK, map[string]interface{}{
+		"online": su.Online, "cpu": su.CPUPct, "ramMB": su.RAMMB,
+		"diskMB": su.DiskMB, "uptimeSec": su.UptimeSec,
+		"limits": s.Limits, "vps": hostVPSUsage(),
+	})
 }
 
 func apiHostDelete(w http.ResponseWriter, r *http.Request) {
@@ -1728,6 +1774,11 @@ func apiHostFileWrite(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
+	// ITEM 14 — configured storage maximum is enforced on every write
+	if err := hostMgr().checkDiskAllowance(s, int64(len(body.Content)/(1<<20))+1); err != nil {
+		sendJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
 	full, ok := hostSafePath(root, body.Path)
 	if !ok {
 		sendJSON(w, http.StatusForbidden, map[string]string{"error": "path outside instance"})
@@ -1798,6 +1849,11 @@ func apiHostUpload(w http.ResponseWriter, r *http.Request) {
 	s, root, ok := hostMgr().owned(r.PathValue("id"), u)
 	if !ok {
 		http.NotFound(w, r)
+		return
+	}
+	// ITEM 14 — configured storage maximum is enforced on uploads too
+	if err := hostMgr().checkDiskAllowance(s, r.ContentLength/(1<<20)+1); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 	if err := r.ParseMultipartForm(64 << 20); err != nil {
