@@ -655,16 +655,11 @@ func (m *hostingManager) deploy(u *User, name, region, reqHost string) (*HostedS
 	if p, err := m.allocPortLocked(); err == nil {
 		s.ExtraPorts = append(s.ExtraPorts, p)
 	}
-	host := os.Getenv("NSM_PUBLIC_IP")
-	if host == "" {
-		host = reqHost
-		if h, _, err := net.SplitHostPort(reqHost); err == nil {
-			host = h
-		}
-	}
-	if host == "" || host == "localhost" {
-		host = "127.0.0.1"
-	}
+	// The game endpoint serves TCP (info + handshake) and UDP (game traffic)
+	// on the SAME port - clients dial one address for both. The address is
+	// the real server IP (serverHostIP) — never the website hostname the
+	// deploy request happened to arrive on.
+	host := serverHostIP()
 	s.Endpoint = fmt.Sprintf("%s:%d", host, s.GameUDPPort)
 	s.JoinCode = joinCodeForEndpoint(s.Endpoint)
 	m.logNL(s, "[system] provisioning city '"+name+"' ("+hostingPackage.Name+")")
@@ -1943,50 +1938,38 @@ func apiHostPorts(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "port": p, "extra": s.ExtraPorts})
 }
 
-// publicHostOf returns the host this server is reachable at: NSM_PUBLIC_IP
-// when set, otherwise the host derived at deploy time (the site's own host).
-func publicHostOf(s *HostedServer) string {
-	if h := os.Getenv("NSM_PUBLIC_IP"); h != "" {
+// defaultServerHostIP is the real address every hosted server (game port,
+// FTP, database) is reached at. The panel must never invent or fall back to
+// request hosts / internal interface IPs when showing connection details.
+const defaultServerHostIP = "147.189.174.173"
+
+// serverHostIP is the single source of truth for the address shown (and
+// dialed) for hosted services. NSM_SERVER_IP overrides it for deployments
+// on different hardware; a numeric NSM_PUBLIC_IP is honored for backwards
+// compatibility. A hostname never wins here: proxies forward web traffic
+// but raw game/FTP/DB ports are not proxied, so the hostname would be a
+// fictional address for those services.
+func serverHostIP() string {
+	if h := strings.TrimSpace(os.Getenv("NSM_SERVER_IP")); h != "" {
 		return h
 	}
-	if s.Endpoint != "" {
-		if host, _, err := net.SplitHostPort(s.Endpoint); err == nil && host != "" {
-			return host
-		}
+	if h := strings.TrimSpace(os.Getenv("NSM_PUBLIC_IP")); h != "" && net.ParseIP(h) != nil {
+		return h
 	}
-	return "127.0.0.1"
+	return defaultServerHostIP
 }
 
-// ftpHostOf returns the address FTP clients should dial: the configured
-// public IP when numeric, then the endpoint host when it is an IP literal,
-// then a one-shot DNS resolution of that host. The website hostname is a
-// last resort — hosted DNS may proxy web traffic while raw FTP ports are
-// not proxied at all, which made "ftp://nsmultiplayer:port" fail to connect.
+// publicHostOf returns the host this server is reachable at.
+func publicHostOf(s *HostedServer) string {
+	return serverHostIP()
+}
+
+// ftpHostOf returns the address FTP clients should dial. The website
+// hostname is never used — hosted DNS may proxy web traffic while raw FTP
+// ports are not proxied at all, which made "ftp://nsmultiplayer:port" fail
+// to connect.
 func ftpHostOf(s *HostedServer) string {
-	if h := strings.TrimSpace(os.Getenv("NSM_PUBLIC_IP")); h != "" {
-		if net.ParseIP(h) != nil {
-			return h
-		}
-	}
-	if s.Endpoint != "" {
-		if host, _, err := net.SplitHostPort(s.Endpoint); err == nil && host != "" {
-			if net.ParseIP(host) != nil {
-				return host
-			}
-			if ips, err := net.LookupIP(host); err == nil {
-				for _, ip := range ips {
-					if v4 := ip.To4(); v4 != nil && !ip.IsLoopback() {
-						return v4.String()
-					}
-				}
-			}
-			return host
-		}
-	}
-	if h := strings.TrimSpace(os.Getenv("NSM_PUBLIC_IP")); h != "" {
-		return h
-	}
-	return "127.0.0.1"
+	return serverHostIP()
 }
 
 // startFTP brings up the FileZilla endpoint for an instance. Callers hold
