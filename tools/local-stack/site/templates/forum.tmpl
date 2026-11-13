@@ -203,7 +203,7 @@
       {{if .ActiveCat}}
       <div class="category-heading" style="border-left: 6px solid {{.ActiveCat.Color}}; padding-left: 14px; margin-bottom: 18px;">
         <h1 style="font-size: 22px; font-weight: 700; color: #ffffff; margin: 0 0 4px;">{{.ActiveCat.Name}}</h1>
-        <p style="color: #9197a3; font-size: 14px; margin: 0;">{{.ActiveCat.Description}}</p>
+        <p style="color:#fff; font-size: 14px; margin: 0;">{{.ActiveCat.Description}}</p>
         {{if and (eq .ActiveCat.Slug "announcements") (not .CanPostAnnouncements)}}
         <p style="color: #fbbf24; font-size: 13px; margin: 6px 0 0;">&#128274; Only Owners, Admins, and Staff can create new topics in Announcements. Community members can reply to existing announcements.</p>
         {{end}}
@@ -478,7 +478,7 @@
               </tr>
               {{else}}
               <tr>
-                <td colspan="5" style="padding: 36px; text-align: center; color: #9197a3;">
+                <td colspan="5" style="padding: 36px; text-align: center; color:#fff;">
                   No topics found matching your filter.
                 </td>
               </tr>

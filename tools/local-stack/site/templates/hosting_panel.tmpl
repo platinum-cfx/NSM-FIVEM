@@ -550,7 +550,7 @@ pnlCardPoll();
               <button class="pnl-mini-btn" onclick="fmUp()">&#8593; up</button>
               <button class="pnl-mini-btn" onclick="fmNew()">+ new file</button>
               <button class="pnl-mini-btn" onclick="fmMkdir()">+ new folder</button>
-              <span id="fm-path" style="color:#8fa0b2;font:12px 'JetBrains Mono',monospace">/</span>
+              <span id="fm-path" style="color:#fff;font:12px 'JetBrains Mono',monospace">/</span>
             </div>
             <div id="filetable">loading…</div>
             <div id="fm-edit" style="display:none;margin-top:14px">
@@ -598,7 +598,7 @@ pnlCardPoll();
               <button class="pnl-btn-green" onclick="pnlPost('/api/host/{{$s.ID}}/safe-mode')">Restart (safe boot)</button>
               <button class="pnl-mini-btn" onclick="pnlPower('restart')">Normal restart</button>
             </div>
-            <div style="margin-top:14px;color:#8fa0b2;font-size:.85rem">{{.PkgWarn}}</div>
+            <div style="margin-top:14px;color:#fff;font-size:.85rem">{{.PkgWarn}}</div>
           </div>
           {{end}}
 
@@ -799,7 +799,7 @@ function pnlApps(){
     el.innerHTML='';
     d.apps.forEach(function(a){
       var div=document.createElement('div');div.className='pnl-app';
-      div.innerHTML='<div class="logo">'+a.name[0]+'</div><div><div class="nm">'+a.name+' <span style="color:#64748b;font-size:.72rem">v'+a.version+'</span></div><div class="blurb">'+a.blurb+'</div></div><div class="sp"></div>'+
+      div.innerHTML='<div class="logo">'+a.name[0]+'</div><div><div class="nm">'+a.name+' <span style="color:#fff;font-size:.72rem">v'+a.version+'</span></div><div class="blurb">'+a.blurb+'</div></div><div class="sp"></div>'+
         (a.installed?'<span class="pnl-pill ok">installed</span>':'<button class="pnl-btn-green" onclick="pnlInstall(\''+a.id+'\',this)">Install</button>');
       el.appendChild(div);
     });
