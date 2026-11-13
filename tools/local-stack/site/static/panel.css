@@ -2,6 +2,13 @@
 .pnl { display: flex; min-height: 100vh; background: #0a0d13; color: #dbe4ee; margin: -32px 0 0; font-family: 'Figtree', sans-serif; }
 .pnl a { text-decoration: none; color: inherit; }
 
+/* manage page: full-bleed stretch, tab rail on the right */
+.pnl-full .pnl-body { max-width: none; padding: 22px 28px 40px; }
+.pnl-full .pnl-manage { flex-direction: row-reverse; }
+
+/* account avatar (same picture as the NSM profile) */
+.pav { object-fit: cover; background: #14202c; }
+
 /* panel pages run without the site header */
 .pnl-page { background: #0a0d13; }
 .pnl-page .pnl { margin: 0; }

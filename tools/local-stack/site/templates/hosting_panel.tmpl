@@ -34,7 +34,7 @@
   <a class="pnl-rail-item{{if eq .Active "incidents"}} pnl-on{{end}}" href="/hosting/incidents"><span class="material-icons-outlined pnl-ric">warning</span> Incidents</a>
   <div class="pnl-rail-foot">
     <a class="pnl-me" href="/account">
-      {{if .User.AvatarData}}<img src="{{.User.AvatarData}}" alt="">{{else}}<span class="av">{{slice1 .User.Username}}</span>{{end}}
+      <img class="pav" src="/avatars/u/{{.User.Username}}/128.png" alt="" onerror="this.style.display='none'">
       <div><div class="nm">My account</div><div class="sub">Settings</div></div>
       <span class="tier">{{.PassTierShort}}</span>
     </a>
@@ -252,6 +252,12 @@ pnlCardPoll();
           </div>
 
           {{if eq $tab "overview"}}
+          <div class="pnl-panel{{if eq $s.Status "error"}} pnl-danger{{end}}">
+            <h3>Boot status</h3>
+            <p class="hint">{{if eq $s.Status "error"}}The last start failed — the exact reason is in the output below.{{else}}Recent output from this city — new lines appear as it runs.{{end}}</p>
+            <div class="pnl-console" id="boot-log" style="height:auto;min-height:120px;max-height:220px">{{range $s.Console}}{{.}}
+{{end}}</div>
+          </div>
           <div class="pnl-panel">
             <h3>Resources</h3><p class="hint">Live from the machine — updates every few seconds.</p>
             <div class="pnl-gauges">
@@ -619,15 +625,16 @@ var hist=[];
 function pnlStats(){
   fetch('/api/host/'+ID+'/stats').then(function(r){return r.json();}).then(function(d){
     var cpu=d.cpu<0?0:d.cpu, ram=d.ramMB<0?0:Math.min(100,d.ramMB/(8*1024)*100), disk=Math.min(100,d.diskMB/(50*1024)*100);
-    function set(g,b,v,txt){var e=document.getElementById(g),p=document.getElementById(b);if(e)e.textContent=txt;if(p)p.style.width=v+'%';}
-    set('g-cpu','b-cpu',cpu,cpu.toFixed(0)+'%'); set('g-cpu2','b-cpu2',cpu,cpu.toFixed(0)+'%');
-    set('g-ram','b-ram',ram,(d.ramMB/1024).toFixed(2)+' GB'); set('g-ram2','b-ram2',ram,(d.ramMB/1024).toFixed(2)+' GB');
+    function set(g,b,v,txt){var e=document.getElementById(g),p=document.getElementById(b);if(e)e.textContent=txt;if(p)p.style.width=(v>0?v:0)+'%';}
+    var cpuT=d.cpu<0?'n/a — offline':cpu.toFixed(0)+'%', ramT=d.ramMB<0?'n/a — offline':(d.ramMB/1024).toFixed(2)+' GB';
+    set('g-cpu','b-cpu',cpu,cpuT); set('g-cpu2','b-cpu2',cpu,cpuT);
+    set('g-ram','b-ram',ram,ramT); set('g-ram2','b-ram2',ram,ramT);
     set('g-disk','b-disk',disk,(d.diskMB/1024).toFixed(1)+' GB'); set('g-disk2','b-disk2',disk,(d.diskMB/1024).toFixed(1)+' GB');
     var gn=document.getElementById('g-net'); if(gn)gn.textContent=fmtBytes(d.rxBytes)+' ↓ / '+fmtBytes(d.txBytes)+' ↑';
     var tr=document.getElementById('t-rx'),tt=document.getElementById('t-tx');if(tr)tr.textContent=fmtBytes(d.rxBytes);if(tt)tt.textContent=fmtBytes(d.txBytes);
     var qd=document.getElementById('q-disk'),qb=document.getElementById('q-bar');if(qd)qd.textContent=(d.diskMB/1024).toFixed(2)+' GB / 50 GB';if(qb)qb.style.width=disk+'%';
     var mc=document.getElementById('m-cpu'),mr=document.getElementById('m-ram'),mp=document.getElementById('m-players');
-    if(mc)mc.textContent=cpu.toFixed(1)+'%';if(mr)mr.textContent=(d.ramMB/1024).toFixed(2)+' GB';if(mp)mp.textContent=d.players;
+    if(mc)mc.textContent=d.cpu<0?'n/a':cpu.toFixed(1)+'%';if(mr)mr.textContent=d.ramMB<0?'n/a':(d.ramMB/1024).toFixed(2)+' GB';if(mp)mp.textContent=d.players;
     hist.push(cpu); if(hist.length>60)hist.shift();
     var cv=document.getElementById('m-chart');
     if(cv){var x=cv.getContext('2d'),w=cv.width=cv.offsetWidth,h=cv.height=90;x.clearRect(0,0,w,h);x.strokeStyle='#18E888';x.beginPath();
@@ -645,6 +652,9 @@ function pnlConsole(){
   var el=document.getElementById('pnl-console'); if(!el){return;}
   fetch('/api/host/'+ID+'/console?since='+since).then(function(r){return r.json();}).then(function(d){
     since=d.seq;
+    if(!d.lines.length && el.childElementCount===0){
+      el.textContent='waiting for output — the city streams logs while it runs (press Start if it is offline)';
+    }
     d.lines.forEach(function(l){
       var div=document.createElement('div');
       var cls=l.line.indexOf('[system]')>=0||l.line.indexOf('[panel]')>=0||l.line.indexOf('[apps]')>=0||l.line.indexOf('[backup]')>=0||l.line.indexOf('[schedule]')>=0?'sys':l.line.toLowerCase().indexOf('err')>=0?'err':'';
@@ -988,7 +998,7 @@ function pnlCloseTicket(id){fetch('/api/hosting/support/'+id+'/close',{method:'P
         <div class="pnl-sub">Your NSM pass — every hosting feature is included free.</div>
         <a class="pnl-btn-green" href="/u/{{.User.Username}}">Manage profile</a>
       </div>
-      <div class="pnl-pass"><div class="av">{{slice1 .User.Username}}</div><div><div class="lbl">Pulse Pass</div><div class="nm">{{.User.Username}} &#8250;</div><div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">Free forever</span></div></div></div>
+      <div class="pnl-pass"><img class="av pav" src="/avatars/u/{{.User.Username}}/128.png" alt="" onerror="this.style.display='none'"><div><div class="lbl">Pulse Pass</div><div class="nm">{{.User.Username}} &#8250;</div><div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">Free forever</span></div></div></div>
     </div>
     <div class="pnl-panel"><h3>What's included</h3><p class="hint">Up to 5 servers, 2048 slots each, backups, schedules, one-click apps, the Plus scripting agent and hosting support chat.</p></div>
   </div>
