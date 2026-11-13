@@ -8,14 +8,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=090a">
+  <link rel="stylesheet" href="/css/style.css?v=090d">
 </head>
 <body class="dc-ember-body navigation-categories">
   <!-- Discourse d-header (1:1 forum.cfx.re header) -->
   <header class="d-header">
     <div class="d-header-wrap">
       <div class="d-header-left">
-        <button type="button" class="btn-sidebar-toggle" onclick="document.getElementById('d-sidebar').classList.toggle('collapsed')" title="Toggle sidebar">
+        <button type="button" class="btn-sidebar-toggle" onclick="nsmToggleSidebar(this)" title="Toggle sidebar" aria-expanded="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
         <a href="/" class="d-logo-link">
@@ -510,6 +510,6 @@
     }
     setInterval(pollForumRealtime, 2500);
   </script>
-  <script src="/js/main.js?v=078m"></script>
+  <script src="/js/main.js?v=079a"></script>
 </body>
 </html>
