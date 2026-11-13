@@ -188,7 +188,12 @@ function pnlApplyCard(id,status){
 }
 function pnlPower(id,a,btn){
   if(btn)btn.disabled=true;
-  fetch('/api/host/'+id+'/power/'+a,{method:'POST'}).then(function(r){return r.json();}).then(function(d){if(d&&d.error)pnlToast('Power action failed: '+d.error);setTimeout(function(){pnlCardPoll();},1200);}).catch(function(){if(btn)btn.disabled=false;});
+  fetch('/api/host/'+id+'/power/'+a,{method:'POST',credentials:'same-origin',cache:'no-store'}).then(function(r){return r.text();}).then(function(t){
+    var d={};try{d=JSON.parse(t);}catch(e){throw new Error('server sent an unexpected response'+(t?': '+String(t).slice(0,120):''));}
+    if(d&&d.error)throw new Error(d.error);
+    pnlToast('Power: '+a+' requested');
+    setTimeout(function(){pnlCardPoll();},1200);
+  }).catch(function(e){pnlToast('Power action failed: '+String(e.message||e));if(btn)btn.disabled=false;});
 }
 function pnlFav(id,btn){btn.classList.toggle('on');}
 function pnlServices(e){if(location.pathname==='/hosting/dashboard'){e.preventDefault();var el=document.getElementById('services');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}}
@@ -612,7 +617,12 @@ function pnlApplySrvStatus(d){
 }
 function pnlPower(a,btn){
   if(btn)btn.disabled=true;
-  post('/api/host/'+ID+'/power/'+a).then(function(r){return r.json();}).then(function(d){if(d&&d.error)pnlToast('Power action failed: '+d.error);setTimeout(pnlStats,1200);setTimeout(pnlStats,2400);}).catch(function(){if(btn)btn.disabled=false;});
+  post('/api/host/'+ID+'/power/'+a).then(function(r){return r.text();}).then(function(t){
+    var d={};try{d=JSON.parse(t);}catch(e){throw new Error('server sent an unexpected response'+(t?': '+String(t).slice(0,120):''));}
+    if(d&&d.error)throw new Error(d.error);
+    pnlToast('Power: '+a+' requested');
+    setTimeout(pnlStats,1200);setTimeout(pnlStats,2400);
+  }).catch(function(e){pnlToast('Power action failed: '+String(e.message||e));if(btn)btn.disabled=false;});
 }
 function pnlToast(msg){
   var t=document.getElementById('pnl-toast');

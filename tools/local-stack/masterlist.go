@@ -714,6 +714,8 @@ func sendJSON(w http.ResponseWriter, code int, v interface{}) {
 	body, _ := json.Marshal(v)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Vary", "Cookie")
 	setCors(w)
 	w.WriteHeader(code)
 	w.Write(body)
