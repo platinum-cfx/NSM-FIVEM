@@ -41,30 +41,34 @@ jobs:
             exit 1
           fi
           cat /tmp/go-tests.txt
-          go test -race -v ./... > /tmp/race-tests.txt
+          if ! go test -race -v ./... > /tmp/race-tests.txt 2>&1; then
+            grep -E "DATA RACE|FAIL|panic|_test.go" /tmp/race-tests.txt | head -n 10 | while IFS= read -r line; do echo "::error::race: $line"; done
+            exit 1
+          fi
           mkdir -p /tmp/smoke-dir
-          go build -o /tmp/smoke-dir/nsm-masterlist-smoke .
+          go build -o /tmp/smoke-dir/nsm-masterlist-smoke . || { echo "::error::smoke binary build failed"; exit 1; }
           (
+            fail() { echo "::error::smoke: $1"; exit 1; }
             cd /tmp/smoke-dir
             /tmp/smoke-dir/nsm-masterlist-smoke -bind 127.0.0.1 -port 18089 &
             SMOKE_PID=$!
             trap "kill $SMOKE_PID 2>/dev/null || true" EXIT
             sleep 2
-            curl -sf http://127.0.0.1:18089/health -o /tmp/smoke-health.json
-            grep -q "0.7.7-local" /tmp/smoke-health.json
-            curl -sf http://127.0.0.1:18089/ -o /tmp/smoke-index.html
-            grep -q 'href="/download"' /tmp/smoke-index.html
-            curl -sI http://127.0.0.1:18089/download -o /tmp/smoke-dl.hdr
-            grep -qi "nsm-v0.8.0-candidate/NSM.exe" /tmp/smoke-dl.hdr
-            curl -sI http://127.0.0.1:18089/download-server -o /tmp/smoke-dlsrv.hdr
-            grep -qi "nsm-v0.8.0-candidate/NSM-Server.zip" /tmp/smoke-dlsrv.hdr
-            curl -sf http://127.0.0.1:18089/p/api/policy/test -o /tmp/smoke-policy.json
-            grep -q "subdir_file_mapping" /tmp/smoke-policy.json
-            curl -sf http://127.0.0.1:18089/servers > /dev/null
-            curl -sf http://127.0.0.1:18089/forum > /dev/null
-            curl -sf http://127.0.0.1:18089/u > /dev/null
-            curl -sf http://127.0.0.1:18089/u/Cravenz > /dev/null
-            curl -sf http://127.0.0.1:18089/u/Cravenz/activity > /dev/null
+            curl -sf http://127.0.0.1:18089/health -o /tmp/smoke-health.json || fail "health fetch"
+            grep -q "0.7.7-local" /tmp/smoke-health.json || fail "health version"
+            curl -sf http://127.0.0.1:18089/ -o /tmp/smoke-index.html || fail "homepage fetch"
+            grep -q 'href="/download"' /tmp/smoke-index.html || fail "homepage download link"
+            curl -sI http://127.0.0.1:18089/download -o /tmp/smoke-dl.hdr || fail "download header"
+            grep -qi "nsm-v0.8.0-candidate/NSM.exe" /tmp/smoke-dl.hdr || fail "download exe target"
+            curl -sI http://127.0.0.1:18089/download-server -o /tmp/smoke-dlsrv.hdr || fail "download-server header"
+            grep -qi "nsm-v0.8.0-candidate/NSM-Server.zip" /tmp/smoke-dlsrv.hdr || fail "download-server target"
+            curl -sf http://127.0.0.1:18089/p/api/policy/test -o /tmp/smoke-policy.json || fail "policy fetch"
+            grep -q "subdir_file_mapping" /tmp/smoke-policy.json || fail "policy mapping"
+            curl -sf http://127.0.0.1:18089/servers > /dev/null || fail "servers page"
+            curl -sf http://127.0.0.1:18089/forum > /dev/null || fail "forum page"
+            curl -sf http://127.0.0.1:18089/u > /dev/null || fail "users page"
+            curl -sf http://127.0.0.1:18089/u/Cravenz > /dev/null || fail "profile page"
+            curl -sf http://127.0.0.1:18089/u/Cravenz/activity > /dev/null || fail "profile activity page"
             curl -sf http://127.0.0.1:18089/u/Cravenz/topics > /dev/null
             curl -sf http://127.0.0.1:18089/u/Cravenz/replies > /dev/null
             curl -sf http://127.0.0.1:18089/u/Cravenz/notifications > /dev/null
