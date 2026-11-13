@@ -397,3 +397,93 @@ body.nsm-swap-fade { animation: nsmFadeIn .18s ease; }
 .pnl-plus-card .plus { font-size: 2.6rem; font-weight: 300; color: var(--pnl-accent,#18E888); line-height: 1; }
 .pnl-plus-card .plus-t { font-weight: 800; font-size: 1.02rem; }
 .pnl-plus-card .plus-s { color: #ffffff; font-size: .82rem; }
+
+/* ===== ITEM 7 — Pulse nav item permanently illuminated purple ===== */
+@keyframes pnlPulseGlow {
+  0%, 100% { box-shadow: 0 0 16px rgba(168,85,247,0.35), inset 0 1px 0 rgba(255,255,255,0.14); }
+  50%      { box-shadow: 0 0 34px rgba(192,132,252,0.62), inset 0 1px 0 rgba(255,255,255,0.18); }
+}
+.pnl-rail-item.pnl-pulse-item {
+  background: linear-gradient(90deg, rgba(168,85,247,0.32), rgba(139,92,246,0.16)) !important;
+  border: 1px solid rgba(192,132,252,0.55);
+  color: #ffffff !important; font-weight: 800;
+  animation: pnlPulseGlow 3.2s ease-in-out infinite;
+}
+.pnl-rail-item.pnl-pulse-item .pnl-ric {
+  color: #d8b4fe !important;
+  filter: drop-shadow(0 0 8px rgba(192,132,252,0.85));
+}
+.pnl-rail-item.pnl-pulse-item:hover {
+  transform: translateX(3px);
+  background: linear-gradient(90deg, rgba(168,85,247,0.46), rgba(139,92,246,0.28)) !important;
+  box-shadow: 0 0 44px rgba(192,132,252,0.75), inset 0 1px 0 rgba(255,255,255,0.2);
+}
+.pnl-rail-item.pnl-pulse-item.pnl-on {
+  background: linear-gradient(90deg, rgba(168,85,247,0.5), rgba(139,92,246,0.3)) !important;
+}
+
+/* ===== ITEM 10 — bigger, clearer support tab chips ===== */
+.pnl-tab-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 13px 26px; min-height: 48px;
+  border-radius: 14px; font-size: 0.98rem; font-weight: 800;
+  letter-spacing: 0.01em; cursor: pointer;
+  transition: background 0.22s ease, border-color 0.22s ease, color 0.22s ease, transform 0.22s ease, box-shadow 0.22s ease;
+}
+.pnl-tab-chip:hover {
+  transform: translateY(-2px);
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.3);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.28);
+}
+.pnl-tab-chip.pnl-on {
+  background: rgba(24,232,136,0.18); border-color: #18E888; color: #18E888;
+  box-shadow: 0 0 22px rgba(24,232,136,0.25), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.pnl-tab-chip .n {
+  background: rgba(255,255,255,0.16); border-radius: 99px;
+  padding: 2px 11px; font-size: 0.82rem; font-weight: 800;
+}
+
+/* ===== ITEM 12 — bold, aligned server-card typography ===== */
+.pnl-card .kind { font-size: 0.82rem; letter-spacing: 0.14em; font-weight: 900; }
+.pnl-card .nm { font-size: 1.28rem; font-weight: 900; letter-spacing: -0.01em; }
+.pnl-card .nm a { font-weight: 900; }
+.pnl-pill { font-size: 0.82rem; font-weight: 800; padding: 4px 13px; }
+.pnl-meta { gap: 2px; }
+.pnl-meta .r {
+  display: grid; grid-template-columns: 122px minmax(0,1fr);
+  align-items: center; gap: 12px;
+}
+.pnl-meta .k {
+  font-size: 0.74rem; font-weight: 900; letter-spacing: 0.12em;
+  margin-bottom: 0;
+}
+.pnl-meta .v { font-size: 0.92rem; font-weight: 700; text-align: right; overflow-wrap: anywhere; }
+
+/* ===== ITEM 8 — glass + mouse-follow light + gentle 3D tilt on server cards ===== */
+.pnl-grid { perspective: 1100px; }
+.pnl-card {
+  position: relative;
+  transform: perspective(1000px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(var(--ty,0px));
+  transform-style: preserve-3d; will-change: transform;
+  transition: transform 0.22s cubic-bezier(0.2,0.8,0.25,1), box-shadow 0.25s ease, border-color 0.25s ease;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), 0 18px 44px rgba(0,0,0,0.34);
+}
+.pnl-card:hover {
+  --ty: -4px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 26px 58px rgba(0,0,0,0.42), 0 0 34px rgba(24,232,136,0.14);
+}
+.pnl-card::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; opacity: 0;
+  background:
+    radial-gradient(340px circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,0.20), rgba(24,232,136,0.10) 42%, transparent 72%);
+  transition: opacity 0.35s ease;
+}
+.pnl-card:hover::after { opacity: 1; }
+@media (hover: none) {
+  .pnl-card { transform: none !important; }
+  .pnl-card::after { display: none; }
+}

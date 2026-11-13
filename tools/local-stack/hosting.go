@@ -1390,31 +1390,11 @@ func hostingCreateSubmit(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/hosting/dashboard", http.StatusSeeOther)
 }
 
+// hostingManagePage keeps old /hosting/manage bookmarks working by sending
+// them straight to the canonical /dashboard hub — there is no separate
+// manage interface anymore.
 func hostingManagePage(w http.ResponseWriter, r *http.Request) {
-	u := currentUser(r)
-	if u == nil {
-		http.Redirect(w, r, "/login?next="+url.QueryEscape("/hosting/manage"), http.StatusFound)
-		return
-	}
-	m := hostMgr()
-	m.mu.Lock()
-	s := m.findOwnerLocked(u.ID)
-	var snap *HostedServer
-	if s != nil {
-		cp := *s
-		snap = &cp
-	}
-	m.mu.Unlock()
-	data := map[string]interface{}{"Title": "My Server - NSM Hosting", "PKG": hostingPackage}
-	if snap != nil {
-		players := int64(0)
-		if d := reg.get(snap.Endpoint); d != nil {
-			players = d.Clients
-		}
-		data["S"] = snap
-		data["Players"] = players
-	}
-	renderPage(w, r, "hosting_manage.tmpl", data)
+	http.Redirect(w, r, "/dashboard", http.StatusMovedPermanently)
 }
 
 // ---------------------------------------------------------------------------

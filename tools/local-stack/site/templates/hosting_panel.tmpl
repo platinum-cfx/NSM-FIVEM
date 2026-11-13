@@ -38,6 +38,56 @@
     });
   },{passive:true});
 })();
+(function(){
+  // ITEM 11 — heading shows the greeting at the top and "My Services" once
+  // the dashboard is scrolled, staying visible in the sticky panel header
+  var t=document.getElementById('pnl-head-title');
+  if(t&&document.getElementById('pnl-greet')){
+    var greeting=t.textContent, scrolled=false, ticking=false;
+    var upd=function(){
+      ticking=false;
+      var y=window.pageYOffset||document.documentElement.scrollTop||0;
+      var want=y>140;
+      if(want===scrolled)return;
+      scrolled=want;
+      t.classList.add('fade');
+      setTimeout(function(){
+        t.textContent=scrolled?'My Services':greeting;
+        t.classList.remove('fade');
+      },140);
+    };
+    window.addEventListener('scroll',function(){
+      if(!ticking){ticking=true;requestAnimationFrame(upd);}
+    },{passive:true});
+  }
+  // ITEM 8 — glass mouse-lighting + gentle 3D tilt on the server cards
+  var cardsSel='.pnl-card', raf2=0, lastEv=null;
+  function applyTilt(){
+    raf2=0;
+    var e=lastEv; if(!e)return;
+    var el=e.target&&e.target.closest?e.target.closest(cardsSel):null;
+    if(!el)return;
+    var r=el.getBoundingClientRect();
+    var px=(e.clientX-r.left)/Math.max(1,r.width), py=(e.clientY-r.top)/Math.max(1,r.height);
+    el.style.setProperty('--mx',(px*100).toFixed(1)+'%');
+    el.style.setProperty('--my',(py*100).toFixed(1)+'%');
+    if(window.matchMedia&&window.matchMedia('(hover:hover)').matches){
+      el.style.setProperty('--ry',((px-0.5)*7).toFixed(2)+'deg');
+      el.style.setProperty('--rx',((0.5-py)*7).toFixed(2)+'deg');
+    }
+  }
+  document.addEventListener('pointermove',function(e){
+    if(!e.target||!e.target.closest||!e.target.closest(cardsSel))return;
+    lastEv=e;
+    if(!raf2)raf2=requestAnimationFrame(applyTilt);
+  },{passive:true});
+  document.addEventListener('pointerout',function(e){
+    var el=e.target&&e.target.closest?e.target.closest(cardsSel):null;
+    if(!el)return;
+    el.style.setProperty('--rx','0deg');
+    el.style.setProperty('--ry','0deg');
+  },{passive:true});
+})();
 function supFilter(f){
   if(!document.getElementById('sup-list'))return;
   document.querySelectorAll('.pnl-tab-chip[data-f]').forEach(function(b){b.classList.toggle('pnl-on',b.getAttribute('data-f')===f);});
@@ -57,7 +107,7 @@ function supFilter(f){
   <a class="pnl-rail-item{{if eq .Active "services"}} pnl-on{{end}}" href="/hosting/dashboard#services"><span class="material-icons-outlined pnl-ric">dns</span> My services <span class="cnt">{{.ServiceCount}}</span></a>
   <a class="pnl-rail-item{{if eq .Active "support"}} pnl-on{{end}}" href="/hosting/support"><span class="material-icons-outlined pnl-ric">support_agent</span> Support {{if .SupportOpen}}<span class="cnt">{{.SupportOpen}}</span>{{end}}</a>
   <a class="pnl-rail-item{{if eq .Active "billing"}} pnl-on{{end}}" href="/hosting/billing"><span class="material-icons-outlined pnl-ric">credit_card</span> Billing</a>
-  <a class="pnl-rail-item pnl-pass-item{{if eq .Active "pass"}} pnl-on{{end}}" href="/hosting/pass"><span class="material-icons-outlined pnl-ric">bolt</span> Pulse</a>
+  <a class="pnl-rail-item pnl-pass-item pnl-pulse-item{{if eq .Active "pass"}} pnl-on{{end}}" href="/hosting/pass"><span class="material-icons-outlined pnl-ric">bolt</span> Pulse</a>
   <div class="pnl-rail-bottom">
   <div class="pnl-rail-sep"></div>
   <a class="pnl-rail-item{{if eq .Active "community"}} pnl-on{{end}}" href="/hosting/community"><span class="material-icons-outlined pnl-ric">groups</span> Community &amp; Partners</a>
@@ -79,7 +129,7 @@ function supFilter(f){
 <div class="pnl">
   {{template "panel-rail" .}}
   <div class="pnl-main">
-    <div class="pnl-top"><a class="pnl-back" href="/" title="Back to NSM website">&#8592;</a><h1>Dashboard</h1><div class="sp"></div>
+    <div class="pnl-top"><a class="pnl-back" href="/" title="Back to NSM website">&#8592;</a><h1 id="pnl-head-title">{{.Greeting}}, {{.User.Username}}</h1><div class="sp"></div>
       <a class="pnl-icon-btn" href="/hosting/support" title="Support">&#9993;{{if .SupportOpen}}<span class="dot">{{.SupportOpen}}</span>{{end}}</a>
       <a class="pnl-icon-btn" href="/hosting/incidents" title="Incidents">&#9888;</a>
     </div>
