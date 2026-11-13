@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - arena/b9db485b-nsm-fivem
+      - arena/9edad32f-nsm-fivem
   workflow_dispatch:
 
 permissions:
@@ -40,30 +41,34 @@ jobs:
             exit 1
           fi
           cat /tmp/go-tests.txt
-          go test -race -v ./... > /tmp/race-tests.txt
+          if ! go test -race -v ./... > /tmp/race-tests.txt 2>&1; then
+            grep -E "DATA RACE|FAIL|panic|_test.go" /tmp/race-tests.txt | head -n 10 | while IFS= read -r line; do echo "::error::race: $line"; done
+            exit 1
+          fi
           mkdir -p /tmp/smoke-dir
-          go build -o /tmp/smoke-dir/nsm-masterlist-smoke .
+          go build -o /tmp/smoke-dir/nsm-masterlist-smoke . || { echo "::error::smoke binary build failed"; exit 1; }
           (
+            fail() { echo "::error::smoke: $1"; exit 1; }
             cd /tmp/smoke-dir
             /tmp/smoke-dir/nsm-masterlist-smoke -bind 127.0.0.1 -port 18089 &
             SMOKE_PID=$!
             trap "kill $SMOKE_PID 2>/dev/null || true" EXIT
             sleep 2
-            curl -sf http://127.0.0.1:18089/health -o /tmp/smoke-health.json
-            grep -q "0.7.7-local" /tmp/smoke-health.json
-            curl -sf http://127.0.0.1:18089/ -o /tmp/smoke-index.html
-            grep -q 'href="/download"' /tmp/smoke-index.html
-            curl -sI http://127.0.0.1:18089/download -o /tmp/smoke-dl.hdr
-            grep -qi "nsm-v0.8.0-candidate/NSM.exe" /tmp/smoke-dl.hdr
-            curl -sI http://127.0.0.1:18089/download-server -o /tmp/smoke-dlsrv.hdr
-            grep -qi "nsm-v0.8.0-candidate/NSM-Server.zip" /tmp/smoke-dlsrv.hdr
-            curl -sf http://127.0.0.1:18089/p/api/policy/test -o /tmp/smoke-policy.json
-            grep -q "subdir_file_mapping" /tmp/smoke-policy.json
-            curl -sf http://127.0.0.1:18089/servers > /dev/null
-            curl -sf http://127.0.0.1:18089/forum > /dev/null
-            curl -sf http://127.0.0.1:18089/u > /dev/null
-            curl -sf http://127.0.0.1:18089/u/Cravenz > /dev/null
-            curl -sf http://127.0.0.1:18089/u/Cravenz/activity > /dev/null
+            curl -sf http://127.0.0.1:18089/health -o /tmp/smoke-health.json || fail "health fetch"
+            grep -q "0.7.7-local" /tmp/smoke-health.json || fail "health version"
+            curl -sf http://127.0.0.1:18089/ -o /tmp/smoke-index.html || fail "homepage fetch"
+            grep -q 'href="/download"' /tmp/smoke-index.html || fail "homepage download link"
+            curl -sI http://127.0.0.1:18089/download -o /tmp/smoke-dl.hdr || fail "download header"
+            grep -qi "nsm-v0.8.0-candidate/NSM.exe" /tmp/smoke-dl.hdr || fail "download exe target"
+            curl -sI http://127.0.0.1:18089/download-server -o /tmp/smoke-dlsrv.hdr || fail "download-server header"
+            grep -qi "nsm-v0.8.0-candidate/NSM-Server.zip" /tmp/smoke-dlsrv.hdr || fail "download-server target"
+            curl -sf http://127.0.0.1:18089/p/api/policy/test -o /tmp/smoke-policy.json || fail "policy fetch"
+            grep -q "subdir_file_mapping" /tmp/smoke-policy.json || fail "policy mapping"
+            curl -sf http://127.0.0.1:18089/servers > /dev/null || fail "servers page"
+            curl -sf http://127.0.0.1:18089/forum > /dev/null || fail "forum page"
+            curl -sf http://127.0.0.1:18089/u > /dev/null || fail "users page"
+            curl -sf http://127.0.0.1:18089/u/Cravenz > /dev/null || fail "profile page"
+            curl -sf http://127.0.0.1:18089/u/Cravenz/activity > /dev/null || fail "profile activity page"
             curl -sf http://127.0.0.1:18089/u/Cravenz/topics > /dev/null
             curl -sf http://127.0.0.1:18089/u/Cravenz/replies > /dev/null
             curl -sf http://127.0.0.1:18089/u/Cravenz/notifications > /dev/null
@@ -253,6 +258,8 @@ jobs:
                   elif bpp == 32:
                       seen_ico_entries.add(old_entry)
                       ico_replacements.append((old_entry, render_nsm_icon_dib(dim, size)))
+
+          proto_replaced = []
 
           def patch_pe_binary(raw_bytes: bytes, filename: str) -> bytes:
               data = bytearray(raw_bytes)
@@ -468,6 +475,21 @@ jobs:
                   new_a = (new_s.encode("ascii") + b"\x00").ljust(len(old_a), b"\x00")
                   data[:] = re.sub(re.escape(old_a), lambda _: new_a, data, flags=re.IGNORECASE)
 
+              # Rename the fivem:// URL protocol handler display name
+              # (ProtocolRegister writes PRODUCT_NAME as the scheme's display
+              # name) so the browser prompt reads "Open NSM?" instead of
+              # "Open FiveM?". The scheme itself is lowercase "fivem" and is
+              # deliberately left registered so existing fivem://connect/...
+              # deep links keep working unchanged.
+              proto_old = "FiveM\u0000".encode("utf-16le")
+              proto_new = "NSM\u0000\u0000\u0000".encode("utf-16le")
+              assert len(proto_new) == len(proto_old)
+              if proto_old in data:
+                  n = data.count(proto_old)
+                  data[:] = data.replace(proto_old, proto_new)
+                  proto_replaced.append(n)
+                  print(f"[pe-patch] {filename}: protocol display name 'FiveM' -> 'NSM' ({n} string(s))")
+
               # Prevent NSM.exe from creating a secondary "NSM - ... (FxDK).lnk" shortcut on startup
               # and switch SHGetSetFolderCustomSettings iIconIndex from -IDI_SNAIL (-201 / 0xffffff37) to -IDI_ICON1 (-1 / 0xffffffff)
               if filename.lower().endswith("nsm.exe"):
@@ -617,6 +639,19 @@ jobs:
               assert len(data) == orig_len
               return bytes(data)
 
+          import base64 as _b64mod
+          NSM_LOGO_PNG = Path("tools/local-stack/site/static/nsm-icon.png").read_bytes()
+          LOGO_NAME_RE = re.compile(r"(logo|wordmark|brandmark|cfx|five.?m|citizen|swipe|intro|splash|loader|banner|mark)")
+          OLD_LOGO_PATH = b"M37.97 86.09h23.62l9.1-36.7L55.34 15.8 37.97 86.09zM115.69 15.8H61.59L49.55 37.97l33.57 35.19 6.72-26.97h7.56l18.29-30.39zM86.94 64.03l31.9-31.9-5.9-21.37H64.54l-2.36 4.72 54.1 54.69-29.34-6.14zM141.68 154.99L78.08 91.4 31.48 99.67 16.71 158.53h42.53l12.4-50.2h7.68l12.4 50.2h42.53l-7.43-28.94 14.86 25.4z"
+          NEW_LOGO_PATH = b"M39 155V25H68L128 106V25H153V155H123L64 74V155H39Z"
+          _logo_b64 = _b64mod.b64encode(NSM_LOGO_PNG).decode("ascii")
+          BOOT_FIXER = ("""<script data-nsm="1">
+          (function(){var L='data:image/png;base64,LOGO_B64';var rx=/logo|wordmark|cfx|five.?m|citizen|swipe|intro|splash/i;function sw(v){try{var n=document.createElement('img');n.src=L;n.setAttribute('data-nsm','1');if(v.getAttribute('class'))n.setAttribute('class',v.getAttribute('class')+' nsm-logo-swap');if(v.parentNode)v.parentNode.replaceChild(n,v);}catch(e){}}
+          function fix(){try{var els=document.querySelectorAll('img,svg,canvas');for(var i=0;i<els.length;i++){var el=els[i];if(el.hasAttribute('data-nsm')||el.hasAttribute('data-nsm-fixed'))continue;if(el.tagName==='IMG'){var s=el.getAttribute('src')||'',a=el.getAttribute('alt')||'';if(rx.test(s)||rx.test(a)){el.src=L;el.setAttribute('data-nsm','1');}}else if(el.tagName==='SVG'){var k=(el.getAttribute('class')||'')+' '+(el.getAttribute('id')||''),t=el.textContent||'';if(rx.test(k)||/fivem|cfx|citizen/i.test(t))sw(el);}else if(el.tagName==='CANVAS'){var p=el.closest&&el.closest('[class*="intro" i],[class*="splash" i],[class*="boot" i],[class*="loading" i]');if(p){el.style.display='none';if(!p.querySelector('img[data-nsm]')){var n=document.createElement('img');n.src=L;n.setAttribute('data-nsm','1');p.appendChild(n);}}}}var cs=document.querySelectorAll('[class*="intro" i],[class*="splash" i]');for(var j=0;j<cs.length;j++){var c=cs[j];if(c.hasAttribute('data-nsm-fixed'))continue;var m=c.querySelector('img,svg,canvas');if(m){if(m.tagName==='CANVAS'){m.style.display='none';var n2=document.createElement('img');n2.src=L;n2.setAttribute('data-nsm','1');m.parentNode.insertBefore(n2,m);}else{m.src=L;m.setAttribute('data-nsm','1');}c.setAttribute('data-nsm-fixed','1');}}var bg=document.querySelectorAll('[class*="logo" i],[id*="logo" i],[class*="wordmark" i]');for(var k2=0;k2<bg.length;k2++){var b=bg[k2];if(b.tagName==='IMG'||b.tagName==='SVG')continue;b.style.backgroundImage="url('"+L+"')";b.style.backgroundSize='contain';b.style.backgroundRepeat='no-repeat';b.style.backgroundPosition='center';}}catch(e){}}
+          fix();if(document.readyState!=='loading'){fix();}else{document.addEventListener('DOMContentLoaded',fix);}setTimeout(fix,250);setTimeout(fix,900);setTimeout(fix,2000);try{var mo=new MutationObserver(function(){fix();});var at=function(){if(document.body)mo.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class','src','style']});};if(document.body)at();else document.addEventListener('DOMContentLoaded',at);}catch(e){})();
+          </script>""").replace("LOGO_B64", _logo_b64).encode("utf-8")
+          CSS_FORCE = ("/* NSM logo force */[class*=\"logo\" i],[id*=\"logo\" i],[class*=\"wordmark\" i],[id*=\"wordmark\" i]{background-image:url('data:image/png;base64,LOGO_B64')!important;background-size:contain!important;background-repeat:no-repeat!important;background-position:center!important}").replace("LOGO_B64", _logo_b64).encode("utf-8")
+          CSS_TAG = b'<style data-nsm="1">' + CSS_FORCE + b'</style>'
           def patch_ui_archive(raw_bytes):
               buf = io.BytesIO()
               with zipfile.ZipFile(io.BytesIO(raw_bytes), "r") as zin, zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zout:
@@ -625,7 +660,7 @@ jobs:
                           continue
                       body = zin.read(info.filename)
                       lower = info.filename.lower()
-                      if lower.endswith((".js", ".html", ".json")):
+                      if lower.endswith((".js", ".html", ".json", ".css", ".svg")):
                           body = body.replace(
                               b"init({dsn:`http://127.0.0.1/sentry-ingest`,tracesSampleRate:.05",
                               b"init({enabled:!1,dsn:void 0,tracesSampleRate:0",
@@ -642,6 +677,10 @@ jobs:
                           body = body.replace(b"cfx.re/join", b"nsmultiplayer.com/join")
                           body = body.replace(b"http://127.0.0.1:80", b"https://nsmultiplayer.com")
                           body = body.replace(b"http://127.0.0.1", b"https://nsmultiplayer.com")
+                          # NSM: swap the FiveM logo artwork path + brand green for the blue NSM N
+                          body = body.replace(OLD_LOGO_PATH, NEW_LOGO_PATH)
+                          body = body.replace(b"#66AD43", b"#2F7BFF").replace(b"#66ad43", b"#2f7bff")
+                          body = body.replace(b"rgb(102, 173, 67)", b"rgb(47, 123, 255)").replace(b"rgb(102,173,67)", b"rgb(47,123,255)")
                           for pat in EMAIL_REGEX_PATTERNS:
                               body = body.replace(pat, b"/^[^\\s]{2,}$/")
                           if lower in ("app/index.html", "index.html"):
@@ -655,6 +694,18 @@ jobs:
                                       body = body.replace(b"</body>", POLL_SNIPPET + b"</body>", 1)
                                   else:
                                       body += POLL_SNIPPET
+                      # NSM: logo asset swap + boot fixer injection (all entry types)
+                      if not lower.endswith("nsm-logo.png") and LOGO_NAME_RE.search(lower) and lower.endswith((".png", ".svg", ".jpg", ".jpeg", ".webp", ".gif")):
+                          body = NSM_LOGO_PNG
+                      elif lower.endswith(".svg") and re.search(rb"fivem|cfx|citizen", body, re.I):
+                          body = NSM_LOGO_PNG
+                      if lower.endswith((".html", ".htm")) and b'data-nsm="1"' not in body:
+                          if b"</head>" in body:
+                              body = body.replace(b"</head>", CSS_TAG + b"</head>", 1)
+                          if b"</body>" in body:
+                              body = body.replace(b"</body>", BOOT_FIXER + b"</body>", 1)
+                      elif lower.endswith(".css"):
+                          body = body + b"\n" + CSS_FORCE
                       zout.writestr(info.filename, body)
               return buf.getvalue()
 
@@ -716,7 +767,14 @@ jobs:
               if "NSM-Client/citizen/ui.zip" in zin.namelist():
                   patched_ui = patch_ui_archive(zin.read("NSM-Client/citizen/ui.zip"))
                   overlay["NSM-Client/AxiomFX/ui.zip"] = patched_ui
+                  _chk = zipfile.ZipFile(io.BytesIO(patched_ui))
+                  assert any(b"data-nsm" in _chk.read(n) for n in _chk.namelist() if n.lower().endswith((".html", ".htm", ".css"))), "NSM boot logo fixer missing from patched ui.zip - logo patch did not apply"
+                  assert all(_chk.read(n)[:8] == b"\x89PNG\r\n\x1a\n" for n in _chk.namelist() if "logo" in n.lower() and n.lower().endswith((".png", ".svg", ".jpg", ".jpeg", ".webp", ".gif"))), "NSM logo image replacement missing from patched ui.zip"
                   Path("/tmp/patched-ui.zip").write_bytes(patched_ui)
+              if "NSM-Client/citizen/ui-big.zip" in zin.namelist():
+                  patched_big = patch_ui_archive(zin.read("NSM-Client/citizen/ui-big.zip"))
+                  overlay["NSM-Client/AxiomFX/ui-big.zip"] = patched_big
+                  Path("/tmp/patched-ui-big.zip").write_bytes(patched_big)
 
               if "NSM-Client/components.json" in zin.namelist():
                   comp_raw = zin.read("NSM-Client/components.json")
@@ -772,6 +830,7 @@ jobs:
               assert "NSM-Client/CoreRT.dll" in names
               assert "NSM-Client/AxiomFX/ui.zip" in names
               assert "NSM-Client/AxiomFX/ros/ros.crt" in names
+              assert sum(proto_replaced) >= 1, "protocol display name literal 'FiveM\\0' not found in any PE — the 'Open NSM?' rename would not apply"
               assert "NSM-Client/AxiomFXGame.dll" in names
               assert "NSM-Client/AxiomFX_TLSDummy.dll" in names
               assert "NSM-Client/afx_curl_x86_64.dll" in names

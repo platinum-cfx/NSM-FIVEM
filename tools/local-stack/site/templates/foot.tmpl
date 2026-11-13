@@ -4,26 +4,45 @@
 <footer>
   <div class="container">
     <div class="spacer">
-      <div class="fx" style="align-items:flex-start;justify-content:space-between;margin-bottom:1.5rem">
-        <div class="c-lg-4 c-md-6 c-xs-12">
+      <div class="foot-grid">
+        <div class="foot-brand">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
             <img src="/img/nsm-icon.png" alt="NSM" style="width:40px;height:40px">
-            <span style="font-family:var(--font-header);font-size:1.4rem;font-weight:500">NSM</span>
+            <span style="font-family:var(--font-header);font-size:1.4rem;font-weight:600">NSM</span>
           </div>
-          <p class="muted" style="line-height:1.5">
+          <p class="muted" style="line-height:1.6;max-width:34ch">
             NSM is a modification for Grand Theft Auto V enabling you to play multiplayer on customized dedicated servers, powered by <strong>AFX</strong>.
           </p>
+          <div class="foot-pill-row">
+            <a class="zx-pill zx-pill-green" href="/download" data-no-spa="1">Download client</a>
+            <a class="zx-pill zx-pill-dark" href="/status">All systems live</a>
+          </div>
         </div>
-        <div class="c-lg-8 c-md-6 c-xs-12">
-          <ul class="links" style="display:flex;flex-wrap:wrap;gap:12px;list-style:none;padding:0;margin:0;justify-content:flex-end">
+        <div class="foot-col">
+          <h4>Platform</h4>
+          <ul class="links">
             <li><a href="/servers">Server List</a></li>
+            <li><a href="/hosting">Hosting</a></li>
             <li><a href="/keymaster">AFX Portal</a></li>
-            <li><a href="/login">Login - AFX Portal</a></li>
+            <li><a href="/status">Status</a></li>
+          </ul>
+        </div>
+        <div class="foot-col">
+          <h4>Community</h4>
+          <ul class="links">
             <li><a href="/forum">AFX Forum</a></li>
             <li><a href="/marketplace">AFX Marketplace</a></li>
-            <li><a href="/docs">Documentation</a></li>
             <li><a href="/support">AFX Support</a></li>
             <li><a href="https://discord.gg/UXj5QfCX88">Discord</a></li>
+          </ul>
+        </div>
+        <div class="foot-col">
+          <h4>Resources</h4>
+          <ul class="links">
+            <li><a href="/docs">Documentation</a></li>
+            <li><a href="/login">Login - AFX Portal</a></li>
+            <li><a href="/docs#server-setup">Setting up a server</a></li>
+            <li><a href="/docs#scripting">Scripting</a></li>
           </ul>
         </div>
       </div>
@@ -35,7 +54,7 @@
   </div>
 </footer>
 
-<script src="/js/main.js?v=078m"></script>
+<script src="/js/main.js?v=079a"></script>
 </body>
 </html>
 {{end}}

@@ -1,0 +1,82 @@
+{{template "head" .}}
+<section class="hero zx-hero">
+  <div class="container">
+    <div class="spacer">
+      <div class="zx-prod-tab"><span class="material-icons-outlined">cloud</span> NSM Server</div>
+      <h1 class="zx-hero-title">Create your server. <em>Go live.</em></h1>
+      <div class="zx-hero-chips">
+        <span class="zx-pill zx-pill-green">Free forever</span>
+        <span class="zx-pill zx-pill-dark">One per account</span>
+        <span class="zx-pill zx-pill-dark">Online in minutes</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<main>
+<section class="zx-band">
+  <div class="container">
+    <div class="spacer">
+      {{if .Error}}
+      <div class="zx-note-banner zx-note-err">
+        <span class="material-icons-outlined">error_outline</span>
+        <span><strong>Could not create the server:</strong> {{.Error}}</span>
+      </div>
+      {{end}}
+      <form method="post" action="/hosting/create">
+      <div class="zx-order-grid">
+        <div>
+          <div class="zx-lcard">
+            <div class="zx-lbl-row"><span class="zx-ic-chip"><span class="material-icons-outlined">inventory_2</span></span><span class="zx-lbl">Package</span><span class="zx-info-i">i</span></div>
+            <div class="zx-sel zx-sel-on">
+              <span class="zx-radio"></span>
+              <div>
+                <b>{{.PKG.Name}}:</b>
+                <div class="zx-specs">
+                  <span>- {{.PKG.Slots}} player slots</span>
+                  <span>- {{.PKG.RAMGB}} GB RAM</span>
+                  <span>- {{.PKG.DiskGB}} GB disk space</span>
+                  <span>- {{.PKG.Ports}} reserved ports</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="zx-lcard">
+            <div class="zx-lbl-row"><span class="zx-ic-chip"><span class="material-icons-outlined">public</span></span><span class="zx-lbl">Region</span><span class="zx-info-i">i</span></div>
+            <label class="zx-sel zx-sel-on"><span class="zx-radio"></span><div><b>US East</b></div><input type="radio" name="region" value="us-east" checked></label>
+            <label class="zx-sel"><span class="zx-radio"></span><div><b>US West</b></div><input type="radio" name="region" value="us-west"></label>
+            <label class="zx-sel"><span class="zx-radio"></span><div><b>EU West</b></div><input type="radio" name="region" value="eu-west"></label>
+            <label class="zx-sel"><span class="zx-radio"></span><div><b>EU Central</b></div><input type="radio" name="region" value="eu-central"></label>
+            <label class="zx-sel"><span class="zx-radio"></span><div><b>Asia (Singapore)</b></div><input type="radio" name="region" value="ap-singapore"></label>
+            <label class="zx-sel"><span class="zx-radio"></span><div><b>Australia (Sydney)</b></div><input type="radio" name="region" value="ap-sydney"></label>
+          </div>
+        </div>
+
+        <div>
+          <div class="zx-lcard">
+            <div class="zx-lbl-row"><span class="zx-ic-chip"><span class="material-icons-outlined">badge</span></span><span class="zx-lbl">Server details</span><span class="zx-info-i">i</span></div>
+            <span class="zx-field-lbl">SERVER_NAME</span>
+            <input name="name" maxlength="40" placeholder="my-awesome-city" style="width:100%;padding:12px 14px;border-radius:10px">
+            <span class="zx-field-hint">Shown to players in the server list.</span>
+          </div>
+
+          <div class="zx-lcard">
+            <div class="zx-lbl-row"><span class="zx-ic-chip"><span class="material-icons-outlined">receipt_long</span></span><span class="zx-lbl">Summary</span><span class="zx-info-i">i</span></div>
+            <div class="zx-sumrow"><span>Package</span><b>{{.PKG.Name}}</b></div>
+            <div class="zx-sumrow"><span>Player slots</span><b>{{.PKG.Slots}}</b></div>
+            <div class="zx-sumrow"><span>Memory</span><b>{{.PKG.RAMGB}} GB</b></div>
+            <div class="zx-sumrow"><span>Storage</span><b>{{.PKG.DiskGB}} GB</b></div>
+            <div class="zx-sumrow"><span>Ports pool</span><b>{{.First}}&ndash;{{.Last}}</b></div>
+            <div class="zx-price-row"><span class="zx-price-old">Due today</span><span class="zx-price-new">+ 0.00 &euro;</span></div>
+            <button class="btn primary block zx-buy-btn" type="submit">Create my server</button>
+            <p class="zx-field-hint" style="text-align:center;margin-top:10px">No payment required &middot; delete anytime</p>
+          </div>
+        </div>
+      </div>
+      </form>
+    </div>
+  </div>
+</section>
+
+{{template "foot" .}}

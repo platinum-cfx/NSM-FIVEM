@@ -60,9 +60,9 @@
       </div>
     </div>
 
-    <table style="width:100%;border-collapse:collapse;min-width:960px">
+    <div class="wide-scroll"><table style="width:100%;border-collapse:collapse;min-width:960px">
       <thead>
-        <tr style="text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);color:#94a3b8;font-size:0.78rem;text-transform:uppercase;letter-spacing:0.06em">
+        <tr style="text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);color:#fff;font-size:0.78rem;text-transform:uppercase;letter-spacing:0.06em">
           <th style="padding:10px 12px">ID</th>
           <th style="padding:10px 12px">User</th>
           <th style="padding:10px 12px">Email &amp; Security</th>
@@ -75,7 +75,7 @@
       <tbody>
       {{range .Users}}
         <tr style="border-bottom:1px solid rgba(255,255,255,0.06);{{if .Banned}}background:rgba(239,68,68,0.06){{end}}">
-          <td style="padding:14px 12px;font-family:var(--mono);color:#94a3b8">#{{.ID}}</td>
+          <td style="padding:14px 12px;font-family:var(--mono);color:#fff">#{{.ID}}</td>
           <td style="padding:14px 12px">
             <a href="/u/{{.Username}}" style="display:inline-flex;align-items:center;gap:10px;text-decoration:none;color:#fff;font-weight:700">
               <img src="{{.AvatarPath}}" alt="{{.Username}}" style="width:38px;height:38px;border-radius:50%;object-fit:cover;border:2px solid rgba(47,123,255,0.45)">
@@ -156,7 +156,7 @@
         </tr>
       {{end}}
       </tbody>
-    </table>
+    </table></div>
   </div>
 
   <!-- Support Requests Queue in Staff Panel -->
@@ -172,7 +172,7 @@
     {{if .Tickets}}
     <table style="width:100%;border-collapse:collapse">
       <thead>
-        <tr style="text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);color:#94a3b8;font-size:0.78rem;text-transform:uppercase;letter-spacing:0.06em">
+        <tr style="text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);color:#fff;font-size:0.78rem;text-transform:uppercase;letter-spacing:0.06em">
           <th style="padding:10px 12px">Ticket ID</th>
           <th style="padding:10px 12px">Subject</th>
           <th style="padding:10px 12px">Requester &amp; Email</th>
@@ -203,7 +203,7 @@
               {{.Status}}
             </span>
           </td>
-          <td style="padding:12px;font-size:0.82rem;color:#94a3b8">{{.UpdatedStr}}</td>
+          <td style="padding:12px;font-size:0.82rem;color:#fff">{{.UpdatedStr}}</td>
           <td style="padding:12px">
             <a class="btn sm primary" href="/support/requests/{{.ID}}">Open &amp; Reply &rarr;</a>
           </td>
@@ -215,5 +215,88 @@
     <p class="muted" style="margin:0;padding:1rem 0">No support requests have been submitted yet.</p>
     {{end}}
   </div>
+
+  <!-- Server Hosting Support (staff view of the existing hosting ticket system) -->
+  <div class="fcard" style="padding:1.5rem;margin-top:1.5rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:1.25rem;flex-wrap:wrap">
+      <div>
+        <h2 style="margin:0;font-size:1.25rem">Server Hosting Support</h2>
+        <p class="muted" style="margin:3px 0 0;font-size:0.85rem">Hosting support chats live here in real time — open a ticket to read it, reply as staff, or close it. This is the same ticket system used in the hosting panel.</p>
+      </div>
+      <a class="btn ghost sm" href="/hosting/support">&#8594; Open hosting panel</a>
+    </div>
+
+    {{if .HostTickets}}
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr style="text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);color:#fff;font-size:0.78rem;text-transform:uppercase;letter-spacing:0.06em">
+          <th style="padding:10px 12px">Ticket</th>
+          <th style="padding:10px 12px">Owner</th>
+          <th style="padding:10px 12px">Subject</th>
+          <th style="padding:10px 12px">Status</th>
+          <th style="padding:10px 12px">Updated</th>
+          <th style="padding:10px 12px">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .HostTickets}}
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.06)">
+          <td style="padding:12px;font-family:var(--mono);color:#60a5fa;font-weight:700">#{{.ID}}</td>
+          <td style="padding:12px;font-size:0.85rem"><strong>@{{.OwnerName}}</strong></td>
+          <td style="padding:12px;font-size:0.88rem;font-weight:600">{{.Subject}}</td>
+          <td style="padding:12px">
+            <span style="padding:3px 9px;border-radius:999px;font-size:0.74rem;font-weight:700;{{if eq .Status "closed"}}background:rgba(148,163,184,0.18);color:#cbd5e1{{else if eq .Status "new"}}background:rgba(245,158,11,0.18);color:#fcd34d{{else}}background:rgba(56,189,248,0.18);color:#7dd3fc{{end}}">{{.Status}}</span>
+          </td>
+          <td style="padding:12px;font-size:0.82rem;color:#fff">{{unixfmt .Updated}}</td>
+          <td style="padding:12px">
+            <button class="btn sm primary" type="button" onclick="var d=document.getElementById('ht-{{.ID}}');d.style.display=d.style.display==='none'?'':'none'">Connect &rarr;</button>
+          </td>
+        </tr>
+        <tr id="ht-{{.ID}}" style="display:none">
+          <td colspan="6" style="padding:4px 12px 18px">
+            <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:14px 16px">
+              {{range .Messages}}
+              <div style="margin:0 0 10px;padding:8px 12px;border-radius:10px;background:{{if eq .From "user"}}rgba(56,189,248,.10){{else}}rgba(24,232,136,.10){{end}};border:1px solid rgba(255,255,255,.08)">
+                <div class="muted" style="font-size:0.72rem;margin-bottom:2px">{{if eq .From "user"}}User{{else}}Staff{{end}} &middot; {{.By}} &middot; {{unixfmt .At}}</div>
+                <div style="font-size:0.88rem;white-space:pre-wrap">{{.Text}}</div>
+              </div>
+              {{end}}
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                <input id="ht-in-{{.ID}}" type="text" placeholder="Reply as staff…" style="flex:1;min-width:220px;padding:9px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff">
+                <button class="btn sm primary" type="button" onclick="hsReply('{{.ID}}')">Send reply</button>
+                {{if ne .Status "closed"}}<button class="btn sm ghost" type="button" onclick="hsClose('{{.ID}}')">Close ticket</button>{{end}}
+              </div>
+              <div id="ht-msg-{{.ID}}" class="muted" style="font-size:0.76rem;margin-top:6px"></div>
+            </div>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="muted" style="margin:0;padding:1rem 0">No hosting support tickets yet.</p>
+    {{end}}
+  </div>
 </section>
+<script>
+function hsReply(id){
+  var inp=document.getElementById('ht-in-'+id),m=document.getElementById('ht-msg-'+id);
+  var v=inp&&inp.value.trim(); if(!v){if(m)m.textContent='Type a reply first.';return;}
+  fetch('/api/hosting/support/'+id+'/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:v})})
+    .then(function(r){return r.json();}).then(function(d){
+      if(d&&d.error){if(m)m.textContent=d.error;return;}
+      if(m)m.textContent='Reply sent — reloading…';
+      setTimeout(function(){location.reload();},600);
+    }).catch(function(){if(m)m.textContent='Could not send — check your connection.';});
+}
+function hsClose(id){
+  var m=document.getElementById('ht-msg-'+id);
+  fetch('/api/hosting/support/'+id+'/close',{method:'POST'})
+    .then(function(r){return r.json();}).then(function(d){
+      if(d&&d.error){if(m)m.textContent=d.error;return;}
+      if(m)m.textContent='Ticket closed — reloading…';
+      setTimeout(function(){location.reload();},600);
+    }).catch(function(){if(m)m.textContent='Could not close — check your connection.';});
+}
+</script>
 {{template "foot" .}}

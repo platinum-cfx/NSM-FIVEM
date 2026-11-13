@@ -1,0 +1,1449 @@
+{{define "panel-assets"}}{{end}}
+
+{{define "panel-head"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{if .Title}}{{.Title}}{{else}}NSM Hosting{{end}}</title>
+  <link rel="icon" type="image/png" href="/img/nsm-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&family=JetBrains+Mono:wght@400;500;700&family=Material+Icons+Outlined&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css?v=090d">
+  <link rel="stylesheet" href="/css/zapx.css?v=12">
+  <link rel="stylesheet" href="/css/panel.css?v=5">
+</head>
+<body class="pnl-page">
+{{end}}
+
+{{define "panel-foot"}}<script>
+// ITEM 6 — every displayed time is anchored to the SERVER clock. Each poll
+// re-syncs an offset; the visible values tick from that anchor instead of the
+// PC's own clock, so a wrong user clock can never skew the dashboard.
+window.__srvOff = 0; window.__srvTz = '';
+window.pnlSyncTime = function (d) {
+  if (d && typeof d.serverTime === 'number') {
+    window.__srvOff = d.serverTime - Date.now();
+    window.__srvTz = d.serverTz || '';
+  }
+};
+window.pnlSrvNow = function () { return new Date(Date.now() + (window.__srvOff || 0)); };
+window.pnlFmtClock = function (ms) {
+  var d = new Date((ms || Date.now()) + (window.__srvOff || 0));
+  var t = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+  return t + (window.__srvTz ? ' ' + window.__srvTz : '');
+};
+window.pnlFmtWhen = function (sec) {
+  if (!sec) return 'offline';
+  var d = new Date(sec * 1000 + (window.__srvOff || 0));
+  return d.toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}) + (window.__srvTz ? ' ' + window.__srvTz : '');
+};
+(function(){
+  // keep visible "updated …" timestamps ticking between polls
+  setInterval(function () {
+    var els = document.querySelectorAll('[data-srv-clock]');
+    for (var i = 0; i < els.length; i++) {
+      els[i].textContent = window.pnlFmtClock();
+    }
+    var up = document.querySelectorAll('[data-uptime][data-t]');
+    for (var j = 0; j < up.length; j++) {
+      up[j].textContent = 'since ' + window.pnlFmtWhen(parseInt(up[j].getAttribute('data-t'), 10));
+    }
+  }, 1000);
+})();
+(function(){
+  // ITEM 1 — restore the profile-card colour everywhere it appears
+  try{var c=JSON.parse(localStorage.getItem('nsmPassColor')||'null');
+    if(c){document.documentElement.style.setProperty('--pnl-pass-a',c[0]);document.documentElement.style.setProperty('--pnl-pass-b',c[1]);}
+  }catch(e){}
+  // ITEM 6 — mouse-following glow, kept inside each highlighted element
+  var SEL='.pnl-pass,.pnl-me,.pnl-rail-item,.pnl-chip,.pnl-mini-btn,.pnl-btn-green,.pnl-tab';
+  var raf=0;
+  document.addEventListener('mousemove',function(e){
+    if(raf)return;
+    raf=requestAnimationFrame(function(){
+      raf=0;
+      var el=e.target&&e.target.closest?e.target.closest(SEL):null;
+      if(!el)return;
+      var r=el.getBoundingClientRect();
+      el.style.setProperty('--mx',(e.clientX-r.left)+'px');
+      el.style.setProperty('--my',(e.clientY-r.top)+'px');
+    });
+  },{passive:true});
+})();
+(function(){
+  // ITEM 11 — heading shows the greeting at the top and "My Services" once
+  // the dashboard is scrolled, staying visible in the sticky panel header
+  var t=document.getElementById('pnl-head-title');
+  if(t&&document.getElementById('pnl-greet')){
+    var greeting=t.textContent, scrolled=false, ticking=false;
+    var upd=function(){
+      ticking=false;
+      var y=window.pageYOffset||document.documentElement.scrollTop||0;
+      var want=y>140;
+      if(want===scrolled)return;
+      scrolled=want;
+      t.classList.add('fade');
+      setTimeout(function(){
+        t.textContent=scrolled?'My Services':greeting;
+        t.classList.remove('fade');
+      },140);
+    };
+    window.addEventListener('scroll',function(){
+      if(!ticking){ticking=true;requestAnimationFrame(upd);}
+    },{passive:true});
+  }
+  // ITEM 8 — glass mouse-lighting + gentle 3D tilt on the server cards
+  var cardsSel='.pnl-card', raf2=0, lastEv=null;
+  function applyTilt(){
+    raf2=0;
+    var e=lastEv; if(!e)return;
+    var el=e.target&&e.target.closest?e.target.closest(cardsSel):null;
+    if(!el)return;
+    var r=el.getBoundingClientRect();
+    var px=(e.clientX-r.left)/Math.max(1,r.width), py=(e.clientY-r.top)/Math.max(1,r.height);
+    el.style.setProperty('--mx',(px*100).toFixed(1)+'%');
+    el.style.setProperty('--my',(py*100).toFixed(1)+'%');
+    if(window.matchMedia&&window.matchMedia('(hover:hover)').matches){
+      el.style.setProperty('--ry',((px-0.5)*7).toFixed(2)+'deg');
+      el.style.setProperty('--rx',((0.5-py)*7).toFixed(2)+'deg');
+    }
+  }
+  document.addEventListener('pointermove',function(e){
+    if(!e.target||!e.target.closest||!e.target.closest(cardsSel))return;
+    lastEv=e;
+    if(!raf2)raf2=requestAnimationFrame(applyTilt);
+  },{passive:true});
+  document.addEventListener('pointerout',function(e){
+    var el=e.target&&e.target.closest?e.target.closest(cardsSel):null;
+    if(!el)return;
+    el.style.setProperty('--rx','0deg');
+    el.style.setProperty('--ry','0deg');
+  },{passive:true});
+})();
+// ITEM 13/15 — progress bars for per-server and VPS resource usage.
+// -1 (or missing) values render an explicit unavailable state, never a fake 0.
+window.pnlFillUsage=function(box,d,limits,isVps){
+  if(!box||!d)return;
+  var lim=limits||{cpuCores:64,ramMB:32768,diskMB:122880};
+  var cpu=(typeof d.cpu==='number')?d.cpu:(typeof d.cpuPct==='number'?d.cpuPct:-1);
+  var ram=(typeof d.ramMB==='number')?d.ramMB:-1;
+  var disk=(typeof d.diskMB==='number')?d.diskMB:-1;
+  var set=function(k,pct,text){
+    var bar=box.querySelector('[data-b="'+k+'"]'),val=box.querySelector('[data-v="'+k+'"]');
+    if(bar){bar.style.width=(pct<0?0:Math.min(100,pct))+'%';bar.classList.toggle('na',pct<0);}
+    if(val)val.textContent=text;
+  };
+  set('cpu', cpu<0?-1:Math.min(100,cpu), cpu<0?'unavailable':Math.round(cpu)+'%'+(isVps?'':' of max '+(lim.cpuCores||64)+' cores'));
+  set('ram', ram<0?-1:ram/Math.max(1,lim.ramMB)*100, ram<0?'unavailable':(isVps?(ram+' / '+(d.ramTotalMB>0?d.ramTotalMB+' MB':'?')):(ram+' / '+lim.ramMB+' MB')));
+  set('disk', disk<0?-1:disk/Math.max(1,lim.diskMB)*100, disk<0?'unavailable':(isVps?(disk+' / '+(d.diskTotalMB>0?d.diskTotalMB+' MB':'?')):(disk+' / '+lim.diskMB+' MB')));
+};
+function supFilter(f){
+  if(!document.getElementById('sup-list'))return;
+  document.querySelectorAll('.pnl-tab-chip[data-f]').forEach(function(b){b.classList.toggle('pnl-on',b.getAttribute('data-f')===f);});
+  document.querySelectorAll('#sup-list .pnl-ticket').forEach(function(t){
+    var b=t.getAttribute('data-bucket');
+    t.style.display=(b==='all'||b===f)?'':'none';
+  });
+}
+</script>
+<script src="/js/main.js?v=079a"></script></body></html>
+{{end}}
+
+{{define "panel-rail"}}
+<aside class="pnl-rail" id="pnl-rail">
+  <a class="pnl-logo" href="/"><span class="nsm">NSM</span> <span style="font-size:.8rem;opacity:.7">HOSTING</span></a>
+  <a class="pnl-rail-item{{if eq .Active "dashboard"}} pnl-on{{end}}" href="/hosting/dashboard" onclick="pnlServices(event)"><span class="material-icons-outlined pnl-ric">dashboard</span> Dashboard</a>
+  <a class="pnl-rail-item{{if eq .Active "services"}} pnl-on{{end}}" href="/hosting/dashboard#services"><span class="material-icons-outlined pnl-ric">dns</span> My services <span class="cnt">{{.ServiceCount}}</span></a>
+  <a class="pnl-rail-item{{if eq .Active "support"}} pnl-on{{end}}" href="/hosting/support"><span class="material-icons-outlined pnl-ric">support_agent</span> Support {{if .SupportOpen}}<span class="cnt">{{.SupportOpen}}</span>{{end}}</a>
+  <a class="pnl-rail-item{{if eq .Active "billing"}} pnl-on{{end}}" href="/hosting/billing"><span class="material-icons-outlined pnl-ric">credit_card</span> Billing</a>
+  <a class="pnl-rail-item pnl-pass-item pnl-pulse-item{{if eq .Active "pass"}} pnl-on{{end}}" href="/hosting/pass"><span class="material-icons-outlined pnl-ric">bolt</span> Pulse</a>
+  <div class="pnl-rail-bottom">
+  <div class="pnl-rail-sep"></div>
+  <a class="pnl-rail-item{{if eq .Active "community"}} pnl-on{{end}}" href="/hosting/community"><span class="material-icons-outlined pnl-ric">groups</span> Community &amp; Partners</a>
+  <a class="pnl-rail-item{{if eq .Active "news"}} pnl-on{{end}}" href="/hosting/news"><span class="material-icons-outlined pnl-ric">campaign</span> News</a>
+  <a class="pnl-rail-item{{if eq .Active "incidents"}} pnl-on{{end}}" href="/hosting/incidents"><span class="material-icons-outlined pnl-ric">warning</span> Incidents</a>
+  <div class="pnl-rail-foot">
+    <a class="pnl-me" href="/account">
+      <img class="pav" src="/avatars/u/{{.User.Username}}/128.png?v=1" alt="" onerror="this.style.display='none'">
+      <div><div class="nm">My account</div><div class="sub">Settings</div></div>
+      <span class="tier">{{.PassTierShort}}</span>
+    </a>
+  </div>
+  </div>
+</aside>
+{{end}}
+
+{{define "panel-dashboard"}}
+{{template "panel-head" .}}
+<div class="pnl">
+  {{template "panel-rail" .}}
+  <div class="pnl-main">
+    <div class="pnl-top"><a class="pnl-back" href="/" title="Back to NSM website">&#8592;</a><h1 id="pnl-head-title">{{.Greeting}}, {{.User.Username}}</h1><div class="sp"></div>
+      <a class="pnl-icon-btn" href="/hosting/support" title="Support">&#9993;{{if .SupportOpen}}<span class="dot">{{.SupportOpen}}</span>{{end}}</a>
+      <a class="pnl-icon-btn" href="/hosting/incidents" title="Incidents">&#9888;</a>
+    </div>
+    <div class="pnl-body">
+      <div class="pnl-hero-panel">
+        <div class="pnl-hero-top">
+          <div class="pnl-hero-left">
+            <h2><span id="pnl-greet">{{.Greeting}}</span>, <span class="pnl-grad">{{.User.Username}}</span></h2>
+            <div class="pnl-sub"><span class="pnl-live-dot"></span> {{.Online}} online &middot; {{.Total}} service{{if ne .Total 1}}s{{end}} total &middot; up to {{.MaxServers}} per account</div>
+            <a class="pnl-btn-green" href="/hosting/create">&#128722; Deploy server</a>
+          </div>
+          <div class="pnl-pass pnl-pass-link" id="pnl-pass" role="link" tabindex="0" title="Open profile settings" onclick="location.href='/u/{{.User.Username}}?tab=preferences'" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();location.href='/u/{{.User.Username}}?tab=preferences'}">
+            <div class="pnl-pass-banner"></div>
+            <div class="pnl-pass-glow"></div>
+            <div class="pnl-pass-row">
+              <img class="av pav" src="/avatars/u/{{.User.Username}}/128.png?v=1" alt="" onerror="this.style.display='none'">
+              <div class="pnl-pass-info">
+                <div class="lbl">Pulse Pass</div>
+                <div class="nm">{{.User.Username}} <span class="pnl-arr">&#8250;</span></div>
+                <div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">NSM Hosting</span></div>
+              </div>
+              <a class="manage manage-ring" href="/u/{{.User.Username}}?tab=preferences" onclick="event.stopPropagation()">&#9998; Manage</a>
+            </div>
+            <div class="pnl-pass-foot">
+              <div class="foot">Free forever &middot; every feature included</div>
+              <div class="pnl-pass-colors" title="Banner colour" onclick="event.stopPropagation()">
+                <span class="pc-lbl">banner</span>
+                <button onclick="event.stopPropagation();pnlPassColor('#4c2a86','#1b1030')" style="background:linear-gradient(135deg,#4c2a86,#1b1030)"></button>
+                <button onclick="event.stopPropagation();pnlPassColor('#0e5c3a','#072418')" style="background:linear-gradient(135deg,#0e5c3a,#072418)"></button>
+                <button onclick="event.stopPropagation();pnlPassColor('#1e3a8a','#0c1a3e')" style="background:linear-gradient(135deg,#1e3a8a,#0c1a3e)"></button>
+                <button onclick="event.stopPropagation();pnlPassColor('#7c2d12','#2a1006')" style="background:linear-gradient(135deg,#7c2d12,#2a1006)"></button>
+                <button onclick="event.stopPropagation();pnlPassColor('#334155','#111827')" style="background:linear-gradient(135deg,#334155,#111827)"></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pnl-support-card" onclick="location.href='/hosting/support'">
+          <div>
+            <div class="lbl">Support</div>
+            <div class="big">{{.SupportOpen}} open</div>
+            <div class="up">{{.SupportAgo}} &middot; <a href="/support" style="color:#18E888">NSM tickets &#8599;</a></div>
+          </div>
+          <div class="chev">&#8250;</div>
+        </div>
+
+        <div class="pnl-chips">
+          <div class="pnl-chip"><span class="material-icons-outlined">error_outline</span> Incidents <b>No incidents</b></div>
+          <div class="pnl-chip"><span class="material-icons-outlined">shield</span> DDoS <b>No attacks</b></div>
+          <div class="pnl-chip"><span class="material-icons-outlined">credit_card</span> Billing <b><a href="/hosting/billing" style="color:inherit;text-decoration:underline">{{.DueText}}</a></b></div>
+          <div class="pnl-chip"><span class="material-icons-outlined">chat_bubble_outline</span> Discord <b><a href="https://discord.gg/UXj5QfCX88" target="_blank" rel="noopener" class="pnl-chip-link">click</a></b></div>
+          <div class="pnl-chip"><span class="material-icons-outlined">cake</span> Birthday <b>Not provided</b></div>
+        </div>
+      </div>
+
+      <div id="services">
+        <div class="pnl-infra-head">
+          <div>
+            <div class="pnl-eyebrow">Infrastructure</div>
+            <h2 class="pnl-h2">My services</h2>
+          </div>
+          <button class="pnl-customize" id="pnl-customize" onclick="pnlCustomize(this)">&#9881; Customize Dashboard <span class="cnt">1</span></button>
+        </div>
+        <div class="pnl-grid" id="pnl-grid">
+          {{range .Servers}}
+          <div class="pnl-card{{if ne .Status "online"}} is-off{{end}}" id="svc-{{.ID}}">
+            <div class="row1">
+              <span class="kind">NSM</span>
+              <span class="pnl-pill {{if eq .Status "online"}}ok{{else}}off{{end}}" data-live-pill="{{.ID}}">{{.Status}}</span>
+              <button class="pnl-fav {{if .Favorite}}on{{end}}" title="Favourite" onclick="pnlFav('{{.ID}}',this)">&#9733;</button>
+            </div>
+            <div class="nm">
+              <span class="ic">&#9635;</span>
+              <a href="/dashboard/{{.ID}}">{{.Name}}</a>
+              <button class="pnl-copy" title="Copy name" onclick="pnlCopy('{{.Name}}')">&#128203;</button>
+            </div>
+            <span class="pnl-badge-imported">&#8599; Imported from NSM</span>
+            <div class="pnl-meta">
+              <div class="r"><span class="k"><span class="material-icons-outlined">lan</span> IP / Port</span><span class="v">{{$.HostPublic}} : {{.GameTCPPort}} <button class="pnl-copy" onclick="pnlCopy('{{$.HostPublic}}:{{.GameTCPPort}}')">&#128203;</button></span></div>
+              <div class="r"><span class="k"><span class="material-icons-outlined">inventory_2</span> Package</span><span class="v">{{$.PKG.Slots}} slots &middot; {{$.PKG.RAMGB}} GB RAM &middot; {{$.PKG.DiskGB}} GB</span></div>
+              <div class="r"><span class="k"><span class="material-icons-outlined">desktop_windows</span> System</span><span class="v">{{$.SystemName}}</span></div>
+              <div class="pnl-usage pnl-usage-mini" id="use-{{.ID}}">
+                <div class="pu-row"><span class="pu-k">CPU</span><div class="pu-bar"><i data-b="cpu"></i></div><span class="pu-v" data-v="cpu">—</span></div>
+                <div class="pu-row"><span class="pu-k">RAM</span><div class="pu-bar"><i data-b="ram"></i></div><span class="pu-v" data-v="ram">—</span></div>
+                <div class="pu-row"><span class="pu-k">Disk</span><div class="pu-bar"><i data-b="disk"></i></div><span class="pu-v" data-v="disk">—</span></div>
+              </div>
+              <div class="r"><span class="k"><span class="material-icons-outlined">location_on</span> Location</span><span class="v">{{.Region}}</span></div>
+              <div class="r"><span class="k"><span class="material-icons-outlined">schedule</span> Uptime</span><span class="v" data-uptime="{{.ID}}"{{if .LastStarted}} data-t="{{.LastStarted}}"{{end}}>{{if .LastStarted}}since {{.LastStarted}}{{else}}offline{{end}}</span></div>
+            </div>
+            <div class="pnl-card-actions" data-pwr-row="{{.ID}}">
+              <a class="pnl-mini-btn green" href="/dashboard/{{.ID}}">Manage</a>
+              <button class="pnl-mini-btn red" data-pwr="stop" onclick="pnlPower('{{.ID}}','stop',this)"{{if ne .Status "online"}} style="display:none"{{end}}>Stop</button>
+              <button class="pnl-mini-btn green" data-pwr="start" onclick="pnlPower('{{.ID}}','start',this)"{{if eq .Status "online"}} style="display:none"{{end}}>Start</button>
+              <button class="pnl-mini-btn" data-pwr="restart" onclick="pnlPower('{{.ID}}','restart',this)">Restart</button>
+            </div>
+          </div>
+          {{end}}
+          {{if lt .Total .MaxServers}}
+          <a class="pnl-plus-card" href="/hosting/create" title="Deploy another NSM server">
+            <span class="plus">+</span>
+            <span class="plus-t">Deploy another server</span>
+            <span class="plus-s">fresh city in about a minute</span>
+          </a>
+          {{end}}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<a class="pnl-fab" href="/hosting/support" title="Hosting support chat">&#128172;</a>
+<script>
+function pnlToast(msg){
+  var t=document.getElementById('pnl-toast');
+  if(!t){t=document.createElement('div');t.id='pnl-toast';document.body.appendChild(t);}
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(window.__nsmToastT);
+  window.__nsmToastT=setTimeout(function(){t.classList.remove('show');},4200);
+}
+function pnlCopy(t){navigator.clipboard&&navigator.clipboard.writeText(t);}
+function pnlPassColor(a,b){var r=document.documentElement.style;r.setProperty('--pnl-pass-a',a);r.setProperty('--pnl-pass-b',b);var p=document.getElementById('pnl-pass');if(p){p.style.setProperty('--pnl-pass-a',a);p.style.setProperty('--pnl-pass-b',b);}try{localStorage.setItem('nsmPassColor',JSON.stringify([a,b]));}catch(e){}}
+(function(){try{var c=JSON.parse(localStorage.getItem('nsmPassColor')||'null');if(c){document.documentElement.style.setProperty('--pnl-pass-a',c[0]);document.documentElement.style.setProperty('--pnl-pass-b',c[1]);}}catch(e){}
+  var h=new Date().getHours();var g=h<12?'Good morning':h<18?'Good afternoon':'Good evening';document.getElementById('pnl-greet').textContent=g;})();
+var pnlACCENTS=[['#18E888','#0d9d5f','Green'],['#22d3ee','#0e7490','Cyan'],['#3b82f6','#1d4ed8','Blue'],['#a855f7','#7e22ce','Purple'],['#ec4899','#be185d','Pink'],['#f97316','#c2410c','Orange']];
+function pnlSetAccent(a,b){var r=document.documentElement.style;
+  r.setProperty('--pnl-accent',a);r.setProperty('--pnl-accent2',b);
+  try{localStorage.setItem('nsmAccent',JSON.stringify([a,b]));}catch(e){}}
+function pnlCustomize(btn){
+  var pop=document.getElementById('pnl-accent-pop');
+  if(pop){pop.remove();if(btn)btn.classList.remove('pnl-on');return;}
+  pop=document.createElement('div');pop.id='pnl-accent-pop';
+  var h='<div class="ap-t">Dashboard colour</div><div class="ap-row">';
+  pnlACCENTS.forEach(function(c){h+='<button class="ap-sw" title="'+c[2]+'" onclick="pnlSetAccent(\''+c[0]+'\',\''+c[1]+'\')" style="background:linear-gradient(135deg,'+c[0]+','+c[1]+')"></button>';});
+  h+='</div><div class="ap-row ap-foot"><button class="pnl-mini-btn" onclick="pnlCompact(this)">Compact cards</button><button class="pnl-mini-btn" onclick="pnlSetAccent(\'#18E888\',\'#0d9d5f\')">Reset</button></div>';
+  pop.innerHTML=h;
+  btn.parentNode.appendChild(pop);
+  btn.classList.add('pnl-on');
+}
+function pnlCompact(){var g=document.getElementById('pnl-grid');if(!g)return;var on=g.classList.toggle('pnl-compact');try{localStorage.setItem('nsmCompact',on?'1':'0');}catch(e){}}
+(function(){
+  try{var c=JSON.parse(localStorage.getItem('nsmAccent')||'null');if(c)pnlSetAccent(c[0],c[1]);}catch(e){}
+  try{if(localStorage.getItem('nsmCompact')==='1'){var g=document.getElementById('pnl-grid');if(g)g.classList.add('pnl-compact');}}catch(e){}
+})();
+function pnlApplyCard(id,status){
+  var card=document.getElementById('svc-'+id); if(card)card.classList.toggle('is-off',status!=='online');
+  var row=document.querySelector('[data-pwr-row="'+id+'"]'); if(!row)return;
+  var stop=row.querySelector('[data-pwr="stop"]'),start=row.querySelector('[data-pwr="start"]');
+  var online=status==='online';
+  if(stop){stop.style.display=online?'':'none';stop.disabled=false;}
+  if(start){start.style.display=online?'none':'';start.disabled=false;}
+}
+function pnlPower(id,a,btn){
+  if(btn)btn.disabled=true;
+  fetch('/api/host/'+id+'/power/'+a,{method:'POST',credentials:'same-origin',cache:'no-store'}).then(function(r){return r.text();}).then(function(t){
+    var d={};try{d=JSON.parse(t);}catch(e){throw new Error('server sent an unexpected response'+(t?': '+String(t).slice(0,120):''));}
+    if(d&&d.error)throw new Error(d.error);
+    pnlToast('Power: '+a+' requested');
+    setTimeout(function(){pnlCardPoll();},1200);
+  }).catch(function(e){pnlToast('Power action failed: '+String(e.message||e));if(btn)btn.disabled=false;});
+}
+function pnlFav(id,btn){btn.classList.toggle('on');}
+function pnlServices(e){if(location.pathname==='/hosting/dashboard'){e.preventDefault();var el=document.getElementById('services');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}}
+function pnlCardPoll(){
+  document.querySelectorAll('[data-live-pill]').forEach(function(el){
+    var id=el.getAttribute('data-live-pill');
+    fetch('/api/host/'+id+'/stats').then(function(r){return r.json();}).then(function(d){
+      el.textContent=d.status;el.className='pnl-pill '+(d.status==='online'?'ok':d.status==='error'?'bad':'off');
+      pnlApplyCard(id,d.status);
+      if(window.pnlFillUsage)window.pnlFillUsage(document.getElementById('use-'+id),d,d.limits);
+      window.pnlSyncTime&&window.pnlSyncTime(d);
+    }).catch(function(){});
+  });
+}
+window.__nsmTimers=window.__nsmTimers||[];
+window.__nsmTimers.push(setInterval(pnlCardPoll,10000));
+pnlCardPoll();
+</script>
+{{template "panel-foot" .}}
+{{end}}
+
+{{define "panel-manage"}}
+{{template "panel-head" .}}
+{{$s := .S}}{{$tab := .Tab}}
+<div class="pnl pnl-full">
+  <div class="pnl-main">
+    <div class="pnl-top pnl-top-srv">
+      <a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a>
+      <h1>{{$s.Name}}</h1>
+      <span class="pnl-imported">Imported from NSM</span>
+      <span class="pnl-pill {{if eq $s.Status "online"}}ok{{else}}off{{end}}" id="srv-pill">{{$s.Status}}</span>
+      <div class="sp"></div>
+      <button class="pnl-mini-btn red" data-pwr="stop" onclick="pnlPower('stop',this)"{{if ne $s.Status "online"}} style="display:none"{{end}}>Stop</button>
+      <button class="pnl-mini-btn green" data-pwr="start" onclick="pnlPower('start',this)"{{if eq $s.Status "online"}} style="display:none"{{end}}>Start</button>
+      <button class="pnl-mini-btn" data-pwr="restart" onclick="pnlPower('restart',this)">Restart</button>
+      <a class="pnl-icon-btn" href="/hosting/support" title="Support">&#9993;</a>
+    </div>
+    <div class="pnl-body">
+      <div class="pnl-manage">
+        <nav class="pnl-tabs">
+          <a class="pnl-tab{{if eq $tab "overview"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=overview">&#9678; Overview</a>
+          <a class="pnl-tab{{if eq $tab "plan"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=plan">&#8645; Manage plan</a>
+          <a class="pnl-tab{{if eq $tab "access"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=access">&#128274; Access</a>
+          <a class="pnl-tab{{if eq $tab "ai"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=ai">&#10022; Plus agent</a>
+          <a class="pnl-tab{{if eq $tab "apps"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=apps">&#9733; Frameworks &amp; apps</a>
+          <a class="pnl-tab{{if eq $tab "databases"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=databases">&#9635; Databases</a>
+          <div class="pnl-tab-sep"></div>
+          <a class="pnl-tab{{if eq $tab "dns"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=dns">&#9998; DNS</a>
+          <a class="pnl-tab{{if eq $tab "traffic"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=traffic">&#8593; Traffic</a>
+          <a class="pnl-tab{{if eq $tab "quota"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=quota">&#9635; Quota</a>
+          <a class="pnl-tab{{if eq $tab "network"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=network">&#9673; Network</a>
+          <a class="pnl-tab{{if eq $tab "firewall"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=firewall">&#9638; Firewall</a>
+          <a class="pnl-tab{{if eq $tab "console"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=console">&gt;_ Console</a>
+          <a class="pnl-tab{{if eq $tab "monitoring"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=monitoring">&#8599; Monitoring</a>
+          <a class="pnl-tab{{if eq $tab "backups"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=backups">&#8634; Backups</a>
+          <a class="pnl-tab{{if eq $tab "schedules"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=schedules">&#9200; Schedules</a>
+          <a class="pnl-tab{{if eq $tab "activity"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=activity">&#9776; Activity</a>
+          <div class="pnl-tab-sep"></div>
+          <a class="pnl-tab{{if eq $tab "files"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=files">&#8801; Files</a>
+          <a class="pnl-tab{{if eq $tab "config"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=config">&#9998; Config</a>
+          <div class="pnl-tab-sep"></div>
+          <a class="pnl-tab{{if eq $tab "settings"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=settings">&#9881; Settings</a>
+          <a class="pnl-tab{{if eq $tab "rescue"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=rescue">&#128295; Rescue</a>
+          <a class="pnl-tab{{if eq $tab "tools"}} pnl-on{{end}}" href="/dashboard/{{$s.ID}}?tab=tools">&#128295; Tools</a>
+        </nav>
+        <div class="pnl-pane">
+          <!-- shared server header -->
+          <div class="pnl-panel">
+            <div class="pnl-srv-head">
+              <div class="title"><span id="srv-name">{{$s.Name}}</span>
+                <button class="pen" title="Rename" onclick="pnlRename()">&#9998;</button>
+              </div>
+              <span class="pnl-unit">unit #{{$s.ID}}</span>
+            </div>
+            <div class="pnl-connect">
+              <div><div class="lbl">Connect</div><div class="val">{{.Host}}:{{$s.GameTCPPort}}</div></div>
+              <div><div class="lbl">System</div><div class="val">Custom NSM System</div></div>
+              <div><div class="lbl">Join privately</div><div class="val"><a href="/join/{{$s.JoinCode}}" style="color:#18E888">/join/{{$s.JoinCode}}</a></div></div>
+            </div>
+            <div class="pnl-live-note" id="srv-live">Uptime since — &middot; updated <span data-srv-clock>just now</span></div>
+          </div>
+
+          <!-- live resource monitoring: this server vs its configured maximums,
+               and the whole VPS separately (values come from real OS counters) -->
+          <div class="pnl-panel pnl-usage-wrap">
+            <div class="pnl-usage-cols">
+              <div>
+                <h3 class="pu-title">Server usage <span class="pu-sub">this city &middot; configured maximum CPU 64 cores &middot; RAM 32 GB &middot; storage 120 GB</span></h3>
+                <div class="pnl-usage" id="srv-usage">
+                  <div class="pu-row"><span class="pu-k">CPU</span><div class="pu-bar"><i data-b="cpu"></i></div><span class="pu-v" data-v="cpu">—</span></div>
+                  <div class="pu-row"><span class="pu-k">RAM</span><div class="pu-bar"><i data-b="ram"></i></div><span class="pu-v" data-v="ram">—</span></div>
+                  <div class="pu-row"><span class="pu-k">Disk</span><div class="pu-bar"><i data-b="disk"></i></div><span class="pu-v" data-v="disk">—</span></div>
+                </div>
+              </div>
+              <div>
+                <h3 class="pu-title">VPS usage <span class="pu-sub">whole machine &middot; all hosted cities</span></h3>
+                <div class="pnl-usage" id="vps-usage">
+                  <div class="pu-row"><span class="pu-k">CPU</span><div class="pu-bar pu-vps"><i data-b="cpu"></i></div><span class="pu-v" data-v="cpu">—</span></div>
+                  <div class="pu-row"><span class="pu-k">RAM</span><div class="pu-bar pu-vps"><i data-b="ram"></i></div><span class="pu-v" data-v="ram">—</span></div>
+                  <div class="pu-row"><span class="pu-k">Disk</span><div class="pu-bar pu-vps"><i data-b="disk"></i></div><span class="pu-v" data-v="disk">—</span></div>
+                </div>
+              </div>
+            </div>
+            <p class="pu-note" id="pu-note">Configured maximums are caps for each city, not reserved hardware — the VPS block shows what the machine is actually using.</p>
+          </div>
+
+          {{if eq $tab "overview"}}
+          <div class="pnl-panel">
+            <h3>Resources</h3><p class="hint">Live from the machine — updates every few seconds.</p>
+            <div class="pnl-gauges">
+              <div class="pnl-gauge"><div class="k">CPU</div><div class="v" id="g-cpu">—</div><div class="pnl-bar"><i id="b-cpu" style="width:0"></i></div></div>
+              <div class="pnl-gauge"><div class="k">RAM</div><div class="v" id="g-ram">—</div><div class="pnl-bar"><i id="b-ram" style="width:0"></i></div></div>
+              <div class="pnl-gauge"><div class="k">Disk</div><div class="v" id="g-disk">—</div><div class="pnl-bar"><i id="b-disk" style="width:0"></i></div></div>
+              <div class="pnl-gauge"><div class="k">Network</div><div class="v" id="g-net">—</div><div class="pnl-bar"><i id="b-net" style="width:18%"></i></div></div>
+            </div>
+          </div>
+          <div class="pnl-panel">
+            <h3>Server info</h3><p class="hint">The host, contract and guest agent for this server.</p>
+            <div class="pnl-kv">
+              <div class="r"><span class="k">Host</span><span class="v">{{.Host}}</span></div>
+              <div class="r"><span class="k">Server created</span><span class="v">{{unixfmt $s.CreatedAt}}</span></div>
+              <div class="r"><span class="k">Contract</span><span class="v">{{$.PKG.Name}} &middot; Free</span></div>
+              <div class="r"><span class="k">Guest agent</span><span class="v" id="guest-agent" style="color:#18E888">connected</span></div>
+            </div>
+          </div>
+          <div class="pnl-panel">
+            <h3>Server access</h3><p class="hint">Your credentials — the password is hidden until you reveal it.</p>
+            <div class="pnl-kv">
+              <div class="r"><span class="k">Port</span><span class="v">{{$s.GameTCPPort}}</span></div>
+              <div class="r"><span class="k">Username</span><span class="v">{{$s.FTPUser}}</span></div>
+              <div class="r"><span class="k">Password</span><span class="v"><span id="ftp-pass" data-pass="{{$s.FTPPass}}">••••••••••</span>
+                <button class="pnl-lock" onclick="pnlShowPass(this)" title="Show">&#128065;</button>
+                <button class="pnl-lock" onclick="location.href='/dashboard/{{$s.ID}}?tab=settings'" title="Change">&#9998;</button></span></div>
+            </div>
+          </div>
+          <div class="pnl-panel">
+            <h3>Network</h3><p class="hint">Addresses assigned to this server.</p>
+            <div class="pnl-kv">
+              <div class="r"><span class="k">IP address</span><span class="v">{{.Net.primaryIPv4}}</span></div>
+              <div class="r"><span class="k">Primary IPv4</span><span class="v">{{.Net.primaryIPv4}}</span></div>
+              <div class="r"><span class="k">Subnet</span><span class="v">{{.Net.subnet}}</span></div>
+              <div class="r"><span class="k">Subnet mask</span><span class="v">{{.Net.subnet}}</span></div>
+              <div class="r"><span class="k">Gateway</span><span class="v">{{.Net.gateway}}</span></div>
+              <div class="r"><span class="k">IPv4 networks</span><span class="v">{{.Net.interface}} / {{.Net.subnet}}</span></div>
+              <div class="r"><span class="k">IPv6/64</span><span class="v">{{.Net.ipv6}}</span></div>
+            </div>
+          </div>
+          <div class="pnl-panel pnl-danger">
+            <h3>Reinstall</h3><p class="hint">Completely reinstall the server using the official NSM template. This wipes the city files.</p>
+            <button class="pnl-btn-danger" onclick="if(confirm('Wipe and reinstall this server?'))pnlPost('/api/host/{{$s.ID}}/reinstall')">Reinstall</button>
+          </div>
+          {{end}}
+
+          {{if eq $tab "plan"}}
+          <div class="pnl-panel">
+            <h3>Server header</h3>
+            <div class="pnl-srv-head" style="margin-bottom:10px">
+              <div class="title"><span>{{$s.Name}}</span></div>
+              <span class="pnl-imported">Imported from NSM</span>
+              <span class="pnl-unit">unit #{{$s.ID}}</span>
+            </div>
+            <p class="hint">Scale with me &mdash; the package adjusts to the typical load of the last hour.</p>
+            <label style="display:flex;gap:10px;align-items:center;font-weight:700"><input type="checkbox" id="autoscale" onchange="pnlNote('Auto scaling '+(this.checked?'on':'off'))"> Scale automatically</label>
+            <div class="pnl-gauges" style="margin-top:16px">
+              <div class="pnl-gauge"><div class="k">CPU load</div><div class="v" id="g-cpu2">—</div><div class="pnl-bar"><i id="b-cpu2" style="width:0"></i></div></div>
+              <div class="pnl-gauge"><div class="k">RAM load</div><div class="v" id="g-ram2">—</div><div class="pnl-bar"><i id="b-ram2" style="width:0"></i></div></div>
+              <div class="pnl-gauge"><div class="k">Disk load</div><div class="v" id="g-disk2">—</div><div class="pnl-bar"><i id="b-disk2" style="width:0"></i></div></div>
+            </div>
+          </div>
+          <div class="pnl-panel">
+            <h3>Customize server package</h3><p class="hint">Measured in <strong>upvotes</strong> — the NSM currency of attention. Pick a package or drag the slider to exactly the size you need.</p>
+            <div class="pnl-tiers" id="tier-row">
+              {{range .Tiers}}<button class="pnl-tier{{if eq $.PlanTier .Name}} pnl-on{{end}}" data-up="{{.Upvotes}}" onclick="pnlTier(this,'{{.Name}}')"><span class="tname">{{.Name}}</span><span class="tprice" data-price></span></button>{{end}}
+              <button class="pnl-tier{{if eq .PlanTier "custom"}} pnl-on{{end}}" onclick="pnlTier(this,'custom')"><span class="tname">Custom</span><span class="tprice">slider</span></button>
+            </div>
+            <div class="pnl-slider-row">
+              <button class="pnl-mini-btn" onclick="pnlStep(-1000)">−</button>
+              <input type="range" id="up-slider" min="1" max="2000000" step="1000" value="{{.PlanUpvotes}}" oninput="pnlSlide(this.value)">
+              <button class="pnl-mini-btn" onclick="pnlStep(1000)">+</button>
+              <div class="pnl-stepper"><span class="num" id="up-num">{{.PlanUpvotes}}</span></div>
+            </div>
+            <div class="pnl-due">
+              <div><div class="k">Your charge amount due</div><div class="v" id="due-amount">—</div></div>
+              <div style="text-align:right"><div class="k">Price</div><div class="v" style="font-size:1.15rem"><span id="due-price">—</span> <span style="font-size:.8rem;opacity:.7">/ month</span></div></div>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <button class="pnl-btn-green" onclick="pnlPlanSave()">Order subscription</button>
+              <span id="plan-msg" style="color:#18E888;font-size:.85rem"></span>
+            </div>
+            <p class="hint" style="margin-top:10px">Payment is arranged through <a href="/hosting/support" style="color:#18E888">hosting support</a> — invoices are sent to your account email.</p>
+          </div>
+          {{end}}
+
+          {{if eq $tab "access"}}
+          <div class="pnl-panel">
+            <h3>Server access</h3><p class="hint">Share these with your community's developers — the password is yours to change at any time.</p>
+            <div class="pnl-kv" style="margin-bottom:16px">
+              <div class="r"><span class="k">IP</span><span class="v">{{.Host}}</span></div>
+              <div class="r"><span class="k">Port</span><span class="v">{{$s.GameTCPPort}}</span></div>
+              <div class="r"><span class="k">Username</span><span class="v">{{$s.FTPUser}}</span></div>
+              <div class="r"><span class="k">Password</span><span class="v"><span id="ftp-pass2" data-pass="{{$s.FTPPass}}">••••••••••</span>
+                <button class="pnl-lock" onclick="pnlShowPass2(this)">&#128065; show password</button></span></div>
+            </div>
+            <div class="pnl-row2">
+              <div class="pnl-field"><label>New password</label><input type="text" id="ftp-new" placeholder="leave empty to generate"></div>
+              <div style="display:flex;align-items:flex-end;gap:10px">
+                <button class="pnl-btn-green" onclick="pnlFtpPass()">Change password</button>
+                <span id="ftp-msg" style="color:#18E888;font-size:.85rem"></span>
+              </div>
+            </div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "ai"}}
+          <div class="pnl-panel">
+            <h3>&#10022; Plus agent</h3><p class="hint">Chat with Plus to build NSM scripts — vMenu, QBCore, ESX, commands, scheduled restarts and more.</p>
+            <div class="pnl-chat" id="agent-chat">
+              <div class="pnl-msg them"><div class="who">Plus</div>Hi {{.User.Username}} — I write NSM server code. Ask for <b>vMenu</b>, <b>QBCore</b>, <b>ESX</b>, a <b>restart</b> schedule, a custom <b>command</b> or a <b>car</b> spawner.</div>
+            </div>
+            <div class="pnl-chat-input">
+              <textarea id="agent-in" placeholder="e.g. write me a qbcore pay command"></textarea>
+              <button class="pnl-btn-green" onclick="pnlAgentSend()">Send</button>
+            </div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "apps"}}
+          <div class="pnl-panel">
+            <h3>Frameworks &amp; apps</h3><p class="hint">A framework install deploys the <b>complete</b> framework — every core resource, its dependencies, the official SQL schema and a correctly ordered startup config (like a txAdmin deployment). Existing resources and your configs are never overwritten. Restart the server after installation.</p>
+            <div id="app-list">loading…</div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "databases"}}
+          <div class="pnl-panel">
+            <h3>Databases</h3><p class="hint">Each database gets its own username and password with access to that database only — your data is isolated from every other customer. Framework installs can use these automatically. External tools like <b>HeidiSQL</b> connect with the details shown per database.</p>
+            <div id="db-config-note"></div>
+            <div class="pnl-form-row" style="margin:14px 0 6px">
+              <label>New database name<input id="db-name" class="inp" maxlength="20" placeholder="e.g. main, shop, dev"></label>
+              <div style="display:flex;align-items:flex-end;gap:10px"><button class="pnl-btn-green" onclick="pnlDBCreate(this)">Create database</button></div>
+            </div>
+            <div id="db-list">loading…</div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "dns"}}
+          <div class="pnl-panel">
+            <h3>DNS</h3><p class="hint">Your city is reachable through NSM join links — the raw IP stays private.</p>
+            <div class="pnl-kv">
+              <div class="r"><span class="k">Hostname</span><span class="v">nsm-server-{{$s.ID}}.nsm.cloud</span></div>
+              <div class="r"><span class="k">Join link</span><span class="v">{{.JoinBase}}/join/{{$s.JoinCode}}</span></div>
+              <div class="r"><span class="k">Record</span><span class="v">CNAME → {{.Host}}</span></div>
+            </div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "traffic"}}
+          <div class="pnl-panel">
+            <h3>Traffic</h3><p class="hint">Real interface counters for this machine — live.</p>
+            <div class="pnl-gauges">
+              <div class="pnl-gauge"><div class="k">Downloaded</div><div class="v" id="t-rx">—</div><div class="pnl-bar"><i style="width:100%"></i></div></div>
+              <div class="pnl-gauge"><div class="k">Uploaded</div><div class="v" id="t-tx">—</div><div class="pnl-bar"><i style="width:100%"></i></div></div>
+            </div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "quota"}}
+          <div class="pnl-panel">
+            <h3>Quota</h3><p class="hint">Storage used by your city against the {{$.PKG.DiskGB}} GB included quota.</p>
+            <div class="pnl-gauges">
+              <div class="pnl-gauge"><div class="k">Disk usage</div><div class="v" id="q-disk">—</div><div class="pnl-bar"><i id="q-bar" style="width:0"></i></div></div>
+            </div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "network"}}
+          <div class="pnl-panel">
+            <h3>Network</h3><p class="hint">Machine-level network information.</p>
+            <div class="pnl-kv">
+              <div class="r"><span class="k">Interface</span><span class="v">{{.Net.interface}}</span></div>
+              <div class="r"><span class="k">Primary IPv4</span><span class="v">{{.Net.primaryIPv4}}</span></div>
+              <div class="r"><span class="k">Gateway</span><span class="v">{{.Net.gateway}}</span></div>
+              <div class="r"><span class="k">IPv6/64</span><span class="v">{{.Net.ipv6}}</span></div>
+            </div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "firewall"}}
+          <div class="pnl-panel">
+            <h3>Firewall</h3><p class="hint">{{.Firewall}} — only the ports below are exposed.</p>
+            <div class="pnl-kv">
+              <div class="r"><span class="k">Game port TCP/UDP</span><span class="v">{{$s.GameTCPPort}}</span></div>
+              <div class="r"><span class="k">FTP</span><span class="v">{{$s.FTPPort}} (explicit TLS supported)</span></div>
+              <div class="r"><span class="k">Passive range</span><span class="v">{{$s.PassivePort}}</span></div>
+              {{range $s.ExtraPorts}}<div class="r"><span class="k">Extra port</span><span class="v">{{.}}</span></div>{{end}}
+            </div>
+            <div style="margin-top:16px"><button class="pnl-btn-danger" onclick="pnlPower('stop')">Emergency: stop the server</button></div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "console"}}
+          <div class="pnl-panel">
+            <h3>Console</h3><p class="hint">Live output from the city process — commands run as the server.</p>
+            <div class="pnl-console-wrap">
+              <div class="pnl-console" id="pnl-console">connecting…</div>
+              <form class="pnl-cmdrow" onsubmit="return pnlCmd(event)">
+                <input id="cmdinput" placeholder="type a server command and press Enter — e.g. status" autocomplete="off">
+                <button class="pnl-btn-green" type="submit">Send</button>
+              </form>
+            </div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "monitoring"}}
+          <div class="pnl-panel">
+            <h3>Monitoring</h3><p class="hint">Sampled live every few seconds.</p>
+            <div class="pnl-gauges">
+              <div class="pnl-gauge"><div class="k">CPU now</div><div class="v" id="m-cpu">—</div></div>
+              <div class="pnl-gauge"><div class="k">RAM now</div><div class="v" id="m-ram">—</div></div>
+              <div class="pnl-gauge"><div class="k">Players</div><div class="v" id="m-players">—</div></div>
+            </div>
+            <canvas id="m-chart" height="90" style="width:100%;margin-top:16px"></canvas>
+          </div>
+          {{end}}
+
+          {{if eq $tab "backups"}}
+          <div class="pnl-panel">
+            <h3>Backups</h3><p class="hint">Real archives of your city files — create, restore or delete them.</p>
+            <div style="margin-bottom:14px"><button class="pnl-btn-green" onclick="pnlBackupCreate()">Create backup</button>
+            <span id="bk-msg" style="color:#18E888;font-size:.85rem;margin-left:10px"></span></div>
+            <div class="pnl-tickets" id="bk-list">loading…</div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "schedules"}}
+          <div class="pnl-panel">
+            <h3>Schedules</h3><p class="hint">Recurring power actions — restarts keep your city fresh.</p>
+            <div class="pnl-row2" style="margin-bottom:14px">
+              <div class="pnl-field"><label>Every (minutes)</label><input type="number" id="sch-min" value="360" min="5"></div>
+              <div class="pnl-field"><label>Action</label><select id="sch-kind"><option value="restart">restart</option><option value="stop">stop</option><option value="start">start</option></select></div>
+            </div>
+            <button class="pnl-btn-green" onclick="pnlSchedAdd()">Add schedule</button>
+            <div class="pnl-tickets" id="sch-list" style="margin-top:16px">loading…</div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "activity"}}
+          <div class="pnl-panel">
+            <h3>Activity</h3><p class="hint">Panel, schedule and backup events for this server.</p>
+            <div class="pnl-console" id="act-list" style="height:360px">loading…</div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "files"}}
+          <div class="pnl-panel">
+            <h3>Files</h3><p class="hint">Manager + FileZilla. FTP: <code>{{.FTPHost}}:{{$s.FTPPort}}</code> (user <code>{{$s.FTPUser}}</code>) — greeting must say <code>220 NSM Hosting FTP ready</code>. Connect to the IP address shown here (not the website domain — web proxies do not forward raw FTP ports). If the connection times out, allow TCP {{$s.FTPPort}} and TCP {{$s.PassivePort}} through the machine's firewall.</p>
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+              <button class="pnl-mini-btn" onclick="fmUp()">&#8593; up</button>
+              <button class="pnl-mini-btn" onclick="fmNew()">+ new file</button>
+              <button class="pnl-mini-btn" onclick="fmMkdir()">+ new folder</button>
+              <span id="fm-path" style="color:#fff;font:12px 'JetBrains Mono',monospace">/</span>
+            </div>
+            <div id="filetable">loading…</div>
+            <div id="fm-edit" style="display:none;margin-top:14px">
+              <textarea id="fm-text" style="width:100%;min-height:320px;font:12px 'JetBrains Mono',monospace;background:#0e1420;color:#e7eef6;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:14px"></textarea>
+              <div style="display:flex;gap:10px;margin-top:10px"><button class="pnl-btn-green" onclick="fmSave()">Save</button><button class="pnl-mini-btn" onclick="document.getElementById('fm-edit').style.display='none'">Close</button></div>
+            </div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "config"}}
+          <div class="pnl-panel">
+            <h3>Config</h3><p class="hint">Everything your server loads lives in <code>server.cfg</code> — its name, slots, resources and connection settings. Saved changes apply on restart.</p>
+            <div class="zx-cfg-wrap">
+              <textarea id="cfgtext" spellcheck="false" style="width:100%;min-height:420px;font:13px/1.5 'JetBrains Mono',ui-monospace,Consolas,monospace;background:#0e1420;color:#e6f2ec;border:1px solid rgba(24,232,136,.3);border-radius:12px;padding:14px">loading…</textarea>
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+                <button class="pnl-btn-green" onclick="cfgSave()">SAVE CONFIG</button>
+                <button class="pnl-mini-btn" onclick="cfgSaveRestart()">SAVE &amp; RESTART SERVER</button>
+                <span id="cfgmsg" style="color:#18E888"></span>
+              </div>
+            </div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "settings"}}
+          <div class="pnl-panel">
+            <h3>Settings</h3><p class="hint">Rename your server, change FTP access or manage the instance.</p>
+            <div class="pnl-row2">
+              <div class="pnl-field"><label>Server name</label><input type="text" id="set-name" value="{{$s.Name}}"></div>
+              <div style="display:flex;align-items:flex-end"><button class="pnl-btn-green" onclick="pnlRenameSave()">Save name</button></div>
+              <div class="pnl-field"><label>FTP password</label><input type="text" id="set-ftppass" placeholder="leave empty to generate"></div>
+              <div style="display:flex;align-items:flex-end"><button class="pnl-btn-green" onclick="pnlFtpPass(true)">Change FTP password</button></div>
+            </div>
+            <div style="color:#18E888;font-size:.85rem" id="set-msg"></div>
+          </div>
+          <div class="pnl-panel pnl-danger">
+            <h3>Delete server</h3><p class="hint">Removes the city and frees its ports. This cannot be undone.</p>
+            <button class="pnl-btn-danger" onclick="if(confirm('Delete this server permanently?'))pnlDelete()">Delete server</button>
+          </div>
+          {{end}}
+
+          {{if eq $tab "rescue"}}
+          <div class="pnl-panel">
+            <h3>Rescue</h3><p class="hint">If the city won't boot, restart it cleanly — the panel re-runs the official files check first.</p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button class="pnl-btn-green" onclick="pnlPost('/api/host/{{$s.ID}}/safe-mode')">Restart (safe boot)</button>
+              <button class="pnl-mini-btn" onclick="pnlPower('restart')">Normal restart</button>
+            </div>
+            <div style="margin-top:14px;color:#fff;font-size:.85rem">{{.PkgWarn}}</div>
+          </div>
+          {{end}}
+
+          {{if eq $tab "tools"}}
+          <div class="pnl-panel">
+            <h3>Tools</h3><p class="hint">Quick utilities for this server.</p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <a class="pnl-mini-btn green" href="/dashboard/{{$s.ID}}?tab=files">File manager</a>
+              <a class="pnl-mini-btn" href="/dashboard/{{$s.ID}}?tab=config">Config editor</a>
+              <a class="pnl-mini-btn" href="/join/{{$s.JoinCode}}">Join link</a>
+              <button class="pnl-mini-btn" onclick="pnlPost('/api/host/{{$s.ID}}/backup')">Quick backup</button>
+              <a class="pnl-mini-btn" href="/hosting/support">Hosting support</a>
+            </div>
+          </div>
+          {{end}}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+var ID = {{$s.ID}};
+function post(url, body) {
+  return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})});
+}
+window.post = post;
+function pnlGet(url,tries){tries=tries||0;var ab=('AbortController' in window)?new AbortController():null;
+  if(ab)setTimeout(function(){ab.abort();},20000);
+  var sep=url.indexOf('?')>=0?'&':'?';
+  return fetch(url+sep+'_='+Date.now(),{signal:ab?ab.signal:undefined,credentials:'same-origin',cache:'no-store'}).then(function(r){
+    if(r.redirected||r.url.indexOf('/login')>=0)throw new Error('SESSION');
+    if(!r.ok)return r.text().then(function(b){throw new Error('HTTP '+r.status+(b?': '+String(b).slice(0,120):''));});
+    return r.json();
+  }).catch(function(e){
+    var m=String(e&&e.message||e);
+    // fail fast on definitive answers (404/401/403/sessions) — only transient
+    // conditions (timeouts, network, 5xx) deserve retries
+    if(tries<2 && m.indexOf('HTTP 4')!==0 && m!=='SESSION')return new Promise(function(res){setTimeout(res,2000);}).then(function(){return pnlGet(url,tries+1);});
+    throw e;
+  });
+}
+function pnlFail(el,msg,err){if(!el)return;var d=err&&err.message==='SESSION'
+  ?'your login session expired &mdash; <a href="/login?next='+encodeURIComponent(location.pathname+location.search)+'">sign in again</a>'
+  :(err?String(err.message||err).replace(/</g,'&lt;'):'');
+  el.innerHTML='<div class="pnl-err"><b>'+msg+'</b>'+(d?' <span class="pnl-err-d">'+d+'</span>':'')+' <button class="pnl-mini-btn" onclick="location.reload()">Retry</button></div>';
+}
+function pnlPost(u){post(u).then(function(){location.reload();});}
+function pnlApplySrvStatus(d){
+  var pill=document.getElementById('srv-pill'); if(pill){pill.textContent=d.status; pill.className='pnl-pill '+(d.status==='online'?'ok':d.status==='error'?'bad':'off');}
+  var stop=document.querySelector('.pnl-top [data-pwr="stop"]'),start=document.querySelector('.pnl-top [data-pwr="start"]');
+  var online=d.status==='online';
+  if(stop){stop.style.display=online?'':'none';stop.disabled=false;}
+  if(start){start.style.display=online?'none':'';start.disabled=false;}
+}
+function pnlPower(a,btn){
+  if(btn)btn.disabled=true;
+  post('/api/host/'+ID+'/power/'+a).then(function(r){return r.text();}).then(function(t){
+    var d={};try{d=JSON.parse(t);}catch(e){throw new Error('server sent an unexpected response'+(t?': '+String(t).slice(0,120):''));}
+    if(d&&d.error)throw new Error(d.error);
+    pnlToast('Power: '+a+' requested');
+    setTimeout(pnlStats,1200);setTimeout(pnlStats,2400);
+  }).catch(function(e){pnlToast('Power action failed: '+String(e.message||e));if(btn)btn.disabled=false;});
+}
+function pnlToast(msg){
+  var t=document.getElementById('pnl-toast');
+  if(!t){t=document.createElement('div');t.id='pnl-toast';document.body.appendChild(t);}
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(window.__nsmToastT);
+  window.__nsmToastT=setTimeout(function(){t.classList.remove('show');},4200);
+}
+function pnlNote(t){var m=document.getElementById('set-msg');if(m)m.textContent=t;}
+function pnlCopy(t){navigator.clipboard&&navigator.clipboard.writeText(t);}
+function pnlTogglePass(id,btn){var e=document.getElementById(id);if(!e)return;
+  var hid=e.getAttribute('data-shown')!=='1';
+  if(hid){e.textContent=e.getAttribute('data-pass');e.setAttribute('data-shown','1');if(btn)btn.innerHTML='&#128065; hide password';}
+  else{e.textContent='\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';e.setAttribute('data-shown','0');if(btn)btn.innerHTML='&#128065; show password';}}
+function pnlShowPass(btn){pnlTogglePass('ftp-pass',btn);}
+function pnlShowPass2(btn){pnlTogglePass('ftp-pass2',btn);}
+function pnlRename(){var n=prompt('New server name:',document.getElementById('srv-name').textContent);if(!n)return;post('/api/host/'+ID+'/rename',{name:n}).then(function(r){return r.json();}).then(function(d){if(d.name)location.reload();});}
+function pnlRenameSave(){var n=document.getElementById('set-name').value;post('/api/host/'+ID+'/rename',{name:n}).then(function(r){return r.json();}).then(function(d){document.getElementById('set-msg').textContent=d.name?'Saved':'Error: '+(d.error||'');if(d.name)document.getElementById('srv-name').textContent=d.name;});}
+function pnlFtpPass(fromSettings){
+  var el=document.getElementById(fromSettings?'set-ftppass':'ftp-new');
+  var p=el?el.value:'';
+  post('/api/host/'+ID+'/ftp-password',{pass:p}).then(function(r){return r.json();}).then(function(d){
+    var m=document.getElementById(fromSettings?'set-msg':'ftp-msg');
+    if(d.pass){if(m)m.textContent='New password: '+d.pass;if(el)el.value='';}else if(m)m.textContent=d.error||'error';
+  });
+}
+function pnlDelete(){post('/api/host/'+ID+'/delete').then(function(){window.location.href='/hosting/dashboard';});}
+function fmtUp(s){if(!s&&s!==0)return '—';var d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return d?d+'d '+h+'h':h?h+'h '+m+'m':m+'m';}
+function fmtBytes(b){if(b<1024)return b+' B';if(b<1048576)return (b/1024).toFixed(1)+' KB';if(b<1073741824)return (b/1048576).toFixed(1)+' MB';return (b/1073741824).toFixed(2)+' GB';}
+
+/* ---- live polling (no reloads) ---- */
+var hist=[];
+function pnlStats(){
+  fetch('/api/host/'+ID+'/stats?_='+Date.now(),{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    if(d&&d.error){throw new Error(d.error);}
+    var lim=d.limits||{cpuCores:64,ramMB:32768,diskMB:122880};
+    var cpu=d.cpu<0?0:d.cpu, ram=d.ramMB<0?0:Math.min(100,d.ramMB/lim.ramMB*100), disk=Math.min(100,d.diskMB/lim.diskMB*100);
+    function set(g,b,v,txt){var e=document.getElementById(g),p=document.getElementById(b);if(e)e.textContent=txt;if(p)p.style.width=(v>0?v:0)+'%';}
+    var cpuT=d.cpu<0?'n/a — offline':cpu.toFixed(0)+'%', ramT=d.ramMB<0?'n/a — offline':(d.ramMB/1024).toFixed(2)+' GB';
+    set('g-cpu','b-cpu',cpu,cpuT); set('g-cpu2','b-cpu2',cpu,cpuT);
+    set('g-ram','b-ram',ram,ramT); set('g-ram2','b-ram2',ram,ramT);
+    set('g-disk','b-disk',disk,(d.diskMB/1024).toFixed(1)+' GB'); set('g-disk2','b-disk2',disk,(d.diskMB/1024).toFixed(1)+' GB');
+    var gn=document.getElementById('g-net'); if(gn)gn.textContent=fmtBytes(d.rxBytes)+' ↓ / '+fmtBytes(d.txBytes)+' ↑';
+    var tr=document.getElementById('t-rx'),tt=document.getElementById('t-tx');if(tr)tr.textContent=fmtBytes(d.rxBytes);if(tt)tt.textContent=fmtBytes(d.txBytes);
+    var qd=document.getElementById('q-disk'),qb=document.getElementById('q-bar');if(qd)qd.textContent=(d.diskMB/1024).toFixed(2)+' GB / '+(lim.diskMB/1024)+' GB';if(qb)qb.style.width=disk+'%';
+    if(window.pnlFillUsage){window.pnlFillUsage(document.getElementById('srv-usage'),d,lim);window.pnlFillUsage(document.getElementById('vps-usage'),d.vps,null,true);}
+    var mc=document.getElementById('m-cpu'),mr=document.getElementById('m-ram'),mp=document.getElementById('m-players');
+    if(mc)mc.textContent=d.cpu<0?'n/a':cpu.toFixed(1)+'%';if(mr)mr.textContent=d.ramMB<0?'n/a':(d.ramMB/1024).toFixed(2)+' GB';if(mp)mp.textContent=d.players;
+    hist.push(cpu); if(hist.length>60)hist.shift();
+    var cv=document.getElementById('m-chart');
+    if(cv){var x=cv.getContext('2d'),w=cv.width=cv.offsetWidth,h=cv.height=90;x.clearRect(0,0,w,h);x.strokeStyle='#18E888';x.beginPath();
+      hist.forEach(function(v,i){var px=i/59*w,py=h-v/100*h*0.95;i?x.lineTo(px,py):x.moveTo(px,py);});x.stroke();}
+    pnlApplySrvStatus(d);
+    window.pnlSyncTime&&window.pnlSyncTime(d);
+    var live=document.getElementById('srv-live');
+    if(live)live.innerHTML=(d.online?'Uptime '+fmtUp(d.uptimeSec):'Server is '+d.status)+' · updated <span data-srv-clock>'+window.pnlFmtClock()+'</span>';
+    var ga=document.getElementById('guest-agent'); if(ga){ga.textContent=d.guestAgent?'connected':'idle';ga.style.color=d.guestAgent?'#18E888':'#8fa0b2';}
+  }).catch(function(e){
+    var live=document.getElementById('srv-live');
+    if(live)live.textContent='cannot load stats: '+String(e.message||e)+' — retrying…';
+  });
+}
+
+/* ---- console ---- */
+var since=0,consoleTimer=null;
+function pnlConsole(){
+  var el=document.getElementById('pnl-console'); if(!el){return;}
+  fetch('/api/host/'+ID+'/console?since='+since+'&_='+Date.now(),{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    if(d&&d.error){throw new Error(d.error);}
+    since=d.seq;
+    window.__cmErr=0;
+    if(!d.lines.length && el.childElementCount===0){
+      el.textContent='waiting for output — the city streams logs while it runs (press Start if it is offline)';
+    }
+    d.lines.forEach(function(l){
+      var div=document.createElement('div');
+      var cls=l.line.indexOf('[system]')>=0||l.line.indexOf('[panel]')>=0||l.line.indexOf('[apps]')>=0||l.line.indexOf('[backup]')>=0||l.line.indexOf('[schedule]')>=0?'sys':l.line.toLowerCase().indexOf('err')>=0?'err':'';
+      div.className=cls; div.textContent=l.line; el.appendChild(div);
+    });
+    if(d.lines.length)el.scrollTop=el.scrollHeight;
+  }).catch(function(e){
+    window.__cmErr=(window.__cmErr||0)+1;
+    if(window.__cmErr<3||window.__cmErr%10===0){
+      var div=document.createElement('div');div.className='err';
+      div.textContent='[panel] cannot reach the server ('+String(e.message||e)+') — retrying…';
+      el.appendChild(div);el.scrollTop=el.scrollHeight;
+    }
+  });
+}
+function pnlCmd(e){
+  e.preventDefault();
+  var v=document.getElementById('cmdinput').value.trim(); if(!v)return false;
+  post('/api/host/'+ID+'/command',{cmd:v}).then(function(){document.getElementById('cmdinput').value='';pnlConsole();});
+  return false;
+}
+
+/* ---- plan ---- */
+var planTier={{.PlanTier}},planUp={{.PlanUpvotes}};
+function fmtN(n){return n>=1000000?(n/1000000).toFixed(n%1000000?1:0)+'M':n>=1000?(n/1000).toFixed(n%1000?1:0)+'k':String(n);}
+function pnlDue(up){return up<=10?0:Math.max(2.99,Math.round(up*0.0002*100)/100);}
+function pnlDueText(up){var d=pnlDue(up);return d<=0?'Free':'€'+d.toFixed(2);}
+function pnlDueRefresh(){
+  var a=document.getElementById('due-amount'),b=document.getElementById('due-price');
+  if(a)a.textContent=pnlDueText(planUp)+(pnlDue(planUp)>0?' / month':'');
+  if(b)b.textContent=pnlDueText(planUp);
+}
+(function(){document.querySelectorAll('.pnl-tier [data-price]').forEach(function(sp){
+  var t=sp.closest('.pnl-tier'),up=parseInt(t.getAttribute('data-up')||'0',10);
+  if(up)sp.textContent=pnlDueText(up)+' / mo';
+});pnlDueRefresh();})();
+function pnlSlide(v){planUp=parseInt(v,10);planTier='custom';document.getElementById('up-num').textContent=fmtN(planUp);
+  document.querySelectorAll('.pnl-tier').forEach(function(t){t.classList.remove('pnl-on');});
+  var c=document.querySelector('.pnl-tier[onclick*="custom"]');if(c)c.classList.add('pnl-on');
+  pnlDueRefresh();}
+function pnlStep(d){var s=document.getElementById('up-slider');s.value=Math.max(1,Math.min(2000000,parseInt(s.value,10)+d));pnlSlide(s.value);}
+function pnlTier(btn,name){document.querySelectorAll('.pnl-tier').forEach(function(t){t.classList.remove('pnl-on');});btn.classList.add('pnl-on');
+  planTier=name;var up=btn.getAttribute('data-up');if(up){document.getElementById('up-slider').value=up;pnlSlide(up);planTier=name;}else{planTier='custom';pnlDueRefresh();}}
+function pnlPlanSave(){post('/api/host/'+ID+'/plan',{tier:planTier,upvotes:planUp}).then(function(r){return r.json();}).then(function(d){
+  document.getElementById('plan-msg').textContent='Subscription active — '+(d.dueText||pnlDueText(planUp))+' / month · '+fmtN(d.upvotes||planUp)+' upvotes';}).catch(function(){pnlToast('Could not save the plan');});}
+
+/* ---- agent ---- */
+function pnlAgentSend(){
+  var t=document.getElementById('agent-in'); if(!t.value.trim())return;
+  var chat=document.getElementById('agent-chat');
+  var me=document.createElement('div');me.className='pnl-msg me';me.innerHTML='<div class="who">'+{{.User.Username}}+'</div>'+t.value.replace(/[<>]/g,'');chat.appendChild(me);
+  var q=t.value;t.value='';chat.scrollTop=chat.scrollHeight;
+  post('/api/host/'+ID+'/agent',{message:q}).then(function(r){return r.json();}).then(function(d){
+    var el=document.createElement('div');el.className='pnl-msg them';
+    var html='<div class="who">Plus</div>'+(d.reply||'…');
+    if(d.code)html+='<pre>'+d.code.replace(/[<>]/g,'')+'</pre>';
+    el.innerHTML=html;chat.appendChild(el);chat.scrollTop=chat.scrollHeight;
+  });
+}
+
+/* ---- apps + frameworks ---- */
+var pnlAppsTimer=null;
+function pnlApps(){
+  var el=document.getElementById('app-list'); if(!el)return;
+  pnlGet('/api/host/'+ID+'/apps').then(function(d){
+    el.innerHTML='';
+    var busy=false;
+    d.apps.forEach(function(a){
+      if(a.busy)busy=true;
+      var div=document.createElement('div');div.className='pnl-app';
+      var right='';
+      if(a.busy){right='<span class="pnl-pill">installing '+a.installedResources+' / '+a.resources+'…</span>';}
+      else if(a.installed){right='<span class="pnl-pill ok">installed'+(a.resources?' ('+a.installedResources+'/'+a.resources+' resources)':'')+'</span>';}
+      else{right='<button class="pnl-btn-green" onclick="pnlInstall(\''+a.id+'\',this)">Install full '+a.name+'</button>';}
+      div.innerHTML='<div class="logo">'+a.name[0]+'</div><div><div class="nm">'+a.name+' <span style="color:#fff;font-size:.72rem">v'+a.version+'</span>'+(a.resources?' <span style="color:#9fb0c8;font-size:.72rem">· '+a.resources+' resources</span>':'')+'</div><div class="blurb">'+a.blurb+'</div></div><div class="sp"></div>'+right;
+      el.appendChild(div);
+    });
+    if(pnlAppsTimer){clearInterval(pnlAppsTimer);pnlAppsTimer=null;}
+    if(busy){pnlAppsTimer=setInterval(pnlApps,3000);}
+  }).catch(function(e){pnlFail(el,'Apps could not be loaded.',e);});
+}
+function pnlInstall(id,btn){btn.textContent='Installing…';btn.disabled=true;
+  post('/api/host/'+ID+'/apps/'+id+'/install').then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+    .then(function(x){if(!x.ok)alert((x.d&&x.d.error)||'install failed');pnlApps();}).catch(function(){pnlApps();});}
+
+/* ---- databases ---- */
+function pnlEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function pnlDBs(){
+  var el=document.getElementById('db-list'); if(!el)return;
+  var note=document.getElementById('db-config-note');
+  pnlGet('/api/host/'+ID+'/dbs').then(function(d){
+    if(note){note.innerHTML=d.configured?'':'<div class="alert alert-err" style="margin:10px 0">No database service is configured on this hosting host yet — databases cannot be created here. (Server-side setting: NSM_DB_ADMIN_DSN.)</div>';}
+    el.innerHTML='';
+    if(!d.dbs.length){el.innerHTML='<p class="hint">No databases yet. Create one above — frameworks installed from the Frameworks &amp; apps tab can use it automatically.</p>';return;}
+    d.dbs.forEach(function(db){
+      var div=document.createElement('div');div.className='pnl-db';
+      div.innerHTML='<div class="pnl-db-head"><b>'+pnlEsc(db.name)+'</b><span class="pnl-pill">'+pnlEsc(db.dbName)+'</span><div class="sp"></div>'+
+        '<button class="pnl-mini-btn" onclick="pnlDBShow(this,\''+pnlEsc(db.id)+'\')">Connection details</button>'+
+        '<button class="pnl-mini-btn" onclick="pnlDBRotate(\''+pnlEsc(db.id)+'\')">Reset password</button>'+
+        '<button class="pnl-mini-btn red" onclick="pnlDBDrop(\''+pnlEsc(db.id)+'\',\''+pnlEsc(db.name)+'\')">Delete</button></div>'+
+        '<div class="pnl-db-body" hidden></div>';
+      el.appendChild(div);
+    });
+  }).catch(function(e){pnlFail(el,'Databases could not be loaded.',e);});
+}
+function pnlDBCreate(btn){
+  var inp=document.getElementById('db-name'); if(!inp)return;
+  var name=(inp.value||'').trim().toLowerCase();
+  if(!/^[a-z0-9_]{2,20}$/.test(name)){alert('Use 2-20 characters: letters, numbers, underscore.');return;}
+  btn.disabled=true;btn.textContent='Creating…';
+  post('/api/host/'+ID+'/dbs','name='+encodeURIComponent(name)).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+    .then(function(x){btn.disabled=false;btn.textContent='Create database';if(!x.ok){alert((x.d&&x.d.error)||'create failed');return;}inp.value='';pnlDBs();})
+    .catch(function(){btn.disabled=false;btn.textContent='Create database';});
+}
+function pnlDBShow(btn,id){
+  var card=btn.closest('.pnl-db'); if(!card)return;
+  var body=card.querySelector('.pnl-db-body');
+  if(!body.hidden && body.dataset.loaded==='1'){body.hidden=!body.hidden;return;}
+  pnlGet('/api/host/'+ID+'/dbs/'+id).then(function(d){
+    var db=d.db||{};var h=db.heidi||{};
+    body.innerHTML='<div class="pnl-kv">'+
+      '<div class="r"><span class="k">Host (HeidiSQL)</span><span class="v">'+pnlEsc(h.host)+'</span></div>'+
+      '<div class="r"><span class="k">Port</span><span class="v">'+pnlEsc(h.port)+'</span></div>'+
+      '<div class="r"><span class="k">Network</span><span class="v">'+pnlEsc(h.network)+'</span></div>'+
+      '<div class="r"><span class="k">Username</span><span class="v">'+pnlEsc(h.user)+'</span></div>'+
+      '<div class="r"><span class="k">Password</span><span class="v"><code class="pnl-secret" id="pnl-db-pass-'+pnlEsc(db.id)+'">••••••••</code> <button class="pnl-mini-btn" onclick="pnlDBReveal(\''+pnlEsc(db.id)+'\',this)">Show</button></span></div>'+
+      '<div class="r"><span class="k">Database</span><span class="v">'+pnlEsc(h.database)+'</span></div>'+
+      '<div class="r"><span class="k">FiveM connection string</span><span class="v"><code class="pnl-secret" id="pnl-db-conn-'+pnlEsc(db.id)+'">••••••••</code> <button class="pnl-mini-btn" onclick="pnlDBReveal(\''+pnlEsc(db.id)+'\',this)">Show</button></span></div>'+
+      '</div><p class="hint">HeidiSQL: open a MySQL connection to the host and port above, then sign in with this username and password. This user can only reach this one database.</p>';
+    body.dataset.raw=JSON.stringify({pass:h.password||'',conn:'mysql://'+(h.user||'')+':'+encodeURIComponent(h.password||'')+'@'+(h.host||'')+':'+(h.port||3306)+'/'+(h.database||'')+'?charset=utf8mb4'});
+    body.dataset.loaded='1';body.hidden=false;
+  });
+}
+function pnlDBReveal(id,btn){
+  var card=btn.closest('.pnl-db'); if(!card)return;
+  var body=card.querySelector('.pnl-db-body');
+  try{
+    var raw=JSON.parse(body.dataset.raw||'{}');
+    var passEl=document.getElementById('pnl-db-pass-'+id);
+    var connEl=document.getElementById('pnl-db-conn-'+id);
+    if(passEl&&passEl.textContent==='••••••••'){passEl.textContent=raw.pass||'';connEl.textContent=raw.conn||'';btn.textContent='Hide';}
+    else{passEl.textContent='••••••••';connEl.textContent='••••••••';btn.textContent='Show';}
+  }catch(e){}
+}
+function pnlDBRotate(id){
+  if(!confirm('Reset this database password? Any resource using the old password must be updated.'))return;
+  post('/api/host/'+ID+'/dbs/'+id+'/rotate').then(function(){pnlDBs();});
+}
+function pnlDBDrop(id,name){
+  if(!confirm('Delete database "'+name+'" and ALL of its data? This cannot be undone.'))return;
+  post('/api/host/'+ID+'/dbs/'+id+'/drop').then(function(){pnlDBs();});
+}
+
+/* ---- backups / schedules / activity ---- */
+function pnlBackups(){
+  var el=document.getElementById('bk-list'); if(!el)return;
+  pnlGet('/api/host/'+ID+'/backups').then(function(d){
+    if(!d.backups.length){el.innerHTML='<div class="pnl-ticket">No backups yet — create your first one.</div>';return;}
+    el.innerHTML='';
+    d.backups.forEach(function(b){
+      var div=document.createElement('div');div.className='pnl-ticket';
+      div.innerHTML='<span class="id">'+b.id+'</span><span class="subj">'+b.name+'</span><span class="when">'+window.pnlFmtWhen(b.created)+' · '+b.sizeMB+' MB</span>'+
+        '<button class="pnl-mini-btn" onclick="pnlBackupOp(\''+b.id+'\',\'restore\')">Restore</button>'+
+        '<button class="pnl-mini-btn red" onclick="pnlBackupOp(\''+b.id+'\',\'delete\')">Delete</button>';
+      el.appendChild(div);
+    });
+  }).catch(function(e){pnlFail(el,'Backups could not be loaded.',e);});
+}
+function pnlBackupCreate(){document.getElementById('bk-msg').textContent='Creating…';post('/api/host/'+ID+'/backup').then(function(r){return r.json();}).then(function(){document.getElementById('bk-msg').textContent='Backup created';pnlBackups();});}
+function pnlBackupOp(id,op){if(op==='restore'&&!confirm('Restore this backup? Current files are replaced.'))return;post('/api/host/'+ID+'/backup/'+id+'/'+op).then(function(){pnlBackups();});}
+function pnlScheds(){
+  var el=document.getElementById('sch-list'); if(!el)return;
+  pnlGet('/api/host/'+ID+'/schedules').then(function(d){
+    if(!d.schedules||!d.schedules.length){el.innerHTML='<div class="pnl-ticket">No schedules yet.</div>';return;}
+    el.innerHTML='';
+    d.schedules.forEach(function(s){
+      var div=document.createElement('div');div.className='pnl-ticket';
+      div.innerHTML='<span class="id">'+s.id+'</span><span class="subj">'+s.label+'</span><span class="when">every '+s.everyMin+' min · '+s.kind+'</span>'+
+        '<button class="pnl-mini-btn" onclick="pnlSchedOp(\''+s.id+'\',\'toggle\')">'+(s.enabled?'Disable':'Enable')+'</button>'+
+        '<button class="pnl-mini-btn red" onclick="pnlSchedOp(\''+s.id+'\',\'delete\')">Delete</button>';
+      el.appendChild(div);
+    });
+  }).catch(function(e){pnlFail(el,'Schedules could not be loaded.',e);});
+}
+function pnlSchedAdd(){post('/api/host/'+ID+'/schedules',{label:'',kind:document.getElementById('sch-kind').value,everyMin:parseInt(document.getElementById('sch-min').value,10)||60}).then(function(){pnlScheds();});}
+function pnlSchedOp(id,op){post('/api/host/'+ID+'/schedule/'+id+'/'+op).then(function(){pnlScheds();});}
+function pnlActivity(){
+  var el=document.getElementById('act-list'); if(!el)return;
+  pnlGet('/api/host/'+ID+'/activity').then(function(d){
+    el.textContent=(d.lines||[]).join('\n')||'no activity yet';
+    el.scrollTop=el.scrollHeight;
+  }).catch(function(e){pnlFail(el,'Activity could not be loaded.',e);});
+}
+
+/* ---- files + config (kept from the classic panel) ---- */
+var cur='';
+function fmList(p){
+  var t=document.getElementById('filetable'); if(!t)return;
+  cur=p||'';
+  document.getElementById('fm-path').textContent='/'+cur;
+  pnlGet('/api/host/'+ID+'/files?path='+encodeURIComponent(cur)).then(function(d){
+    if(d.error){t.innerHTML='<div class="pnl-err">'+d.error+'</div>';return;}
+    var h='<div class="pnl-kv">';
+    d.entries.forEach(function(e){
+      var act=e.dir?"fmList('"+e.path+"')":"fmEdit('"+e.path+"')";
+      h+='<div class="r"><span class="k" style="cursor:pointer" onclick="'+act+'">'+(e.dir?'&#128193;':'&#128196;')+' '+e.name+'</span><span class="v">'+
+        '<button class="pnl-mini-btn" onclick="fmRename(\''+e.path+'\')">rename</button> '+
+        '<button class="pnl-mini-btn red" onclick="fmDelete(\''+e.path+'\')">delete</button></span></div>';
+    });
+    t.innerHTML=h+'</div>';
+  });
+}
+function fmUp(){var i=cur.lastIndexOf('/');fmList(i<0?'':cur.substring(0,i));}
+function fmEdit(p){fetch('/api/host/'+ID+'/file?path='+encodeURIComponent(p)).then(function(r){return r.json();}).then(function(d){
+  var w=document.getElementById('fm-edit');w.style.display='block';document.getElementById('fm-text').value=d.content||'';w.setAttribute('data-p',p);});}
+function fmSave(){var w=document.getElementById('fm-edit');post('/api/host/'+ID+'/file/write',{path:w.getAttribute('data-p'),content:document.getElementById('fm-text').value}).then(function(){fmList(cur);});}
+function fmRename(p){var n=prompt('New path:',p);if(!n)return;post('/api/host/'+ID+'/file/op',{op:'rename',path:p,to:n}).then(function(){fmList(cur);});}
+function fmDelete(p){if(!confirm('Delete '+p+'?'))return;post('/api/host/'+ID+'/file/op',{op:'delete',path:p}).then(function(){fmList(cur);});}
+function fmNew(){var n=prompt('File name:');if(!n)return;post('/api/host/'+ID+'/file/write',{path:(cur?cur+'/':'')+n,content:''}).then(function(){fmList(cur);});}
+function fmMkdir(){var n=prompt('Folder name:');if(!n)return;post('/api/host/'+ID+'/file/op',{op:'mkdir',path:(cur?cur+'/':'')+n}).then(function(){fmList(cur);});}
+function cfgSave(){
+  return post('/api/host/'+ID+'/file/write',{path:'server.cfg',content:document.getElementById('cfgtext').value}).then(function(){
+    var m=document.getElementById('cfgmsg');if(m){m.textContent='Saved';setTimeout(function(){m.textContent='';},2500);}});
+}
+window.cfgSave=cfgSave;
+window.cfgSaveRestart=function(){cfgSave().then(function(){pnlPower('restart');});};
+
+/* ---- boot ---- */
+window.__nsmTimers=window.__nsmTimers||[];
+if(document.getElementById('pnl-console'))pnlConsole();
+if(document.getElementById('filetable'))fmList('');
+if(document.getElementById('cfgtext')){
+  pnlGet('/api/host/'+ID+'/file?path=server.cfg').then(function(d){
+    if(d.error){
+      document.getElementById('cfgtext').value='# server.cfg is not on disk yet — press "Create default config" to write one.\n# '+d.error;
+      var m=document.getElementById('cfgmsg');
+      if(m)m.innerHTML='<button class="pnl-mini-btn green" onclick="cfgCreate()">Create default config</button>';
+      return;
+    }
+    document.getElementById('cfgtext').value=d.content||'';
+  }).catch(function(){
+    document.getElementById('cfgtext').value='# could not read server.cfg';
+  });
+}
+function cfgCreate(){
+  var txt='sv_hostname "NSM City"\nsv_maxclients 2048\nsv_lan 1\nsets sv_projectName "NSM City"\n';
+  post('/api/host/'+ID+'/file/write',{path:'server.cfg',content:txt}).then(function(){location.reload();});
+}
+pnlStats();
+window.__nsmTimers.push(setInterval(pnlStats,4000));
+if(document.getElementById('pnl-console'))window.__nsmTimers.push(setInterval(pnlConsole,2500));
+if(document.getElementById('app-list'))pnlApps();
+if(document.getElementById('db-list'))pnlDBs();
+if(document.getElementById('bk-list'))pnlBackups();
+if(document.getElementById('sch-list'))pnlScheds();
+if(document.getElementById('act-list')){window.__nsmTimers.push(setInterval(pnlActivity,6000));pnlActivity();}
+</script>
+{{template "panel-foot" .}}
+{{end}}
+
+{{define "panel-support"}}
+{{template "panel-head" .}}
+<div class="pnl">
+  {{template "panel-rail" .}}
+  <div class="pnl-main">
+    <div class="pnl-top"><a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a><h1>Support</h1><div class="sp"></div>
+      <div class="pnl-top-actions">
+        <button class="pnl-mini-btn green" onclick="pnlNewTicket()">New chat</button>
+        <a class="pnl-mini-btn" href="/support">Help center</a>
+        <a class="pnl-mini-btn" href="/hosting/incidents">Status</a>
+      </div>
+    </div>
+    <div class="pnl-body">
+      {{if .T}}
+      <div class="pnl-panel">
+        <div class="pnl-srv-head">
+          <div class="title">{{.T.Subject}}</div>
+          <span class="pnl-unit">ticket #{{.T.ID}}</span>
+          <div class="sp"></div>
+          <span class="pnl-pill {{if eq .T.Status "closed"}}off{{else}}ok{{end}}">status: {{.T.Status}}</span>
+          {{if ne .T.Status "closed"}}<button class="pnl-mini-btn" onclick="pnlCloseTicket('{{.T.ID}}')">Close</button>{{end}}
+          <a class="pnl-mini-btn" href="/hosting/support">&#8592; all tickets</a>
+        </div>
+        <div class="pnl-chat" id="tchat">
+          {{range .T.Messages}}
+          <div class="pnl-msg {{if eq .From "user"}}me{{else}}them{{end}}"><div class="who">{{.By}} &middot; {{unixfmt .At}}</div>{{.Text}}</div>
+          {{end}}
+        </div>
+        <div class="pnl-chat-input">
+          <textarea id="tmsg" placeholder="Write a message… (Enter to send)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();pnlSendTicketMsg('{{.T.ID}}')}"></textarea>
+          <button class="pnl-btn-green" onclick="pnlSendTicketMsg('{{.T.ID}}')">Send</button>
+        </div>
+      </div>
+      {{else}}
+      <div class="pnl-tabs-row">
+        <button type="button" class="pnl-tab-chip pnl-on" data-f="new" onclick="supFilter('new')">New <span class="n">{{.ChipNew}}</span></button>
+        <button type="button" class="pnl-tab-chip" data-f="open" onclick="supFilter('open')">Open <span class="n">{{.ChipOpen}}</span></button>
+        <button type="button" class="pnl-tab-chip" data-f="closed" onclick="supFilter('closed')">Closed <span class="n">{{.ChipClosed}}</span></button>
+      </div>
+      <div class="pnl-panel">
+        <h3>Hosting support</h3><p class="hint">Live chat with the hosting team — separate from the <a href="/support" style="color:#18E888">NSM ticket system</a>. Status of the platform lives on the <a href="/status" style="color:#18E888">status page</a>.</p>
+        <div class="pnl-tickets" id="sup-list">
+          {{range .Tickets}}
+          <a class="pnl-ticket" data-bucket="{{if eq .Status "new"}}new{{else if eq .Status "closed"}}closed{{else}}open{{end}}" href="/hosting/support?t={{.ID}}">
+            <span class="id">#{{.ID}}</span>
+            <span class="subj">{{.Subject}}</span>
+            <span class="pnl-pill {{if eq .Status "closed"}}off{{else}}ok{{end}}">{{.Status}}</span>
+            <span class="when">{{unixfmt .Updated}}</span>
+          </a>
+          {{else}}
+          <div class="pnl-ticket" data-bucket="all">No tickets yet — press <b>New chat</b> to reach the hosting team.</div>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </div>
+</div>
+<script>
+function pnlNewTicket(){
+  var s=prompt('Subject:'); if(!s)return;
+  var t=prompt('Describe your issue:'); if(!t)return;
+  fetch('/api/hosting/support',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject:s,text:t})})
+    .then(function(r){return r.json();}).then(function(d){location.href='/hosting/support?t='+d.id;});
+}
+function pnlSendTicketMsg(id){
+  var t=document.getElementById('tmsg'); if(!t.value.trim())return;
+  fetch('/api/hosting/support/'+id+'/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t.value})})
+    .then(function(){location.reload();});
+}
+function pnlCloseTicket(id){fetch('/api/hosting/support/'+id+'/close',{method:'POST'}).then(function(){location.href='/hosting/support';});}
+</script>
+{{template "panel-foot" .}}
+{{end}}
+
+{{define "panel-community"}}
+{{template "panel-head" .}}
+<div class="pnl">
+  {{template "panel-rail" .}}
+  <div class="pnl-main">
+    <div class="pnl-top"><a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a><h1>Community &amp; Partners</h1><div class="sp"></div><a class="pnl-mini-btn" href="/hosting/dashboard">&#8592; back to dashboard</a></div>
+    <div class="pnl-body">
+      <div class="pnl-community">
+        <nav class="pnl-subrail">
+          <a class="pnl-on" href="/hosting/community">&#8592; Back</a>
+          <div class="grp">Affiliate &amp; Partner program</div>
+          <a href="/hosting/community?s=affiliate">Affiliate &amp; Partner program</a>
+          <div class="grp">Community</div>
+          <a href="/hosting/community?s=overview">Overview</a>
+          <a href="/hosting/community?s=feedback">Feedback</a>
+          <a href="/hosting/community?s=roadmap">Roadmap</a>
+          <a href="/hosting/community?s=changelog">Changelog</a>
+          <a href="/hosting/community?s=partner">Partner</a>
+          <a href="/forum">Discord</a>
+          <a href="/servers">Server list</a>
+        </nav>
+        <div class="pnl-pane">
+          <div class="pnl-panel">
+            {{if eq .Section "affiliate"}}
+            <h3>Affiliate &amp; Partner program</h3>
+            <p class="hint">Bring your community to NSM Hosting and earn partner status — featured placement on the server list, a partner badge on your profile and a direct line to the team. Apply through the <a href="/support" style="color:#18E888">NSM ticket system</a> with your community details.</p>
+            {{else if eq .Section "feedback"}}
+            <h3>Feedback</h3>
+            <p class="hint">Tell us what the panel is missing — every hosting feature in use today started as community feedback. Post ideas on the <a href="/forum" style="color:#18E888">forum</a> or in a <a href="/hosting/support" style="color:#18E888">hosting chat</a>.</p>
+            {{else if eq .Section "roadmap"}}
+            <h3>Roadmap</h3>
+            <p class="hint">In progress: one-click apps expansion, per-server schedules, live monitoring history. Planned: DNS record editor, team access, regional cities. Follow along on the <a href="/forum" style="color:#18E888">forum</a>.</p>
+            {{else if eq .Section "changelog"}}
+            <h3>Changelog</h3>
+            <p class="hint">The panel and platform ship continuously — recent work: ZAPX-style control panel, live updates, hosting support chat, backups &amp; schedules, one-click apps, five servers per account. Details on the <a href="/status" style="color:#18E888">status page</a>.</p>
+            {{else if eq .Section "partner"}}
+            <h3>Partner</h3>
+            <p class="hint">Partner servers keep their own identity and rules — NSM provides the hosting, the join links and the audience. See current communities on the <a href="/servers" style="color:#18E888">server list</a>.</p>
+            {{else}}
+            <h3>Community overview</h3>
+            <p class="hint">NSM is built with its cities — roleplay, racing, freeroam and everything between. Jump into the <a href="/servers" style="color:#18E888">server list</a>, the <a href="/forum" style="color:#18E888">forum</a>, or the partner channels below.</p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+              <a class="pnl-mini-btn green" href="/servers">Server list</a>
+              <a class="pnl-mini-btn" href="/forum">Forum &amp; Discord</a>
+              <a class="pnl-mini-btn" href="/hosting/community?s=roadmap">Roadmap</a>
+            </div>
+            {{end}}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{{template "panel-foot" .}}
+{{end}}
+
+{{define "panel-billing"}}
+{{template "panel-head" .}}
+<div class="pnl">{{template "panel-rail" .}}<div class="pnl-main">
+  <div class="pnl-top"><a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a><h1>Billing</h1></div>
+  <div class="pnl-body">
+    <div class="pnl-panel">
+      <h3>Your subscriptions</h3><p class="hint">Packages are billed monthly. Payment is arranged through <a href="/hosting/support" style="color:#18E888">hosting support</a>.</p>
+      <div class="pnl-kv">
+        {{range .Bills}}
+        <div class="r"><span class="k">{{.Name}} &middot; {{.Tier}} &middot; {{.Up}} upvotes</span><span class="v">{{.DueTxt}} / month</span></div>
+        {{else}}
+        <div class="r"><span class="k">No paid packages yet</span><span class="v">Choose one under Manage plan</span></div>
+        {{end}}
+        <div class="r"><span class="k"><strong>Amount due</strong></span><span class="v" style="color:#18E888;font-size:1.05rem">{{.TotalDue}}</span></div>
+        <div class="r"><span class="k">Next charge</span><span class="v">{{.NextCharge}}</span></div>
+        <div class="r"><span class="k">Pass</span><span class="v">{{.PassTier}}</span></div>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+        <a class="pnl-btn-green" href="/hosting/support">Arrange payment</a>
+        <a class="pnl-mini-btn" href="/hosting/dashboard">Manage packages</a>
+      </div>
+    </div>
+  </div>
+</div></div>
+{{template "panel-foot" .}}
+{{end}}
+
+{{define "panel-pass"}}
+{{template "panel-head" .}}
+<div class="pnl">{{template "panel-rail" .}}<div class="pnl-main">
+  <div class="pnl-top"><a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a><h1>Pulse</h1></div>
+  <div class="pnl-body">
+    <div class="pnl-hero">
+      <div style="flex:1">
+        <h2><span class="pnl-grad">{{.PassTier}}</span></h2>
+        <div class="pnl-sub">Your NSM pass — every hosting feature is included free.</div>
+        <a class="pnl-btn-green" href="/u/{{.User.Username}}">Manage profile</a>
+      </div>
+      <div class="pnl-pass"><img class="av pav" src="/avatars/u/{{.User.Username}}/128.png?v=1" alt="" onerror="this.style.display='none'"><div class="pnl-pass-info"><div class="lbl">Pulse Pass</div><div class="nm">{{.User.Username}} <span class="pnl-arr">&#8250;</span></div><div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">Free forever</span></div></div></div>
+    </div>
+    <div class="pnl-panel"><h3>What's included</h3><p class="hint">Up to 5 servers, 2048 slots each, backups, schedules, one-click apps, the Plus scripting agent and hosting support chat.</p></div>
+
+    <!-- AFX Pulse subscription — same content and state as /u/<you>?tab=pulse -->
+    <div class="pnl-panel pnl-pulse-sub">
+      <div class="pnl-pulse-banner">
+        <div style="flex:1;min-width:0">
+          <div class="pnl-eyebrow">&#9889; AFX Pulse Membership &amp; Server Upvotes</div>
+          <h3 style="margin:2px 0 6px;font-size:1.35rem">Unlock Profile Colors, Animated Effects &amp; Server Upvote Power</h3>
+          <p class="hint" style="max-width:680px">AFX Pulse Pro &amp; Sovereign unlock full-page Style Profile Layout Colors, animated GIF avatars &amp; banners, Neon Cyber Cat Ears, moving profile effects, and NSM Server Upvotes (+1 Upvote with Pro, +4 Upvotes with Sovereign; Core gets 0 Upvotes).</p>
+        </div>
+        <div class="pnl-pulse-status">
+          <span class="k">Active tier for @{{.User.Username}}</span>
+          <strong class="tier-now">{{.PtierLabel}}</strong>
+          <span class="k">Server upvote allowance</span>
+          <strong class="up-now">{{.UpvoteAllowance}} Upvotes</strong>
+          {{if .PulseFounder}}<span class="pnl-pulse-founder">&#9813; Permanent Founder Access — Active Forever</span>{{end}}
+        </div>
+      </div>
+
+      <div class="pnl-pulse-closed">
+        <div style="min-width:0">
+          <strong>&#128274; AFX Pulse Subscriptions Are Currently Closed</strong>
+          <div class="hint">AFX Pulse is not open for public purchase right now. Stay tuned for the official launch announcement!</div>
+        </div>
+        <span class="pnl-pulse-closed-pill">Closed — Coming Soon</span>
+      </div>
+
+      <div class="pnl-pulse-tiers">
+        <div class="pnl-pulse-tier{{if eq .Ptier "core"}} active-tier{{end}}">
+          <div class="pt-head"><h4>AFX Pulse Core</h4><div class="pt-price">$4.99<span>/mo</span></div></div>
+          <ul class="pt-perks">
+            <li>&#10004; Exclusive <strong>AFX Pulse Subscriber</strong> Badge on Profile &amp; Posts</li>
+            <li>&#10004; Animated <strong>GIF Avatar</strong> Uploads &amp; External GIF Links</li>
+            <li>&#10004; Custom <strong>Avatar Decorations</strong> including <strong>Neon Cyber Cat Ears</strong></li>
+            <li class="no">&#10008; <strong>0 Server Upvotes</strong> (Upgrade to Pro for +1 Upvote or Sovereign for +4 Upvotes)</li>
+            <li class="no">&#10008; Basic Default Profile Theme (Upgrade to Pro to change Profile Colors)</li>
+          </ul>
+          <button type="button" class="pnl-mini-btn" style="width:100%;opacity:.6;cursor:not-allowed" disabled>{{if .PulseFounder}}Included in Founder Eternal{{else}}&#128274; AFX Pulse Closed — Coming Soon{{end}}</button>
+        </div>
+
+        <div class="pnl-pulse-tier featured{{if eq .Ptier "pro"}} active-tier{{end}}">
+          <div class="pt-tag">MOST POPULAR</div>
+          <div class="pt-head"><h4>AFX Pulse Pro</h4><div class="pt-price">$9.99<span>/mo</span></div></div>
+          <ul class="pt-perks">
+            <li>&#10004; <strong>Unlocks Full-Page Style Profile Layout Colors</strong> (Transforms your entire <code>/u/</code> tab!)</li>
+            <li>&#10004; <strong>+1 NSM Server Upvote Power</strong> on the Masterlist</li>
+            <li>&#10004; Animated <strong>GIF Avatars &amp; Animated GIF Profile Banners</strong></li>
+            <li>&#10004; All <strong>Moving Profile Effects</strong> (Aurora Waves, Cyber Grid, Starlight Warp, Volt Storm)</li>
+            <li>&#10004; All 7 <strong>Avatar Decorations</strong> (Cat Ears, Sovereign Crown, Cyber Visor, Plasma Aura)</li>
+          </ul>
+          <button type="button" class="pnl-mini-btn" style="width:100%;opacity:.6;cursor:not-allowed" disabled>{{if .PulseFounder}}Included in Founder Eternal{{else}}&#128274; AFX Pulse Closed — Coming Soon{{end}}</button>
+        </div>
+
+        <div class="pnl-pulse-tier sovereign{{if or (eq .Ptier "sovereign") (eq .Ptier "eternal")}} active-tier{{end}}">
+          <div class="pt-tag max">MAX OVERDRIVE (+4 UPVOTES)</div>
+          <div class="pt-head"><h4>AFX Pulse Sovereign</h4><div class="pt-price">{{if .PulseFounder}}FREE FOREVER{{else}}$19.99<span>/mo</span>{{end}}</div></div>
+          <ul class="pt-perks">
+            <li>&#10004; Everything in <strong>AFX Pulse Pro</strong> (Full-Page Profile Color Themes &amp; Moving FX)</li>
+            <li>&#10004; <strong>+4 NSM Server Upvotes Power</strong> on the NSM Server List + <strong>AFX Server Upvoter Badge</strong></li>
+            <li>&#10004; Mythic <strong>Sovereign Pulse Badge</strong> &amp; Holographic Prism Profile Shimmer</li>
+            <li>&#10004; Priority Server Upvote Weight on the NSM Masterlist</li>
+            <li>&#10004; <strong>@nta~ Founder Account has Sovereign Eternal Unlocked Forever!</strong></li>
+          </ul>
+          {{if .PulseFounder}}
+          <button type="button" class="pnl-btn-green" style="width:100%" disabled>&#9813; Founder Eternal Active Forever</button>
+          {{else}}
+          <button type="button" class="pnl-mini-btn" style="width:100%;opacity:.6;cursor:not-allowed" disabled>&#128274; AFX Pulse Closed — Coming Soon</button>
+          {{end}}
+        </div>
+      </div>
+      <p class="hint" style="margin:14px 0 0">Full membership details and your profile perks live on your <a href="/u/{{.User.Username}}?tab=pulse" style="color:#18E888">profile Pulse tab</a>.</p>
+    </div>
+    <div class="pnl-panel">
+      <h3>Pulse plans</h3>
+      <p class="hint">Your plan lights up and stays selected — pick another any time from a server's Manage plan.</p>
+      <div class="pnl-tiers pnl-tiers-pass" id="pass-tiers">
+        {{range .Tiers}}<button class="pnl-tier pnl-plan-card{{if eq $.PlanTier .Name}} pnl-on pnl-plan-lit{{end}}" data-up="{{.Upvotes}}" onclick="pnlPassPlan(this)"><span class="tname">{{.Name}}</span><span class="tup">{{.Upvotes}} upvotes</span><span class="tprice" data-price></span></button>{{end}}
+      </div>
+    </div>
+  </div>
+  <script>
+  (function(){document.querySelectorAll('.pnl-tier [data-price]').forEach(function(sp){
+    var t=sp.closest('.pnl-tier'),up=parseInt(t.getAttribute('data-up')||'0',10);
+    sp.textContent=up<=10?'Free':'€'+Math.max(2.99,Math.round(up*0.0002*100)/100).toFixed(2)+'/mo';
+  });})();
+  function pnlPassPlan(btn){document.querySelectorAll('#pass-tiers .pnl-tier').forEach(function(t){t.classList.remove('pnl-on','pnl-plan-lit');});btn.classList.add('pnl-on','pnl-plan-lit');}
+  </script>
+</div></div>
+{{template "panel-foot" .}}
+{{end}}
+
+{{define "panel-news"}}
+{{template "panel-head" .}}
+<div class="pnl">{{template "panel-rail" .}}<div class="pnl-main">
+  <div class="pnl-top"><a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a><h1>News</h1></div>
+  <div class="pnl-body">
+    <div class="pnl-panel"><h3>Platform news</h3><p class="hint">Live from the NSM forum announcements — updated automatically.</p>
+      {{range .Announcements}}
+      <div class="pnl-news-item{{if .Pinned}} pnl-news-pin{{end}}">
+        <div class="nn">{{.Title}}{{if .Pinned}} <span class="pnl-pill ok">pinned</span>{{end}}</div>
+        <div class="nm2">by {{.Author}} &middot; {{unixfmt .UpdatedAt}}</div>
+        <p>{{.Body}}</p>
+      </div>
+      {{else}}
+      <div class="pnl-news-item"><p>No announcements yet — check back soon.</p></div>
+      {{end}}
+    </div>
+  </div>
+</div></div>
+{{template "panel-foot" .}}
+{{end}}
+
+{{define "panel-incidents"}}
+{{template "panel-head" .}}
+<div class="pnl">{{template "panel-rail" .}}<div class="pnl-main">
+  <div class="pnl-top"><a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a><h1>Incidents</h1></div>
+  <div class="pnl-body">
+    <div class="pnl-panel">
+      <h3>Platform incidents</h3><p class="hint">Live from the <a href="/status" style="color:#18E888">status page</a>.</p>
+      <div class="pnl-tickets">
+        {{range .Incidents}}
+        <div class="pnl-ticket"><span class="id">{{unixfmt .Started}}</span><span class="subj">{{.Name}}</span>
+          <span class="pnl-pill {{if .Resolved}}off{{else}}bad{{end}}">{{if .Resolved}}resolved{{else}}open{{end}}</span></div>
+        {{else}}
+        <div class="pnl-ticket">No incidents recorded. Everything is running.</div>
+        {{end}}
+      </div>
+    </div>
+  </div>
+</div></div>
+{{template "panel-foot" .}}
+{{end}}

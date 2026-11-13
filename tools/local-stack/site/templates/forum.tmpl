@@ -8,17 +8,17 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=078m">
+  <link rel="stylesheet" href="/css/style.css?v=090d">
 </head>
 <body class="dc-ember-body navigation-categories">
   <!-- Discourse d-header (1:1 forum.cfx.re header) -->
   <header class="d-header">
     <div class="d-header-wrap">
       <div class="d-header-left">
-        <button type="button" class="btn-sidebar-toggle" onclick="document.getElementById('d-sidebar').classList.toggle('collapsed')" title="Toggle sidebar">
+        <button type="button" class="btn-sidebar-toggle" onclick="nsmToggleSidebar(this)" title="Toggle sidebar" aria-expanded="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
-        <a href="/forum" class="d-logo-link">
+        <a href="/" class="d-logo-link">
           <img src="/img/nsm-icon.png" alt="NSM" class="d-logo-mark">
           <span class="d-logo-text">AFX <strong>Forum</strong></span>
           <span class="d-logo-sub">The home of NSM</span>
@@ -203,7 +203,7 @@
       {{if .ActiveCat}}
       <div class="category-heading" style="border-left: 6px solid {{.ActiveCat.Color}}; padding-left: 14px; margin-bottom: 18px;">
         <h1 style="font-size: 22px; font-weight: 700; color: #ffffff; margin: 0 0 4px;">{{.ActiveCat.Name}}</h1>
-        <p style="color: #9197a3; font-size: 14px; margin: 0;">{{.ActiveCat.Description}}</p>
+        <p style="color:#fff; font-size: 14px; margin: 0;">{{.ActiveCat.Description}}</p>
         {{if and (eq .ActiveCat.Slug "announcements") (not .CanPostAnnouncements)}}
         <p style="color: #fbbf24; font-size: 13px; margin: 6px 0 0;">&#128274; Only Owners, Admins, and Staff can create new topics in Announcements. Community members can reply to existing announcements.</p>
         {{end}}
@@ -478,7 +478,7 @@
               </tr>
               {{else}}
               <tr>
-                <td colspan="5" style="padding: 36px; text-align: center; color: #9197a3;">
+                <td colspan="5" style="padding: 36px; text-align: center; color:#fff;">
                   No topics found matching your filter.
                 </td>
               </tr>
@@ -510,6 +510,6 @@
     }
     setInterval(pollForumRealtime, 2500);
   </script>
-  <script src="/js/main.js?v=078m"></script>
+  <script src="/js/main.js?v=079a"></script>
 </body>
 </html>

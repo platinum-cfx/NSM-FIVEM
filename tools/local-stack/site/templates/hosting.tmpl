@@ -1,0 +1,224 @@
+{{template "head" .}}
+<div class="hosting-scope">
+<section class="hero zx-hero">
+  <div class="container">
+    <div class="spacer">
+      <div class="zx-eyebrow"><span class="live-dot"></span> NSM HOSTING &mdash; GAME SERVERS</div>
+      <h1 class="zx-hero-title zx-hero-title-black">Deploy a server. Make it yours. <em>Go live.</em></h1>
+      <div class="hero-seller">
+        <div class="hero-lead">
+          <p class="lead">Run your own city on our hardware. The official NSM server is installed for you, your ports are assigned automatically, and everything is managed from your hosting dashboard.</p>
+          <div class="zx-hero-chips">
+            <span class="zx-pill zx-pill-green">Free forever</span>
+            <span class="zx-pill zx-pill-dark">{{.PKG.Slots}} player slots</span>
+            <span class="zx-pill zx-pill-dark">Online in minutes</span>
+          </div>
+        </div>
+        <div class="hero-cta">
+          <div class="btnpadder" style="position:relative">
+            <a class="btn primary" href="/hosting/create">Deploy your server</a>
+          </div>
+          <div class="server">
+            <a class="btn block" href="/dashboard">Manage my server</a>
+          </div>
+          <p class="plaText">One server per account &middot; no payment required</p>
+        </div>
+      </div>
+      <div class="zx-marquee" aria-hidden="true">
+        <div class="zx-marquee-track">
+          <img src="/img/showcase/nopixel-v.png" alt=""><img src="/img/showcase/eclipse-rp.png" alt=""><img src="/img/showcase/harborline-rp.png" alt=""><img src="/img/showcase/x00.png" alt=""><img src="/img/showcase/x01.png" alt=""><img src="/img/showcase/x02.png" alt=""><img src="/img/showcase/x03.png" alt=""><img src="/img/showcase/x04.png" alt=""><img src="/img/showcase/x05.png" alt=""><img src="/img/showcase/x06.png" alt=""><img src="/img/showcase/x07.png" alt=""><img src="/img/showcase/nopixel-v.png" alt=""><img src="/img/showcase/eclipse-rp.png" alt=""><img src="/img/showcase/harborline-rp.png" alt=""><img src="/img/showcase/x00.png" alt=""><img src="/img/showcase/x01.png" alt=""><img src="/img/showcase/x02.png" alt=""><img src="/img/showcase/x03.png" alt=""><img src="/img/showcase/x04.png" alt=""><img src="/img/showcase/x05.png" alt=""><img src="/img/showcase/x06.png" alt=""><img src="/img/showcase/x07.png" alt="">
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<main>
+<section class="zx-band">
+  <div class="container">
+    <div class="spacer">
+      <div class="zx-band-head">
+        <div>
+          <h2>Your city runs on <em>real hardware.</em></h2>
+          <p>The specifications below are read from the actual machine at runtime &mdash; we do not advertise numbers we cannot verify. Each server has its own directory, files and ports.</p>
+        </div>
+        <div class="zx-tour-card" aria-hidden="true">
+          <div class="zx-tour-row"><span class="zx-pill zx-pill-green">Online</span><span class="zx-tour-cap">NSM Standard</span></div>
+          <div class="zx-tour-stat"><span>CPU</span><b>{{.Cores}} cores</b></div>
+          <div class="zx-tour-stat"><span>RAM</span><b>{{if .RAMText}}{{.RAMText}}{{else}}reported at runtime{{end}}</b></div>
+          <div class="zx-tour-stat"><span>Console</span><b>$ status &mdash; ready</b></div>
+          <div class="zx-tour-stat"><span>Files</span><b>server.cfg &middot; resources/</b></div>
+        </div>
+      </div>
+      <div class="fx">
+        <div class="c-lg-6 c-md-6 c-xs-12">
+          <table class="stat-table">
+            <tr><td class="stat">Host CPU</td><td>{{if .CPUModel}}{{.CPUModel}}, {{end}}{{.Cores}} cores</td></tr>
+            <tr><td class="stat">Host memory</td><td>{{if .RAMText}}{{.RAMText}}{{else}}reported at runtime{{end}}</td></tr>
+            <tr><td class="stat">Isolation</td><td>Each server has its own directory, files and ports</td></tr>
+            <tr><td class="stat">Port pool</td><td>{{.First}}–{{.Last}} (500 ports, TCP and UDP)</td></tr>
+          </table>
+        </div>
+        <div class="c-lg-6 c-md-6 c-xs-12">
+          <table class="stat-table">
+            <tr><td class="stat">Package</td><td>{{.PKG.Name}} &mdash; free</td></tr>
+            <tr><td class="stat">Player slots</td><td>{{.PKG.Slots}}</td></tr>
+            <tr><td class="stat">Memory</td><td>{{.PKG.RAMGB}} GB RAM allocation</td></tr>
+            <tr><td class="stat">Storage</td><td>{{.PKG.DiskGB}} GB for your server files</td></tr>
+            <tr><td class="stat">Ports</td><td>{{.PKG.Ports}} reserved ports (game, files, extras)</td></tr>
+            <tr><td class="stat">Software</td><td>Official NSM server, installed automatically</td></tr>
+            <tr><td class="stat">Included</td><td>Live console, file manager, FileZilla access, private join link</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="zx-band">
+  <div class="container">
+    <div class="spacer">
+      <div class="zx-band-head">
+        <div>
+          <h2>One package. <em>No per-player pricing.</em></h2>
+          <p>No tiers, no add-ons, no confusing choices &mdash; every NSM Hosting customer receives the same standard server package. Players cost nothing extra.</p>
+        </div>
+      </div>
+      <div class="zx-card-row">
+        <div class="zx-order">
+          <div class="zx-order-top"><span class="zx-pill zx-pill-green">Free</span> Due today</div>
+          <div class="zx-price">€0 <span>/ forever</span></div>
+          <ul class="zx-checks">
+            <li>{{.PKG.Slots}} player slots &mdash; unlimited, no per-player pricing</li>
+            <li>{{.PKG.RAMGB}} GB RAM allocation</li>
+            <li>{{.PKG.DiskGB}} GB storage for your server files</li>
+            <li>{{.PKG.Ports}} reserved ports</li>
+          </ul>
+          <a class="btn primary" href="/hosting/create">Deploy your server</a>
+        </div>
+        <div class="zx-order">
+          <div class="zx-order-top"><span class="zx-pill zx-pill-dark">Included</span> Everything, for everyone</div>
+          <div class="zx-price">All features <span>/ standard</span></div>
+          <ul class="zx-checks">
+            <li>Live console and command input</li>
+            <li>File manager and FileZilla (FTP &amp; FTP over TLS)</li>
+            <li>Dedicated Config tab for <code>server.cfg</code></li>
+            <li>Private join link that hides your IP</li>
+          </ul>
+          <a class="btn" href="/dashboard">Manage my server</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="zx-band">
+  <div class="container">
+    <div class="spacer">
+      <div class="zx-band-head">
+        <div>
+          <h2>Run your server &mdash; <em>no terminal needed.</em></h2>
+          <p>Live console, files, configuration and ports in one browser tab: status and control without logging into a box.</p>
+        </div>
+        <div class="zx-tour-card" aria-hidden="true">
+          <div class="zx-tour-row"><span class="zx-pill zx-pill-green">Online</span><span class="zx-tour-cap">Your city</span></div>
+          <div class="zx-tour-stat"><span>Console</span><b>$ status &mdash; ready</b></div>
+          <div class="zx-tour-stat"><span>Backups</span><b>your files, your control</b></div>
+          <div class="zx-tour-stat"><span>Config</span><b>server.cfg editor</b></div>
+          <div class="zx-tour-stat"><span>Join</span><b>/join/your-code</b></div>
+        </div>
+      </div>
+      <div class="fx">
+        <div class="c-lg-3 c-md-6 c-sm-6 c-xs-12">
+          <article class="a1"><h2>Console</h2><span class="txt">Real-time server output and commands, exactly as the process reports them.</span></article>
+        </div>
+        <div class="c-lg-3 c-md-6 c-sm-6 c-xs-12">
+          <article class="a2"><h2>Files</h2><span class="txt">Browse, edit, upload and download your actual server files on the VPS.</span></article>
+        </div>
+        <div class="c-lg-3 c-md-6 c-sm-6 c-xs-12">
+          <article class="a3"><h2>Ports</h2><span class="txt">Every port assigned to your server, with its purpose and live status.</span></article>
+        </div>
+        <div class="c-lg-3 c-md-6 c-sm-6 c-xs-12">
+          <article class="a4"><h2>Overview</h2><span class="txt">Status, uptime, CPU, RAM and disk usage, and start/stop/restart controls.</span></article>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="zx-band">
+  <div class="container">
+    <div class="spacer">
+      <div class="zx-band-head">
+        <div>
+          <h2>Server live in <em>3 steps.</em></h2>
+          <p>From sign-in to a running city &mdash; automated, in minutes.</p>
+        </div>
+      </div>
+      <div class="zx-steps">
+        <div class="zx-step">
+          <span class="zx-step-no">01</span>
+          <h3>Create</h3>
+          <p>Sign in with your NSM account and create your server. One server per account.</p>
+        </div>
+        <div class="zx-step">
+          <span class="zx-step-no">02</span>
+          <h3>Install</h3>
+          <p>The official server files are downloaded and installed into your server's own directory, with your ports written into <code>server.cfg</code>.</p>
+        </div>
+        <div class="zx-step">
+          <span class="zx-step-no">03</span>
+          <h3>Manage</h3>
+          <p>Start and stop the server, use the live console, edit files and share your private join link &mdash; all from the dashboard.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="faq zx-band">
+  <div class="container">
+    <div class="spacer">
+      <h2>Questions about hosting a server</h2>
+      <div class="faq-grid">
+        <article>
+          <h3>How much does it cost?</h3>
+          <p>Nothing. NSM Hosting is free: one standard package per account with {{.PKG.Slots}} player slots, {{.PKG.RAMGB}} GB RAM and {{.PKG.DiskGB}} GB storage. Due today: free.</p>
+        </article>
+        <article>
+          <h3>Can I add my own resources and maps?</h3>
+          <p>Yes. The FTP root is your server folder &mdash; drop in resources, edit <code>server.cfg</code> in the Config tab or FileZilla, and restart. Your edits are never overwritten.</p>
+        </article>
+        <article>
+          <h3>How do my players join?</h3>
+          <p>Share your private join link from the dashboard &mdash; it hides your IP address. Clicking it opens the NSM client and connects straight to your city.</p>
+        </article>
+        <article>
+          <h3>Can I run more than one server?</h3>
+          <p>One server per account keeps the platform fast and fair for everyone. Delete your server at any time to free the slot and its ports.</p>
+        </article>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="zx-cta-band">
+  <div class="container">
+    <div class="spacer">
+      <h2>Ready? Deploy a server and start playing.</h2>
+      <p>Online in minutes &middot; free forever &middot; full control from your dashboard</p>
+      <div class="zx-hero-cta">
+        <a class="btn primary" href="/hosting/create">Deploy your server</a>
+        <a class="btn" href="/dashboard">Manage my server</a>
+      </div>
+      <div class="zx-hero-links">
+        <span class="zx-tick zx-tick-ok">Online in minutes</span>
+        <span class="zx-tick">One package &middot; {{.PKG.Slots}} slots</span>
+        <span class="zx-tick zx-tick-new">Due today: free</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div>
+{{template "foot" .}}

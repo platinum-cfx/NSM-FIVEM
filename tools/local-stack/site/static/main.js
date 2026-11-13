@@ -325,14 +325,16 @@
     if (descEl) descEl.textContent = desc;
     if (initEl) initEl.textContent = cleanName.charAt(0).toUpperCase() || 'S';
     if (playersEl) playersEl.textContent = clients + ' / ' + maxClients;
-    if (epEl) epEl.textContent = ep;
+    var jc = row.getAttribute('data-join-code') || '';
+    var joinRef = jc || ep;
+    if (epEl) epEl.textContent = joinRef;
     if (resEl) resEl.textContent = resCount + ' loaded';
     if (locEl) locEl.textContent = locale + (onesync ? ' • OneSync' : '');
-    if (f8El) f8El.textContent = 'connect ' + ep;
-    if (joinEl) joinEl.textContent = 'https://nsmultiplayer.com/join/' + ep;
+    if (f8El) f8El.textContent = 'connect ' + joinRef;
+    if (joinEl) joinEl.textContent = 'https://nsmultiplayer.com/join/' + joinRef;
     if (upvEl) upvEl.textContent = upvotes;
     if (featLblEl) featLblEl.innerHTML = '&#9733; ' + (isFeat ? 'Featured' : 'Feature');
-    if (fullLink) fullLink.setAttribute('href', '/servers/' + encodeURIComponent(ep));
+    if (fullLink) fullLink.setAttribute('href', '/join/' + encodeURIComponent(joinRef));
 
     if (tagsEl) {
       var tags = tagsRaw ? tagsRaw.split(',') : [];
@@ -834,15 +836,13 @@
       window.location.href = finalUrl;
       return;
     }
+    // stop timers bound to the old page before the DOM goes away
+    if (window.__nsmTimers && window.__nsmTimers.length) {
+      for (var ti = 0; ti < window.__nsmTimers.length; ti++) clearInterval(window.__nsmTimers[ti]);
+      window.__nsmTimers = [];
+    }
     if (doc.title) {
       document.title = doc.title;
-    }
-    document.body.className = doc.body.className || '';
-    var bodyStyle = doc.body.getAttribute('style');
-    if (bodyStyle) {
-      document.body.setAttribute('style', bodyStyle);
-    } else {
-      document.body.removeAttribute('style');
     }
 
     var prevScrollY = window.scrollY;
@@ -853,46 +853,93 @@
       samePath = (uOld.pathname === uNew.pathname);
     } catch (e) {}
 
-    document.body.innerHTML = doc.body.innerHTML;
+    var bodyClass = doc.body.className || '';
+    var bodyStyle = doc.body.getAttribute('style');
+    var bodyHTML = doc.body.innerHTML;
 
-    // Execute inline page scripts (except main.js which is already active)
-    var scripts = document.body.querySelectorAll('script');
-    for (var i = 0; i < scripts.length; i++) {
-      var oldScript = scripts[i];
-      var src = oldScript.getAttribute('src') || '';
-      if (src.indexOf('/js/main.js') !== -1) continue;
-      var newScript = document.createElement('script');
-      for (var a = 0; a < oldScript.attributes.length; a++) {
-        var attr = oldScript.attributes[a];
-        newScript.setAttribute(attr.name, attr.value);
+    function swapNow() {
+      document.body.className = bodyClass;
+      if (bodyStyle) {
+        document.body.setAttribute('style', bodyStyle);
+      } else {
+        document.body.removeAttribute('style');
       }
-      newScript.textContent = oldScript.textContent;
-      oldScript.parentNode.replaceChild(newScript, oldScript);
+      document.body.innerHTML = bodyHTML;
+
+      // stylesheets already in <head> must not be re-added — a duplicate
+      // <link> re-triggers a load and flashes the page unstyled
+      var links = document.body.querySelectorAll('link[rel="stylesheet"]');
+      for (var li = 0; li < links.length; li++) {
+        var lhref = (links[li].getAttribute('href') || '').replace(/"/g, '');
+        if (lhref && document.head.querySelector('link[rel="stylesheet"][href="' + lhref + '"]')) {
+          links[li].parentNode.removeChild(links[li]);
+        }
+      }
+
+      // execute inline page scripts (main.js stays alive from the first load)
+      var scripts = document.body.querySelectorAll('script');
+      for (var i = 0; i < scripts.length; i++) {
+        var oldScript = scripts[i];
+        var src = oldScript.getAttribute('src') || '';
+        if (src.indexOf('/js/main.js') !== -1) continue;
+        var newScript = document.createElement('script');
+        for (var a2 = 0; a2 < oldScript.attributes.length; a2++) {
+          var attr = oldScript.attributes[a2];
+          newScript.setAttribute(attr.name, attr.value);
+        }
+        newScript.textContent = oldScript.textContent;
+        oldScript.parentNode.replaceChild(newScript, oldScript);
+      }
     }
 
-    if (pushState) {
+    function finishSwap() {
+      if (pushState) {
+        try {
+          window.history.pushState({ nsmSpa: true }, document.title, finalUrl);
+        } catch (e) {}
+      }
+      if (samePath) {
+        window.scrollTo(0, prevScrollY);
+      } else {
+        window.scrollTo(0, 0);
+      }
+      state.selectedEp = '';
+      initNSMPage();
+    }
+
+    var fancy = false;
+    if (document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       try {
-        window.history.pushState({ nsmSpa: true }, document.title, finalUrl);
+        document.startViewTransition(function () { swapNow(); finishSwap(); });
+        fancy = true;
       } catch (e) {}
     }
-
-    if (samePath) {
-      window.scrollTo(0, prevScrollY);
-    } else {
-      window.scrollTo(0, 0);
+    if (!fancy) {
+      swapNow();
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.body.classList.remove('nsm-swap-fade');
+        void document.body.offsetWidth;
+        document.body.classList.add('nsm-swap-fade');
+      }
+      finishSwap();
     }
-
-    state.selectedEp = '';
-    initNSMPage();
   }
 
   function nsmNavigate(url, pushState) {
-    if (spaInFlight) return;
+    if (spaInFlight) {
+      // A previous in-app navigation never finished (server hung?) — never
+      // swallow clicks: go there the normal way instead.
+      window.location.href = url;
+      return;
+    }
     spaInFlight = true;
+    var aborter = ('AbortController' in window) ? new AbortController() : null;
+    setTimeout(function () { if (aborter) aborter.abort(); }, 7000);
     fetch(url, {
       method: 'GET',
       credentials: 'same-origin',
-      headers: { 'X-NSM-SPA': '1' }
+      headers: { 'X-NSM-SPA': '1' },
+      signal: aborter ? aborter.signal : undefined
     })
       .then(function (res) {
         var ct = (res.headers.get('content-type') || '').toLowerCase();
@@ -930,7 +977,7 @@
       var action = form.getAttribute('action') || window.location.href;
       var method = (form.getAttribute('method') || 'GET').toUpperCase();
       try {
-        var actionUrl = new URL(action, window.location.origin);
+        var actionUrl = new URL(action, window.location.href);
         if (actionUrl.origin !== window.location.origin) return;
         if (actionUrl.pathname === '/logout') return;
         e.preventDefault();
@@ -946,11 +993,14 @@
         }
         var enc = (form.getAttribute('enctype') || '').toLowerCase();
         var isMultipart = enc.indexOf('multipart/form-data') !== -1 || !!form.querySelector('input[type="file"]');
+        var aborter2 = ('AbortController' in window) ? new AbortController() : null;
+        setTimeout(function () { if (aborter2) aborter2.abort(); }, 7000);
         var fetchOpts = {
           method: method,
           credentials: 'same-origin',
           headers: { 'X-NSM-SPA': '1' },
-          body: isMultipart ? fd : new URLSearchParams(fd).toString()
+          body: isMultipart ? fd : new URLSearchParams(fd).toString(),
+          signal: aborter2 ? aborter2.signal : undefined
         };
         if (!isMultipart) {
           fetchOpts.headers['Content-Type'] = 'application/x-www-form-urlencoded;charset=UTF-8';
@@ -1210,7 +1260,7 @@
           var rawHref = anchor.getAttribute('href') || '';
           if (rawHref && rawHref.charAt(0) !== '#' && rawHref.indexOf('javascript:') !== 0 && rawHref.indexOf('mailto:') !== 0 && rawHref.indexOf('fivem://') !== 0) {
             try {
-              var linkUrl = new URL(rawHref, window.location.origin);
+              var linkUrl = new URL(rawHref, window.location.href);
               if (linkUrl.origin === window.location.origin && linkUrl.pathname !== '/logout' && linkUrl.pathname !== '/download' && linkUrl.pathname !== '/NSM.exe' && linkUrl.pathname !== '/download-server' && linkUrl.pathname !== '/NSM-Server.zip' && linkUrl.pathname.indexOf('/api/') !== 0) {
                 e.preventDefault();
                 nsmNavigate(linkUrl.href, true);
@@ -1228,8 +1278,9 @@
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (data) {
           if (!data) return;
+          function nsmFmtK(n) { n = Number(n) || 0; if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'm'; if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k'; return String(n); }
           var pEls = document.querySelectorAll('[data-stat="players"]');
-          for (var i = 0; i < pEls.length; i++) pEls[i].textContent = String(data.players || 0);
+          for (var i = 0; i < pEls.length; i++) pEls[i].textContent = nsmFmtK(data.players || 0);
           var sEls = document.querySelectorAll('[data-stat="servers"]');
           for (var j = 0; j < sEls.length; j++) sEls[j].textContent = String(data.count || 0);
           if (Array.isArray(data.servers)) {
@@ -1241,6 +1292,12 @@
               var upNodes = document.querySelectorAll('[data-upvote-count="' + ep + '"]');
               for (var u = 0; u < upNodes.length; u++) {
                 upNodes[u].textContent = String(upv);
+              }
+              var slCard = document.querySelector('.sl-card[data-ep="' + ep + '"]');
+              if (slCard) {
+                slCard.setAttribute('data-clients', String(srv.Clients || srv.players || 0));
+                var clEl = slCard.querySelector('[data-sl-clients-val]');
+                if (clEl) clEl.innerHTML = String(srv.Clients || srv.players || 0) + ' <small>/ ' + (srv.MaxClients || 0) + '</small>';
               }
               var row = document.querySelector('.nsm-server-row[data-ep="' + ep + '"]');
               if (row) {
@@ -1260,4 +1317,91 @@
         .catch(function () {});
     }, 8000);
   });
+})();
+
+// ============================================================================
+// Forum sidebar toggle (three-line button) — desktop collapse + mobile drawer
+// ============================================================================
+function nsmToggleSidebar(btn) {
+  var sb = document.getElementById('d-sidebar');
+  if (!sb) return;
+  var mobile = window.matchMedia && window.matchMedia('(max-width: 980px)').matches;
+  if (mobile) {
+    sb.classList.remove('collapsed');
+    var open = sb.classList.toggle('mobile-open');
+    if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) sb.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    sb.classList.remove('mobile-open');
+    var col = sb.classList.toggle('collapsed');
+    if (btn) btn.setAttribute('aria-expanded', col ? 'false' : 'true');
+  }
+}
+
+// ============================================================================
+// Browser-tab title animation ("NSMultiplayer" -> "We Miss You!") — Forums and
+// Hosting sections ONLY (explicitly not the homepage, not the dashboard, not
+// any other section).
+// ============================================================================
+(function () {
+  'use strict';
+  var path = (window.location && location.pathname) || '';
+  var isForum = path === '/forum' || path.indexOf('/forum/') === 0;
+  var isHosting = path === '/hosting' ||
+    (path.indexOf('/hosting/') === 0 &&
+      path !== '/hosting/dashboard' && path !== '/hosting/manage');
+  if (!isForum && !isHosting) return; // never run outside the two sections
+
+  var TYPE_NAME = 'NSMultiplayer';
+  var TYPE_MISS = 'We Miss You!';
+  var TICK = 90;      // ms per typed character
+  var HOLD = 550;     // ms pause on the full name before it disappears
+
+  var timer = null;
+  var normalTitle = document.title;
+
+  function stopAnimation() {
+    if (timer !== null) {
+      clearInterval(timer);
+      timer = null;
+    }
+    document.title = normalTitle;
+  }
+
+  function startAnimation() {
+    if (timer !== null) return; // never run two animations at once
+    normalTitle = normalTitle || document.title;
+    var phase = 0;   // 0 typing name, 1 holding name, 2 clearing, 3 typing miss
+    var step = 0;
+    var heldTicks = Math.max(1, Math.round(HOLD / TICK));
+    timer = setInterval(function () {
+      if (phase === 0) {
+        step++;
+        document.title = TYPE_NAME.slice(0, step);
+        if (step >= TYPE_NAME.length) { phase = 1; step = 0; }
+      } else if (phase === 1) {
+        step++;
+        if (step >= heldTicks) { phase = 2; step = 0; }
+      } else if (phase === 2) {
+        document.title = '';  // make it disappear
+        phase = 3; step = 0;
+      } else {
+        step++;
+        document.title = TYPE_MISS.slice(0, step);
+        if (step >= TYPE_MISS.length) {
+          clearInterval(timer);
+          timer = null; // hold "We Miss You!" until the user returns
+        }
+      }
+    }, TICK);
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      startAnimation();
+    } else {
+      stopAnimation();
+    }
+  });
+  window.addEventListener('pagehide', stopAnimation);
 })();

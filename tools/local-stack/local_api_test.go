@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
@@ -11,13 +12,22 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -127,6 +137,124 @@ func TestHeartbeatStreamAndExpiry(t *testing.T) {
 		t.Fatal("stale record not pruned")
 	}
 }
+func makePNG(t *testing.T, w, h int, tint uint8) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{uint8(x * 255 / w), uint8(y * 255 / h), tint, 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func withIcon(body, iconB64 string) string {
+	return strings.Replace(body, `"resources":["chat"]`, `"resources":["chat"],"icon":"`+iconB64+`"`, 1)
+}
+
+func TestServerIconLoadAndServe(t *testing.T) {
+	h := setupTest(t)
+	ep := "127.0.0.1:30120"
+	single := func() int64 {
+		t.Helper()
+		w := request(h, "GET", "/api/servers/single/"+ep, "")
+		var server struct {
+			EndPoint string
+			Data     ServerData
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &server) != nil {
+			t.Fatalf("single: %d %s", w.Code, w.Body.String())
+		}
+		return server.Data.IconVersion
+	}
+	iconURL := func(ver int64) string {
+		return "/api/servers/icon/" + ep + "/" + fmt.Sprintf("%d", ver) + ".png"
+	}
+
+	// 1. Non-96x96 PNGs and garbage are rejected but never break the heartbeat.
+	if w := request(h, "POST", "/api/serverlist/ingress", withIcon(validHeartbeat, base64.StdEncoding.EncodeToString(makePNG(t, 100, 100, 1)))); w.Code != 200 {
+		t.Fatalf("heartbeat with 100x100 icon: %d %s", w.Code, w.Body.String())
+	}
+	if v := single(); v != 0 {
+		t.Fatalf("expected no iconVersion for 100x100 icon, got %d", v)
+	}
+	if w := request(h, "POST", "/api/serverlist/ingress", withIcon(validHeartbeat, "!!!not-base64!!!")); w.Code != 200 {
+		t.Fatalf("heartbeat with invalid icon must stay up: %d %s", w.Code, w.Body.String())
+	}
+
+	// 2. A 96x96 PNG is accepted and served at the icon URL.
+	pngA := makePNG(t, 96, 96, 10)
+	b64A := base64.StdEncoding.EncodeToString(pngA)
+	if w := request(h, "POST", "/api/serverlist/ingress", withIcon(validHeartbeat, b64A)); w.Code != 200 {
+		t.Fatalf("heartbeat with icon: %d %s", w.Code, w.Body.String())
+	}
+	verA := single()
+	if verA == 0 {
+		t.Fatal("expected iconVersion for 96x96 icon")
+	}
+	wIcon := request(h, "GET", iconURL(verA), "")
+	if wIcon.Code != 200 || wIcon.Header().Get("Content-Type") != "image/png" || !bytes.Equal(wIcon.Body.Bytes(), pngA) {
+		t.Fatalf("icon GET: %d %s", wIcon.Code, wIcon.Body.String())
+	}
+
+	// 3. Wrong or missing versions 404 (contract: client falls back to avatar).
+	if w := request(h, "GET", iconURL(0), ""); w.Code != 404 {
+		t.Fatalf("version 0 icon: %d", w.Code)
+	}
+	if w := request(h, "GET", iconURL(verA+1), ""); w.Code != 404 {
+		t.Fatalf("stale version icon: %d", w.Code)
+	}
+	if w := request(h, "GET", "/api/servers/icon/203.0.113.9:30120/1.png", ""); w.Code != 404 {
+		t.Fatalf("unknown endpoint icon: %d", w.Code)
+	}
+
+	// 4. Replacing the logo bumps the version and orphans the old URL.
+	pngB := makePNG(t, 96, 96, 200)
+	if w := request(h, "POST", "/api/serverlist/ingress", withIcon(validHeartbeat, base64.StdEncoding.EncodeToString(pngB))); w.Code != 200 {
+		t.Fatalf("heartbeat with new icon: %d %s", w.Code, w.Body.String())
+	}
+	verB := single()
+	if verB == 0 || verB == verA {
+		t.Fatalf("icon version should change: %d -> %d", verA, verB)
+	}
+	if w := request(h, "GET", iconURL(verB), ""); w.Code != 200 || !bytes.Equal(w.Body.Bytes(), pngB) {
+		t.Fatalf("new icon GET: %d", w.Code)
+	}
+	if w := request(h, "GET", iconURL(verA), ""); w.Code != 404 {
+		t.Fatalf("old icon URL should 404 after replacement: %d", w.Code)
+	}
+
+	// 5. A heartbeat without icon clears the logo (load_server_icon removed).
+	if w := request(h, "POST", "/api/serverlist/ingress", validHeartbeat); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	if v := single(); v != 0 {
+		t.Fatalf("iconVersion should clear, got %d", v)
+	}
+	if w := request(h, "GET", iconURL(verB), ""); w.Code != 404 {
+		t.Fatalf("cleared icon should 404: %d", w.Code)
+	}
+
+	// 6. Icons expire with their server entry after the heartbeat TTL.
+	if w := request(h, "POST", "/api/serverlist/ingress", withIcon(validHeartbeat, b64A)); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	verC := single()
+	if verC == 0 {
+		t.Fatal("expected iconVersion")
+	}
+	reg.mu.Lock()
+	reg.servers[ep].last = time.Now().Add(-heartbeatTTL - time.Second)
+	reg.mu.Unlock()
+	if w := request(h, "GET", iconURL(verC), ""); w.Code != 404 {
+		t.Fatalf("icon for expired server should 404: %d", w.Code)
+	}
+}
+
 func TestMalformedHeartbeats(t *testing.T) {
 	h := setupTest(t)
 	for _, body := range []string{`{}`, `null`, `[]`, `{`, `{} {}`, `{"port":-1}`, `{"port":65536}`, `{"ipOverride":"8.8.8.8"}`, `{"fallbackData":{"info":[]}}`, `{"fallbackData":{"dynamic":{"clients":-1}}}`, `{"fallbackData":{"dynamic":{"clients":1.5}}}`, `{"fallbackData":{"dynamic":{"clients":2147483648}}}`, `{"fallbackData":{"info":{"resources":[42]}}}`, `{"fallbackData":{"info":{"vars":[]}}}`, `{"fallbackData":{"players":{}}}`} {
@@ -1241,10 +1369,16 @@ func TestUpvotesFeaturedAndJoinLinks(t *testing.T) {
 		t.Fatalf("GET /v1/public/featured-servers missing featured server: %d %s", wFeaturedPub.Code, wFeaturedPub.Body.String())
 	}
 
-	// 7. Verify GET /join/{ep} sets X-CitizenFX-Url and renders nsmultiplayer.com/join/{ep}
+	// 7. Verify GET /join/{ep} sets X-CitizenFX-Url and renders the code-based
+	//    share URL — raw endpoints must never appear in rendered join/console
+	//    displays (join codes hide server IPs).
 	wJoin := request(h, "GET", "/join/127.0.0.1:30120", "")
-	if wJoin.Code != 200 || wJoin.Header().Get("X-CitizenFX-Url") != "http://127.0.0.1:30120/" || !strings.Contains(wJoin.Body.String(), "https://nsmultiplayer.com/join/127.0.0.1:30120") {
+	joinBody := wJoin.Body.String()
+	if wJoin.Code != 200 || wJoin.Header().Get("X-CitizenFX-Url") != "http://127.0.0.1:30120/" || !strings.Contains(joinBody, "https://nsmultiplayer.com/join/") {
 		t.Fatalf("GET /join/127.0.0.1:30120 failed: code=%d hdr=%q", wJoin.Code, wJoin.Header().Get("X-CitizenFX-Url"))
+	}
+	if strings.Contains(joinBody, "join/127.0.0.1:30120") || strings.Contains(joinBody, "connect 127.0.0.1:30120") {
+		t.Fatal("GET /join/{ep} leaked the raw endpoint into rendered join/console displays")
 	}
 
 	// 8. Verify default FXServer / empty hostname becomes AFXserver
@@ -1263,3 +1397,1249 @@ func TestUpvotesFeaturedAndJoinLinks(t *testing.T) {
 
 
 
+
+// ---------------------------------------------------------------------------
+// Keymaster key privacy, upvote allocation, support rules, email & Google auth
+// ---------------------------------------------------------------------------
+
+func sessionFor(t *testing.T, h http.Handler, username string) string {
+	t.Helper()
+	return registerTestUser(t, h, username)
+}
+
+func makeStaffSession(t *testing.T, username, role string) string {
+	t.Helper()
+	accMu.Lock()
+	defer accMu.Unlock()
+	var id int64
+	for i := range acc.Users {
+		if strings.EqualFold(acc.Users[i].Username, username) {
+			acc.Users[i].Role = role
+			id = acc.Users[i].ID
+		}
+	}
+	if id == 0 {
+		t.Fatalf("user %s not found", username)
+	}
+	sess := "test-sess-" + username + "-" + role
+	acc.Sessions[sess] = Session{UserID: id, Expires: time.Now().Add(time.Hour).Unix()}
+	return sess
+}
+
+func TestKeymasterKeysArePrivateToOwner(t *testing.T) {
+	h := setupTest(t)
+	sessA := sessionFor(t, h, "key_owner_a")
+	sessB := sessionFor(t, h, "key_snooper_b")
+
+	// A issues a key with a recognizable label.
+	form := url.Values{"label": {"A-SECRET-KEY-LABEL"}, "boundEndpoint": {"127.0.0.1:30120"}, "days": {"90"}}
+	req := httptest.NewRequest("POST", "/keymaster/create", strings.NewReader(form.Encode()))
+	req.RemoteAddr = "127.0.0.1:12345"
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("X-NSM-Session", sessA)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "A-SECRET-KEY-LABEL") {
+		t.Fatalf("owner could not issue key: %d", w.Code)
+	}
+
+	// B must not see A's key on the page or in the JSON API.
+	wB := requestAuth(h, "GET", "/keymaster", "", map[string]string{"X-NSM-Session": sessB})
+	if strings.Contains(wB.Body.String(), "A-SECRET-KEY-LABEL") {
+		t.Fatal("another user's server key is visible on /keymaster")
+	}
+	wBJ := requestAuth(h, "GET", "/api/keymaster/keys", "", map[string]string{"X-NSM-Session": sessB})
+	if strings.Contains(wBJ.Body.String(), "A-SECRET-KEY-LABEL") {
+		t.Fatal("another user's server key is visible in /api/keymaster/keys")
+	}
+
+	// Even an admin must not see other people's keys in Keymaster.
+	makeStaffSession(t, "key_snooper_b", "admin")
+	wAdm := requestAuth(h, "GET", "/keymaster", "", map[string]string{"X-NSM-Session": sessB})
+	if strings.Contains(wAdm.Body.String(), "A-SECRET-KEY-LABEL") {
+		t.Fatal("admin sees another user's keys in Keymaster — keys must be owner-only")
+	}
+
+	// The owner still sees their own.
+	wA := requestAuth(h, "GET", "/keymaster", "", map[string]string{"X-NSM-Session": sessA})
+	if !strings.Contains(wA.Body.String(), "A-SECRET-KEY-LABEL") {
+		t.Fatal("owner cannot see their own key on /keymaster")
+	}
+}
+
+func TestRegisterRequiresEmailAndReportsMailTruthfully(t *testing.T) {
+	h := setupTest(t)
+
+	// 1. No email -> rejected, no account created.
+	wNoMail := requestAuth(h, "POST", "/api/auth/register",
+		`{"Username":"no_email_user","Password":"Password123!"}`, nil)
+	if wNoMail.Code != 200 || !strings.Contains(wNoMail.Body.String(), "email") {
+		t.Fatalf("registration without email must fail with an email message: %d %s", wNoMail.Code, wNoMail.Body.String())
+	}
+	accMu.Lock()
+	created := findUser("no_email_user") != nil
+	accMu.Unlock()
+	if created {
+		t.Fatal("account was created without an email address")
+	}
+
+	// 2. Fake local emails are rejected too.
+	wFake := requestAuth(h, "POST", "/api/auth/register",
+		`{"Username":"fake_email_user","Password":"Password123!","Email":"fake_email_user@users.nsm.local"}`, nil)
+	if wFake.Code != 200 && wFake.Code != 400 {
+		t.Fatalf("unexpected status for fake email: %d", wFake.Code)
+	}
+	accMu.Lock()
+	created = findUser("fake_email_user") != nil
+	accMu.Unlock()
+	if created {
+		t.Fatal("account was created with a @users.nsm.local placeholder email")
+	}
+
+	// 3. With SMTP configured, the real verification code is delivered.
+	msgs := startSMTPCapture(t)
+	host, port, _ := net.SplitHostPort(smtpCaptureAddr(t))
+	t.Setenv("NSM_SMTP_HOST", host)
+	t.Setenv("NSM_SMTP_PORT", port)
+	t.Setenv("NSM_SMTP_USER", "support@nsmultiplayer.com")
+	t.Setenv("NSM_SMTP_PASS", "test-app-password")
+	wOK := requestAuth(h, "POST", "/api/auth/register",
+		`{"Username":"real_email_user","Password":"Password123!","Email":"real_email_user@example.com"}`, nil)
+	if wOK.Code != 200 {
+		t.Fatalf("registration with valid email failed: %d %s", wOK.Code, wOK.Body.String())
+	}
+	accMu.Lock()
+	u := findUser("real_email_user")
+	code := ""
+	if u != nil {
+		code = u.EmailVerifyCode
+	}
+	accMu.Unlock()
+	if code == "" {
+		t.Fatal("no verification code generated")
+	}
+	if msgs.count() != 1 || !strings.Contains(msgs.body(0), code) || !strings.Contains(msgs.body(0), "real_email_user@example.com") {
+		t.Fatalf("verification email was not delivered to the capture SMTP server: %v", msgs.all())
+	}
+	if !strings.Contains(wOK.Body.String(), "verificationRequired") {
+		t.Fatalf("register JSON must report verificationRequired: %s", wOK.Body.String())
+	}
+
+	// 4. Without SMTP configured the page must say the code was NOT emailed.
+	t.Setenv("NSM_SMTP_HOST", "")
+	reqNoSMTP := httptest.NewRequest("POST", "/register", strings.NewReader("username=no_smtp_user&password=Password123!&email=no_smtp_user@example.com"))
+	reqNoSMTP.RemoteAddr = "127.0.0.1:12345"
+	reqNoSMTP.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	wNoSMTP := httptest.NewRecorder()
+	h.ServeHTTP(wNoSMTP, reqNoSMTP)
+	if wNoSMTP.Code != 303 {
+		t.Fatalf("register form: %d %s", wNoSMTP.Code, wNoSMTP.Body.String())
+	}
+	loc := wNoSMTP.Header().Get("Location")
+	locDec, _ := url.QueryUnescape(loc)
+	if !strings.HasPrefix(loc, "/verify-email") || !strings.Contains(locDec, "could not be emailed") {
+		t.Fatalf("unconfigured SMTP must be reported honestly, got Location=%s", loc)
+	}
+}
+
+func TestSupportTicketsRequireLoginAndClosedTicketsGoToLog(t *testing.T) {
+	h := setupTest(t)
+	postForm := func(sess, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", path, strings.NewReader(body))
+		req.RemoteAddr = "127.0.0.1:12345"
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if sess != "" {
+			req.Header.Set("X-NSM-Session", sess)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+
+	// 1. Guests cannot open tickets.
+	supForm := url.Values{"subject": {"Guest attempt"}, "description": {"Should be rejected."}}
+	req := httptest.NewRequest("POST", "/support/requests", strings.NewReader(supForm.Encode()))
+	req.RemoteAddr = "127.0.0.1:12345"
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	wGuest := httptest.NewRecorder()
+	h.ServeHTTP(wGuest, req)
+	if wGuest.Code != 303 || !strings.HasPrefix(wGuest.Header().Get("Location"), "/login") {
+		t.Fatalf("guest ticket creation must redirect to login: %d %s", wGuest.Code, wGuest.Header().Get("Location"))
+	}
+
+	// 2. A signed-in user opens a ticket.
+	sess := sessionFor(t, h, "ticket_user")
+	tf := url.Values{
+		"email":       {"ticket_user@example.com"},
+		"category":    {"Bug Report"},
+		"subject":     {"SECRET-TICKET-SUBJECT-XYZ"},
+		"description": {"TICKET-BODY-PRIVATE-DETAILS"},
+	}
+	wT := postForm(sess, "/support/requests", tf.Encode())
+	if wT.Code != 303 || !strings.HasPrefix(wT.Header().Get("Location"), "/support/requests/") {
+		t.Fatalf("signed-in ticket creation failed: %d %s", wT.Code, wT.Header().Get("Location"))
+	}
+	ticketURL := wT.Header().Get("Location")
+	ticketID := strings.TrimPrefix(ticketURL, "/support/requests/")
+
+	// 3. Staff closes it -> it leaves the working lists and lands in the log.
+	staffSess := makeStaffSession(t, "ticket_user", "staff") // staff view of the queue
+	wClose := postForm(staffSess, "/support/requests/"+ticketID+"/status", "status=Closed")
+	if wClose.Code != 303 {
+		t.Fatalf("close failed: %d %s", wClose.Code, wClose.Body.String())
+	}
+	wSup := requestAuth(h, "GET", "/support", "", map[string]string{"X-NSM-Session": sess})
+	html := wSup.Body.String()
+	logAt := strings.Index(html, `id="closed-log"`)
+	if logAt < 0 {
+		t.Fatal("closed ticket log section missing")
+	}
+	if strings.Contains(html[:logAt], "SECRET-TICKET-SUBJECT-XYZ") {
+		t.Fatal("closed ticket still visible in the active staff/support lists")
+	}
+	rest := html[logAt:]
+	if !strings.Contains(rest, "SECRET-TICKET-SUBJECT-XYZ") || !strings.Contains(rest, "TICKET-BODY-PRIVATE-DETAILS") || !strings.Contains(rest, "ticket_user") {
+		t.Fatal("closed ticket log must record what the ticket was about")
+	}
+}
+
+func TestProfileNotificationsAndMessagesArePrivate(t *testing.T) {
+	h := setupTest(t)
+	sessA := sessionFor(t, h, "private_alice")
+	sessB := sessionFor(t, h, "private_bob")
+
+	accMu.Lock()
+	alice := findUser("private_alice")
+	if alice == nil {
+		accMu.Unlock()
+		t.Fatal("alice missing")
+	}
+	aliceID := alice.ID
+	addUserNotificationLocked(alice, "message", "SECRET-NOTIF-TITLE-ALICE", "SECRET-NOTIF-BODY-ALICE", "/account")
+	acc.DirectMessages = append(acc.DirectMessages, DirectMessage{
+		ID: 9001, FromUserID: aliceID, FromUser: "private_alice", ToUserID: aliceID, ToUser: "private_alice",
+		Body: "SECRET-DM-BODY-ALICE", CreatedAt: time.Now().Unix(),
+	})
+	accMu.Unlock()
+
+	// Owner sees their own inbox/notification feed.
+	wOwn := requestAuth(h, "GET", "/u/private_alice?tab=notifications", "", map[string]string{"X-NSM-Session": sessA})
+	if !strings.Contains(wOwn.Body.String(), "SECRET-NOTIF-BODY-ALICE") {
+		t.Fatal("owner should see their own notifications")
+	}
+
+	// Another signed-in user must not (any tab).
+	wB := requestAuth(h, "GET", "/u/private_alice?tab=notifications", "", map[string]string{"X-NSM-Session": sessB})
+	bodyB := wB.Body.String()
+	if strings.Contains(bodyB, "SECRET-NOTIF") || strings.Contains(bodyB, "SECRET-DM-BODY-ALICE") {
+		t.Fatal("another user can see this profile's private notifications/messages")
+	}
+
+	// Guests must not either.
+	wG := request(h, "GET", "/u/private_alice?tab=notifications", "")
+	if strings.Contains(wG.Body.String(), "SECRET-NOTIF") || strings.Contains(wG.Body.String(), "SECRET-DM-BODY-ALICE") {
+		t.Fatal("guest can see private notifications/messages")
+	}
+
+	// The messages tab of someone else's profile shows the VIEWER's inbox only.
+	wB2 := requestAuth(h, "GET", "/u/private_alice?tab=messages", "", map[string]string{"X-NSM-Session": sessB})
+	if strings.Contains(wB2.Body.String(), "SECRET-DM-BODY-ALICE") {
+		t.Fatal("messages tab leaks the profile owner's DMs")
+	}
+}
+
+func TestKeymasterUpvoteAllocationAndFreeTen(t *testing.T) {
+	h := setupTest(t)
+	sess := sessionFor(t, h, "upvote_owner")
+
+	// Every account starts with 10 free upvotes.
+	w := requestAuth(h, "GET", "/keymaster", "", map[string]string{"X-NSM-Session": sess})
+	if !strings.Contains(w.Body.String(), "10 free upvotes") || !strings.Contains(w.Body.String(), "2048") {
+		t.Fatal("keymaster must advertise the 10 free upvotes and free 2048 player slots")
+	}
+
+	// Issue a bound key so the allocation knows the owner's server endpoint.
+	form := url.Values{"label": {"Upvote Server"}, "boundEndpoint": {"127.0.0.1:30120"}, "days": {"90"}}
+	reqK := httptest.NewRequest("POST", "/keymaster/create", strings.NewReader(form.Encode()))
+	reqK.RemoteAddr = "127.0.0.1:12345"
+	reqK.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqK.Header.Set("X-NSM-Session", sess)
+	wK := httptest.NewRecorder()
+	h.ServeHTTP(wK, reqK)
+	if wK.Code != 200 {
+		t.Fatalf("key issue failed: %d", wK.Code)
+	}
+
+	// Slider: 7 upvotes on the server.
+	postForm := func(sess, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", path, strings.NewReader(body))
+		req.RemoteAddr = "127.0.0.1:12345"
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if sess != "" {
+			req.Header.Set("X-NSM-Session", sess)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+	if w := postForm(sess, "/keymaster/upvotes", "upvotes=7"); w.Code != 200 {
+		t.Fatalf("upvote allocation failed: %d", w.Code)
+	}
+	if w := request(h, "POST", "/api/serverlist/ingress", validHeartbeat); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	checkPower := func(want int64) {
+		t.Helper()
+		w1 := request(h, "GET", "/api/servers/single/127.0.0.1:30120", "")
+		var server struct {
+			Data ServerData
+		}
+		if json.Unmarshal(w1.Body.Bytes(), &server) != nil {
+			t.Fatal(w1.Body.String())
+		}
+		if server.Data.UpvotePower != want {
+			t.Fatalf("UpvotePower = %d, want %d", server.Data.UpvotePower, want)
+		}
+	}
+	checkPower(7)
+
+	// Clamping: 99 -> 10, -5 -> 0.
+	postForm(sess, "/keymaster/upvotes", "upvotes=99")
+	checkPower(10)
+	postForm(sess, "/keymaster/upvotes", "upvotes=-5")
+	checkPower(0)
+
+	// Guests are bounced to login.
+	reqG := httptest.NewRequest("POST", "/keymaster/upvotes", strings.NewReader("upvotes=5"))
+	reqG.RemoteAddr = "127.0.0.1:12345"
+	reqG.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	wG := httptest.NewRecorder()
+	h.ServeHTTP(wG, reqG)
+	if wG.Code != 303 || !strings.HasPrefix(wG.Header().Get("Location"), "/login") {
+		t.Fatalf("guest upvote allocation must redirect to login: %d", wG.Code)
+	}
+}
+
+func TestGoogleSignInFlow(t *testing.T) {
+	h := setupTest(t)
+
+	// 1. Not configured -> honest 503, no button on the login page.
+	w503 := request(h, "GET", "/auth/google", "")
+	if w503.Code != 503 || !strings.Contains(w503.Body.String(), "not configured") {
+		t.Fatalf("unconfigured /auth/google must 503 clearly: %d %s", w503.Code, w503.Body.String())
+	}
+	wLogin := request(h, "GET", "/login", "")
+	if strings.Contains(wLogin.Body.String(), "Sign in with Google") {
+		t.Fatal("Google button must be hidden when not configured")
+	}
+
+	// 2. Configured with mock token+userinfo endpoints -> full flow works.
+	var srvHits int
+	var mu sync.Mutex
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		srvHits++
+		mu.Unlock()
+		switch r.URL.Path {
+		case "/token":
+			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "tok-123"})
+		case "/userinfo":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"sub": "google-sub-1", "email": "google_user@example.com",
+				"email_verified": true, "name": "Google User",
+			})
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer mock.Close()
+	t.Setenv("NSM_GOOGLE_CLIENT_ID", "test-client-id")
+	t.Setenv("NSM_GOOGLE_CLIENT_SECRET", "test-client-secret")
+	t.Setenv("NSM_GOOGLE_TOKEN_URL", mock.URL+"/token")
+	t.Setenv("NSM_GOOGLE_USERINFO_URL", mock.URL+"/userinfo")
+
+	// Button is now shown.
+	wLogin2 := request(h, "GET", "/login", "")
+	if !strings.Contains(wLogin2.Body.String(), "Sign in with Google") {
+		t.Fatal("Google button must appear when configured")
+	}
+
+	// Start the flow and capture state.
+	wStart := request(h, "GET", "/auth/google", "")
+	if wStart.Code != 302 {
+		t.Fatalf("/auth/google: %d", wStart.Code)
+	}
+	loc, _ := url.Parse(wStart.Header().Get("Location"))
+	if !strings.Contains(loc.Host, "accounts.google.com") {
+		t.Fatalf("expected Google redirect, got %s", loc)
+	}
+	state := loc.Query().Get("state")
+	if state == "" {
+		t.Fatal("missing oauth state")
+	}
+	var gCookie string
+	for _, c := range wStart.Result().Cookies() {
+		if c.Name == "nsm_g_state" {
+			gCookie = c.Value
+		}
+	}
+	if gCookie != state {
+		t.Fatal("state cookie mismatch")
+	}
+
+	// Callback with valid state creates the account and signs in.
+	reqC := httptest.NewRequest("GET", "/auth/google/callback?code=authcode&state="+url.QueryEscape(state), nil)
+	reqC.RemoteAddr = "127.0.0.1:12345"
+	reqC.AddCookie(&http.Cookie{Name: "nsm_g_state", Value: state})
+	wC := httptest.NewRecorder()
+	h.ServeHTTP(wC, reqC)
+	if wC.Code != 303 {
+		t.Fatalf("callback: %d %s", wC.Code, wC.Body.String())
+	}
+	accMu.Lock()
+	gu := findUserByLoginOrEmail("google_user@example.com")
+	gu2 := false
+	for i := range acc.Users {
+		if acc.Users[i].GoogleID == "google-sub-1" {
+			gu2 = true
+		}
+	}
+	accMu.Unlock()
+	if gu == nil || !gu2 {
+		t.Fatal("Google account was not created/linked")
+	}
+	hasSession := false
+	for _, c := range wC.Result().Cookies() {
+		if c.Name == "nsm_session" && c.Value != "" {
+			hasSession = true
+		}
+	}
+	if !hasSession {
+		t.Fatal("no session cookie after Google sign-in")
+	}
+
+	// Replay/denied state -> rejected.
+	reqBad := httptest.NewRequest("GET", "/auth/google/callback?code=authcode&state=WRONG", nil)
+	reqBad.RemoteAddr = "127.0.0.1:12345"
+	reqBad.AddCookie(&http.Cookie{Name: "nsm_g_state", Value: state})
+	wBad := httptest.NewRecorder()
+	h.ServeHTTP(wBad, reqBad)
+	if wBad.Code != 400 {
+		t.Fatalf("state mismatch must 400: %d", wBad.Code)
+	}
+}
+
+// ---- minimal SMTP capture server for delivery tests ----
+
+var smtpCaptureMu sync.Mutex
+var smtpCaptureServers = map[*testing.T]*smtpCapture{}
+
+type smtpCapture struct {
+	mu   sync.Mutex
+	addr string
+	msgs []string
+}
+
+func (c *smtpCapture) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.msgs)
+}
+func (c *smtpCapture) body(i int) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if i < len(c.msgs) {
+		return c.msgs[i]
+	}
+	return ""
+}
+func (c *smtpCapture) all() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string{}, c.msgs...)
+}
+
+var lastSMTPCapture *smtpCapture
+
+func smtpCaptureAddr(t *testing.T) string {
+	t.Helper()
+	smtpCaptureMu.Lock()
+	defer smtpCaptureMu.Unlock()
+	if lastSMTPCapture == nil {
+		t.Fatal("no SMTP capture running")
+	}
+	return lastSMTPCapture.addr
+}
+
+func startSMTPCapture(t *testing.T) *smtpCapture {
+	t.Helper()
+	cap := &smtpCapture{}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	smtpCaptureMu.Lock()
+	lastSMTPCapture = cap
+	smtpCaptureMu.Unlock()
+	cap.addr = ln.Addr().String()
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				fmt.Fprintf(c, "220 capture ESMTP\r\n")
+				br := bufio.NewReader(c)
+				inData := false
+				var data strings.Builder
+				for {
+					line, err := br.ReadString('\n')
+					if err != nil {
+						return
+					}
+					trim := strings.TrimRight(line, "\r\n")
+					if inData {
+						if trim == "." {
+							inData = false
+							cap.mu.Lock()
+							cap.msgs = append(cap.msgs, data.String())
+							cap.mu.Unlock()
+							data.Reset()
+							fmt.Fprintf(c, "250 OK\r\n")
+							continue
+						}
+						data.WriteString(line)
+						data.WriteString("\n")
+						continue
+					}
+					upper := strings.ToUpper(trim)
+					switch {
+					case strings.HasPrefix(upper, "EHLO"), strings.HasPrefix(upper, "HELO"):
+						fmt.Fprintf(c, "250-capture\r\n250 AUTH PLAIN LOGIN\r\n")
+					case strings.HasPrefix(upper, "AUTH"):
+						fmt.Fprintf(c, "235 ok\r\n")
+					case strings.HasPrefix(upper, "DATA"):
+						inData = true
+						fmt.Fprintf(c, "354 end with .\r\n")
+					case strings.HasPrefix(upper, "QUIT"):
+						fmt.Fprintf(c, "221 bye\r\n")
+						return
+					default:
+						fmt.Fprintf(c, "250 OK\r\n")
+					}
+				}
+			}(conn)
+		}
+	}()
+	return cap
+}
+
+func TestJoinCodes(t *testing.T) {
+	h := setupTest(t)
+	sess := registerTestUser(t, h, "joinowner")
+
+	// 1. Each key gets its own join code ("changed per key").
+	wIssueA := requestAuth(h, "POST", "/api/keymaster/issue",
+		`{"label":"Join Alpha","boundEndpoint":"127.0.0.1:30120","ttlSeconds":3600}`, map[string]string{"X-NSM-Session": sess})
+	if wIssueA.Code != 201 {
+		t.Fatalf("issue key A: %d %s", wIssueA.Code, wIssueA.Body.String())
+	}
+	var issueA struct {
+		ServerKey string                 `json:"serverKey"`
+		Key       map[string]interface{} `json:"key"`
+	}
+	if err := json.Unmarshal(wIssueA.Body.Bytes(), &issueA); err != nil {
+		t.Fatalf("issue A json: %v", err)
+	}
+	codeA, _ := issueA.Key["joinCode"].(string)
+	idA, _ := issueA.Key["id"].(string)
+	if len(codeA) != joinCodeLen || !isJoinCode(codeA) {
+		t.Fatalf("key A join code %q is not a %d-char code", codeA, joinCodeLen)
+	}
+
+	wIssueB := requestAuth(h, "POST", "/api/keymaster/issue",
+		`{"label":"Join Beta","boundEndpoint":"127.0.0.1:30120","ttlSeconds":3600}`, map[string]string{"X-NSM-Session": sess})
+	if wIssueB.Code != 201 {
+		t.Fatalf("issue key B: %d %s", wIssueB.Code, wIssueB.Body.String())
+	}
+	var issueB struct {
+		Key map[string]interface{} `json:"key"`
+	}
+	json.Unmarshal(wIssueB.Body.Bytes(), &issueB)
+	codeB, _ := issueB.Key["joinCode"].(string)
+	if codeB == "" || codeB == codeA {
+		t.Fatalf("each key must get its own join code, got %q and %q", codeA, codeB)
+	}
+
+	// 2. A keyed heartbeat binds the code to the live endpoint; /join/<code>
+	//    resolves it WITHOUT exposing the IP in rendered displays.
+	hbKeyed := `{"port":30120,"fallbackData":{"players":[],"info":{"resources":["chat"],"vars":{"sv_nsmServerKey":"` + issueA.ServerKey + `"}},"dynamic":{"clients":3,"svMaxclients":48,"hostname":"Join Code Test"}}}`
+	if w := request(h, "POST", "/api/serverlist/ingress", hbKeyed); w.Code != 200 {
+		t.Fatalf("keyed heartbeat: %d %s", w.Code, w.Body.String())
+	}
+	wJoin := request(h, "GET", "/join/"+codeA, "")
+	if wJoin.Code != 200 {
+		t.Fatalf("GET /join/%s: %d %s", codeA, wJoin.Code, wJoin.Body.String())
+	}
+	if got := wJoin.Header().Get("X-CitizenFX-Url"); got != "http://127.0.0.1:30120/" {
+		t.Fatalf("join code must hand off the resolved endpoint to NSM.exe, got X-CitizenFX-Url=%q", got)
+	}
+	if got := wJoin.Header().Get("Location"); got != "https://nsmultiplayer.com/join/"+codeA {
+		t.Fatalf("join code page must canonicalize to the code URL, got Location=%q", got)
+	}
+	body := wJoin.Body.String()
+	if !strings.Contains(body, "https://nsmultiplayer.com/join/"+codeA) {
+		t.Fatalf("join code page missing code share URL: %s", body)
+	}
+	if strings.Contains(body, "join/127.0.0.1:30120") || strings.Contains(body, "connect 127.0.0.1:30120") {
+		t.Fatal("join code page leaked the raw endpoint into rendered displays")
+	}
+
+	// 3. Unknown codes 404.
+	if w := request(h, "GET", "/join/zzzzzzz", ""); w.Code != 404 {
+		t.Fatalf("unknown join code: want 404, got %d", w.Code)
+	}
+
+	// 4. Keymaster shows the shareable code URL to its owner.
+	wKM := requestAuth(h, "GET", "/keymaster", "", map[string]string{"X-NSM-Session": sess})
+	if wKM.Code != 200 || !strings.Contains(wKM.Body.String(), "nsmultiplayer.com/join/"+codeA) {
+		t.Fatalf("keymaster missing join code link: %d", wKM.Code)
+	}
+
+	// 5. Revoking a key kills its code; other keys' codes stay alive.
+	wRev := requestAuth(h, "POST", "/api/keymaster/revoke",
+		`{"keyId":"`+idA+`"}`, map[string]string{"X-NSM-Session": sess})
+	if wRev.Code != 200 {
+		t.Fatalf("revoke key A: %d %s", wRev.Code, wRev.Body.String())
+	}
+	if w := request(h, "GET", "/join/"+codeA, ""); w.Code != 404 {
+		t.Fatalf("revoked key's join code must die, got %d", w.Code)
+	}
+	if w := request(h, "GET", "/join/"+codeB, ""); w.Code != 200 {
+		t.Fatalf("other key's join code must survive, got %d", w.Code)
+	}
+
+	// 6. Keyless servers get an auto join code so every owner can hide their IP.
+	hbKeyless := `{"port":30125,"fallbackData":{"players":[],"info":{"resources":["chat"],"vars":{}},"dynamic":{"clients":1,"svMaxclients":48,"hostname":"Keyless Hide IP"}}}`
+	if w := request(h, "POST", "/api/serverlist/ingress", hbKeyless); w.Code != 200 {
+		t.Fatalf("keyless heartbeat: %d %s", w.Code, w.Body.String())
+	}
+	wList := request(h, "GET", "/servers", "")
+	m := regexp.MustCompile(`data-join-code="([a-z0-9]+)"`).FindStringSubmatch(wList.Body.String())
+	if m == nil {
+		t.Fatal("server list rows must carry a join code")
+	}
+	codeK := m[1]
+	wJoinK := request(h, "GET", "/join/"+codeK, "")
+	if wJoinK.Code != 200 || wJoinK.Header().Get("X-CitizenFX-Url") != "http://127.0.0.1:30125/" {
+		t.Fatalf("keyless join code: %d hdr=%q", wJoinK.Code, wJoinK.Header().Get("X-CitizenFX-Url"))
+	}
+	bodyK := wJoinK.Body.String()
+	if !strings.Contains(bodyK, "https://nsmultiplayer.com/join/"+codeK) {
+		t.Fatalf("keyless join page missing code share URL: %s", bodyK)
+	}
+	if strings.Contains(bodyK, "join/127.0.0.1:30125") || strings.Contains(bodyK, "connect 127.0.0.1:30125") {
+		t.Fatal("keyless join page leaked the raw endpoint into rendered displays")
+	}
+
+	// 7. Legacy /join/<ip:port> keeps working for old links (compat).
+	wLeg := request(h, "GET", "/join/127.0.0.1:30120", "")
+	if wLeg.Code != 200 || wLeg.Header().Get("X-CitizenFX-Url") != "http://127.0.0.1:30120/" {
+		t.Fatalf("legacy /join/{ep} broke: %d hdr=%q", wLeg.Code, wLeg.Header().Get("X-CitizenFX-Url"))
+	}
+
+	// 8. Per-server uniqueness like cfx.re: even ONE key running several
+	//    servers gives every server its own distinct code resolving to its
+	//    own endpoint.
+	wIssueU := requestAuth(h, "POST", "/api/keymaster/issue",
+		`{"label":"Multi Server","ttlSeconds":3600}`, map[string]string{"X-NSM-Session": sess})
+	var issueU struct {
+		ServerKey string `json:"serverKey"`
+	}
+	json.Unmarshal(wIssueU.Body.Bytes(), &issueU)
+	for _, port := range []string{"30131", "30132"} {
+		hbU := strings.Replace(validHeartbeat, `"port":30120`, `"port":`+port, 1)
+		if w := requestAuth(h, "POST", "/api/serverlist/ingress", hbU, map[string]string{"X-NSM-Server-Key": issueU.ServerKey}); w.Code != 200 {
+			t.Fatalf("multi-server heartbeat on %s: %d %s", port, w.Code, w.Body.String())
+		}
+	}
+	wList2 := request(h, "GET", "/servers", "")
+	pairs := regexp.MustCompile(`data-ep="(127\.0\.0\.1:3013[12])"\s+data-join-code="([a-z0-9]+)"`).FindAllStringSubmatch(wList2.Body.String(), -1)
+	if len(pairs) != 2 {
+		t.Fatalf("expected both multi-server rows to carry join codes, got %d: %s", len(pairs), wList2.Body.String()[:min(200, len(wList2.Body.String()))])
+	}
+	seen := map[string]string{}
+	for _, p := range pairs {
+		if !isJoinCode(p[2]) {
+			t.Fatalf("row %s has invalid join code %q", p[1], p[2])
+		}
+		if other, dup := seen[p[2]]; dup {
+			t.Fatalf("servers %s and %s share join code %q — every server needs its own", other, p[1], p[2])
+		}
+		seen[p[2]] = p[1]
+		w := request(h, "GET", "/join/"+p[2], "")
+		if w.Code != 200 || w.Header().Get("X-CitizenFX-Url") != "http://"+p[1]+"/" {
+			t.Fatalf("join code %s must resolve to %s, got %d hdr=%q", p[2], p[1], w.Code, w.Header().Get("X-CitizenFX-Url"))
+		}
+	}
+
+	// 9. FiveM-style auto-generation card: creating a key returns the
+	//    paste-ready server.cfg line AND the server's share link in one place.
+	form := url.Values{"label": {"Form Gen"}, "boundEndpoint": {"127.0.0.1:30140"}, "days": {"90"}}
+	reqF := httptest.NewRequest("POST", "/keymaster/create", strings.NewReader(form.Encode()))
+	reqF.RemoteAddr = "127.0.0.1:12345"
+	reqF.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqF.Header.Set("X-NSM-Session", sess)
+	wF := httptest.NewRecorder()
+	h.ServeHTTP(wF, reqF)
+	card := wF.Body.String()
+	if wF.Code != 200 || !strings.Contains(card, "sets sv_nsmServerKey") || !strings.Contains(card, "nsm_srv_") {
+		t.Fatalf("key generation card must include the auto-generated key and server.cfg snippet: %d", wF.Code)
+	}
+	if !strings.Contains(card, "https://nsmultiplayer.com/join/") {
+		t.Fatal("key generation card must include the server's join code link")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Server-id routing: the "does not exist on this host" incident (2026-11-13).
+// The panel embedded ids with {{printf "%q"}} inside <script>, html/template
+// JS-escaped the quotes again, and every /api/host/… request carried a
+// JSON-quoted id ("h123" instead of h123) that matched no registry entry.
+// These tests pin the exact live ids and both failure modes.
+// ---------------------------------------------------------------------------
+
+// resetHostMgr points the hosting singleton at a throwaway state file and
+// directory so hosting tests never touch the repo's real hosting.json.
+func resetHostMgr(t *testing.T) {
+	t.Helper()
+	tmp := t.TempDir()
+	m := &hostingManager{
+		path:      filepath.Join(tmp, "hosting.json"),
+		root:      filepath.Join(tmp, "hosted"),
+		procs:     map[string]*hostedProc{},
+		ftp:       map[string]*ftpServer{},
+		diskMemo:  map[string]diskMemo{},
+		usageMemo: map[string]usageMemoT{},
+	}
+	if err := os.MkdirAll(m.root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hostMgrV = m
+	hostOnce = sync.Once{}
+	hostOnce.Do(func() {}) // consume: hostMgr() must return the injected manager
+}
+
+func TestServerIDResolutionWithoutQuoteWrapping(t *testing.T) {
+	h := setupTest(t)
+	resetHostMgr(t)
+
+	// The two exact ids from the live incident, bound exactly as reported:
+	// h219273000 -> UID 2, h62716100 -> UID 1 (uid 1 is the seeded founder).
+	sessionFor(t, h, "id_owner_one") // first registered account gets uid 2
+	var uid1, uid2 int64 = 1, 2
+	accMu.Lock()
+	found := map[int64]bool{}
+	for i := range acc.Users {
+		found[acc.Users[i].ID] = true
+	}
+	acc.Sessions["test-sess-uid1"] = Session{UserID: uid1, Expires: time.Now().Add(time.Hour).Unix()}
+	acc.Sessions["test-sess-uid2"] = Session{UserID: uid2, Expires: time.Now().Add(time.Hour).Unix()}
+	accMu.Unlock()
+	if !found[uid1] || !found[uid2] {
+		t.Fatalf("incident mapping needs uid 1 and uid 2 to exist, have %v", found)
+	}
+	sess1, sess2 := "test-sess-uid1", "test-sess-uid2"
+
+	m := hostMgr()
+	m.mu.Lock()
+	for _, fx := range []*HostedServer{
+		{ID: "h219273000", Owner: uid2, OwnerName: "uid2", Name: "incident-one", CreatedAt: time.Now().Unix(), Status: hostOffline},
+		{ID: "h62716100", Owner: uid1, OwnerName: "uid1", Name: "incident-two", CreatedAt: time.Now().Unix(), Status: hostOffline},
+	} {
+		if err := os.MkdirAll(m.dirOf(fx), 0o755); err != nil {
+			m.mu.Unlock()
+			t.Fatal(err)
+		}
+		m.st.Servers = append(m.st.Servers, fx)
+	}
+	m.saveLocked()
+	m.mu.Unlock()
+
+	auth := func(sess string) map[string]string { return map[string]string{"X-NSM-Session": sess} }
+
+	// 1. Both live ids resolve for their owners: overview/stats AND console.
+	for _, tc := range []struct{ id, sess string }{
+		{"h219273000", sess2},
+		{"h62716100", sess1},
+	} {
+		w := requestAuth(h, "GET", "/api/host/"+tc.id+"/stats", "", auth(tc.sess))
+		if w.Code != 200 || strings.Contains(w.Body.String(), `"error"`) {
+			t.Fatalf("stats %s for owner must work: %d %s", tc.id, w.Code, w.Body.String())
+		}
+		w = requestAuth(h, "GET", "/api/host/"+tc.id+"/console?since=0", "", auth(tc.sess))
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"lines"`) {
+			t.Fatalf("console %s for owner must work: %d %s", tc.id, w.Code, w.Body.String())
+		}
+	}
+
+	// 2. Regression: cached panel pages sent JSON-quoted ids
+	//    (/api/host/%22h219273000%22/…). The boundary must normalize them.
+	w := requestAuth(h, "GET", "/api/host/%22h219273000%22/stats", "", auth(sess2))
+	if w.Code != 200 || strings.Contains(w.Body.String(), `"error"`) {
+		t.Fatalf("quoted id must resolve exactly like the clean id: %d %s", w.Code, w.Body.String())
+	}
+	w = requestAuth(h, "GET", "/api/host/%22h62716100%22/console?since=0", "", auth(sess1))
+	if w.Code != 200 {
+		t.Fatalf("quoted console id must resolve: %d %s", w.Code, w.Body.String())
+	}
+
+	// 3. Ownership still holds: never one account on another's server.
+	w = requestAuth(h, "GET", "/api/host/h219273000/stats", "", auth(sess1))
+	if w.Code != 404 || !strings.Contains(w.Body.String(), "belongs to a different account") {
+		t.Fatalf("cross-account access must fail with the ownership message: %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "pid") || strings.Contains(w.Body.String(), "servers loaded") {
+		t.Fatalf("client message must not leak host diagnostics: %s", w.Body.String())
+	}
+
+	// 4. Root fix: the panel page embeds the id as a plain JS string.
+	w = requestAuth(h, "GET", "/dashboard/h219273000", "", auth(sess2))
+	if w.Code != 200 {
+		t.Fatalf("dashboard page for owned server must load: %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "var ID = \"h219273000\";") {
+		t.Fatalf("dashboard must embed the plain id, got: %s", idSnippet(body))
+	}
+	if strings.Contains(body, "var ID = \"\\\"") {
+		t.Fatalf("dashboard id is still double-quoted: %s", idSnippet(body))
+	}
+
+	// 5. Registration survives a host restart (registry reload from disk).
+	m.mu.Lock()
+	state := m.st
+	m.mu.Unlock()
+	if b, err := os.ReadFile(m.path); err != nil || len(b) == 0 {
+		t.Fatalf("registry must persist to disk: %v", err)
+	}
+	m2 := &hostingManager{path: m.path, root: m.root, procs: map[string]*hostedProc{}, ftp: map[string]*ftpServer{}, diskMemo: map[string]diskMemo{}, usageMemo: map[string]usageMemoT{}}
+	if b, err := os.ReadFile(m2.path); err == nil {
+		_ = json.Unmarshal(b, &m2.st)
+	}
+	if m2.findOwned("h219273000", uid2) == nil || m2.findOwned("h62716100", uid1) == nil {
+		t.Fatalf("ids must resolve after restart reload: %+v", m2.st.Servers)
+	}
+	if len(m2.st.Servers) != len(state.Servers) {
+		t.Fatalf("restart must reload every server: %d != %d", len(m2.st.Servers), len(state.Servers))
+	}
+}
+
+func idSnippet(body string) string {
+	i := strings.Index(body, "var ID = ")
+	if i < 0 {
+		return "<var ID missing>"
+	}
+	s := body[i:]
+	if len(s) > 60 {
+		s = s[:60]
+	}
+	return s
+}
+
+// ---------------------------------------------------------------------------
+// Resource limits (14) + live server/VPS monitoring (13, 15)
+// ---------------------------------------------------------------------------
+
+func TestHostResourceLimitsEnforcementAndVPSMetrics(t *testing.T) {
+	h := setupTest(t)
+	resetHostMgr(t)
+
+	// 1. Configured maximums: 64 cores / 32 GB / 120 GB everywhere.
+	lim := defaultHostLimits()
+	if lim.CPUCores != 64 || lim.RAMMB != 32*1024 || lim.DiskMB != 120*1024 {
+		t.Fatalf("configured maximums must be 64 cores / 32768 MB / 122880 MB, got %+v", lim)
+	}
+
+	// 2. Older records are backfilled on load (host restart path).
+	m := hostMgr()
+	m.mu.Lock()
+	srv := &HostedServer{ID: "hlimits01", Owner: 2, OwnerName: "u2", Name: "limits", CreatedAt: time.Now().Unix(), Status: hostOffline}
+	if err := os.MkdirAll(m.dirOf(srv), 0o755); err != nil {
+		m.mu.Unlock()
+		t.Fatal(err)
+	}
+	m.st.Servers = append(m.st.Servers, srv)
+	m.normalizeLocked()
+	if got := m.find("hlimits01").Limits; got != lim {
+		t.Fatalf("normalizeLocked must backfill limits, got %+v", got)
+	}
+	m.saveLocked()
+	m.mu.Unlock()
+
+	// 3. The stats API reports limits and whole-VPS readings alongside the
+	//    server's own usage (permission: the owner's session).
+	sessionFor(t, h, "limits_owner")
+	var limUID int64
+	accMu.Lock()
+	for i := range acc.Users {
+		if strings.EqualFold(acc.Users[i].Username, "limits_owner") {
+			limUID = acc.Users[i].ID
+		}
+	}
+	accMu.Unlock()
+	if limUID == 0 {
+		t.Fatal("limits_owner must exist")
+	}
+	m.mu.Lock()
+	m.find("hlimits01").Owner = limUID
+	m.mu.Unlock()
+	sess := "test-sess-limits"
+	accMu.Lock()
+	acc.Sessions[sess] = Session{UserID: limUID, Expires: time.Now().Add(time.Hour).Unix()}
+	accMu.Unlock()
+	w := requestAuth(h, "GET", "/api/host/hlimits01/stats", "", map[string]string{"X-NSM-Session": sess})
+	if w.Code != 200 {
+		t.Fatalf("stats must load for owner: %d %s", w.Code, w.Body.String())
+	}
+	var payload struct {
+		Limits hostLimits `json:"limits"`
+		VPS    struct {
+			Cores       int   `json:"cores"`
+			RAMTotalMB  int64 `json:"ramTotalMB"`
+			DiskTotalMB int64 `json:"diskTotalMB"`
+		} `json:"vps"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Limits != lim {
+		t.Fatalf("stats must carry the configured maximums, got %+v", payload.Limits)
+	}
+	if payload.VPS.Cores <= 0 {
+		t.Fatalf("vps readings must report real core count, got %+v", payload.VPS)
+	}
+	if runtime.GOOS == "linux" && (payload.VPS.RAMTotalMB <= 0 || payload.VPS.DiskTotalMB <= 0) {
+		t.Fatalf("on linux the vps ram/disk totals must be real, got %+v", payload.VPS)
+	}
+
+	// 4. The storage maximum is enforced at the write path — a city at its
+	//    cap refuses new writes instead of silently filling the disk.
+	m.mu.Lock()
+	cur := m.find("hlimits01")
+	cur.Limits.DiskMB = 1 // one megabyte cap for the test
+	m.mu.Unlock()
+	_ = os.WriteFile(filepath.Join(m.dirOf(cur), "pad.bin"), make([]byte, 2<<20), 0o600)
+	m.mu.Lock()
+	m.diskMemo[cur.ID] = diskMemo{}
+	m.mu.Unlock()
+	w = requestAuth(h, "POST", "/api/host/hlimits01/file/write",
+		`{"path":"server.cfg","content":"test"}`, map[string]string{"X-NSM-Session": sess})
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "storage limit reached") {
+		t.Fatalf("over-cap write must be refused with the limit message: %d %s", w.Code, w.Body.String())
+	}
+
+	// 5. Real child-process enforcement on Linux: the memory cap lands in the
+	//    child's RLIMIT_AS.
+	if runtime.GOOS == "linux" {
+		cmd := exec.Command("sleep", "2")
+		if err := cmd.Start(); err != nil {
+			t.Skip("no sleep binary:", err)
+		}
+		defer cmd.Process.Kill()
+		if applied := applyChildLimits(cmd.Process.Pid, hostLimits{CPUCores: 1, RAMMB: 512}); applied == "" {
+			t.Fatal("child limits must report what they applied")
+		}
+		var rl syscall.Rlimit
+		if err := prlimit64(cmd.Process.Pid, syscall.RLIMIT_AS, nil, &rl); err != nil {
+			t.Fatal("read back rlimit:", err)
+		}
+		if rl.Cur != 512<<20 {
+			t.Fatalf("child RLIMIT_AS must be the configured cap, got %d", rl.Cur)
+		}
+	}
+
+	// 6. hostVPSUsage is real on Linux: non-trivial totals, coherent values.
+	if runtime.GOOS == "linux" {
+		v := hostVPSUsage()
+		if v.Cores <= 0 || v.RAMTotalMB <= 0 || v.DiskTotalMB <= 0 || v.RAMMB < 0 || v.DiskMB < 0 {
+			t.Fatalf("linux vps metrics must be real and non-negative: %+v", v)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// FTP (item 8): real control+data conversations over real sockets.
+// ---------------------------------------------------------------------------
+
+type ftpTestClient struct {
+	c   net.Conn
+	r   *bufio.Reader
+}
+
+func ftpDial(t *testing.T, port int) *ftpTestClient {
+	t.Helper()
+	c, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Fatalf("ftp dial: %v", err)
+	}
+	cl := &ftpTestClient{c: c, r: bufio.NewReader(c)}
+	if code := cl.read(); code != 220 {
+		t.Fatalf("greeting: %d", code)
+	}
+	return cl
+}
+
+func (f *ftpTestClient) read() int {
+	line, err := f.r.ReadString('\n')
+	if err != nil {
+		return -1
+	}
+	var code int
+	fmt.Sscanf(line, "%d", &code)
+	return code
+}
+
+func (f *ftpTestClient) cmd(t *testing.T, format string, args ...interface{}) int {
+	t.Helper()
+	fmt.Fprintf(f.c, format+"\r\n", args...)
+	return f.read()
+}
+
+func (f *ftpTestClient) pasv(t *testing.T) net.Conn {
+	t.Helper()
+	fmt.Fprintf(f.c, "PASV\r\n")
+	line, err := f.r.ReadString('\n')
+	if err != nil {
+		t.Fatalf("pasv read: %v", err)
+	}
+	var a, b, c, d, p1, p2 int
+	if _, err := fmt.Sscanf(line, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)", &a, &b, &c, &d, &p1, &p2); err != nil {
+		t.Fatalf("pasv parse %q: %v", line, err)
+	}
+	addr := fmt.Sprintf("%d.%d.%d.%d:%d", a, b, c, d, p1*256+p2)
+	if addr == "127.0.0.1:0" {
+		t.Fatal("pasv advertised nothing")
+	}
+	dconn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("pasv data dial %s: %v", addr, err)
+	}
+	return dconn
+}
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	_ = l.Close()
+	return port
+}
+
+func TestFTPCredentialsTransfersAndIsolation(t *testing.T) {
+	setupTest(t)
+	resetHostMgr(t)
+	m := hostMgr()
+
+	mk := func(id, user, pass string) *HostedServer {
+		s := &HostedServer{ID: id, Owner: 2, OwnerName: "u2", Name: id, CreatedAt: time.Now().Unix(), Status: hostOffline,
+			FTPUser: user, FTPPass: pass, FTPPort: freePort(t), PassivePort: freePort(t)}
+		if err := os.MkdirAll(m.dirOf(s), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		m.mu.Lock()
+		m.st.Servers = append(m.st.Servers, s)
+		m.mu.Unlock()
+		m.startFTP(s)
+		return s
+	}
+	sA := mk("ftp-a", "user_a", "pass_a_123")
+	sB := mk("ftp-b", "user_b", "pass_b_456")
+
+	// 1. Login with the generated credentials works; wrong password is refused.
+	cl := ftpDial(t, sA.FTPPort)
+	if code := cl.cmd(t, "USER user_a"); code != 331 {
+		t.Fatalf("USER: %d", code)
+	}
+	if code := cl.cmd(t, "PASS wrong"); code != 530 {
+		t.Fatalf("wrong password must be refused: %d", code)
+	}
+	if code := cl.cmd(t, "USER user_a"); code != 331 {
+		t.Fatalf("USER again: %d", code)
+	}
+	if code := cl.cmd(t, "PASS pass_a_123"); code != 230 {
+		t.Fatalf("login must succeed: %d", code)
+	}
+
+	// 2. Upload (STOR), directory listing (LIST), download (RETR) round-trip.
+	if code := cl.cmd(t, "TYPE I"); code != 200 {
+		t.Fatalf("TYPE: %d", code)
+	}
+	d := cl.pasv(t)
+	if code := cl.cmd(t, "STOR hello.txt"); code != 150 {
+		t.Fatalf("STOR: %d", code)
+	}
+	payload := "hello from the ftp test"
+	if _, err := d.Write([]byte(payload)); err != nil {
+		t.Fatal(err)
+	}
+	_ = d.Close()
+	if code := cl.read(); code != 226 {
+		t.Fatalf("STOR complete: %d", code)
+	}
+	if b, err := os.ReadFile(filepath.Join(m.serverRoot(sA), "hello.txt")); err != nil || string(b) != payload {
+		t.Fatalf("uploaded file wrong: %v %q", err, b)
+	}
+
+	d = cl.pasv(t)
+	if code := cl.cmd(t, "LIST"); code != 150 {
+		t.Fatalf("LIST: %d", code)
+	}
+	listing, _ := io.ReadAll(d)
+	_ = d.Close()
+	if code := cl.read(); code != 226 {
+		t.Fatalf("LIST complete: %d", code)
+	}
+	if !strings.Contains(string(listing), "hello.txt") {
+		t.Fatalf("listing must show the uploaded file: %q", listing)
+	}
+
+	d = cl.pasv(t)
+	if code := cl.cmd(t, "RETR hello.txt"); code != 150 {
+		t.Fatalf("RETR: %d", code)
+	}
+	got, _ := io.ReadAll(d)
+	_ = d.Close()
+	if code := cl.read(); code != 226 {
+		t.Fatalf("RETR complete: %d", code)
+	}
+	if string(got) != payload {
+		t.Fatalf("download mismatch: %q", got)
+	}
+
+	// 3. Password change applies to the very next login (live credentials).
+	m.mu.Lock()
+	m.find("ftp-a").FTPPass = "brand_new_789"
+	m.mu.Unlock()
+	cl2 := ftpDial(t, sA.FTPPort)
+	if code := cl2.cmd(t, "USER user_a"); code != 331 {
+		t.Fatalf("USER: %d", code)
+	}
+	if code := cl2.cmd(t, "PASS brand_new_789"); code != 230 {
+		t.Fatalf("new password must work immediately: %d", code)
+	}
+	_ = cl2.c.Close()
+
+	// 4. Isolation: server B's credentials never open server A's endpoint.
+	cl3 := ftpDial(t, sA.FTPPort)
+	if code := cl3.cmd(t, "USER user_b"); code != 331 {
+		t.Fatalf("USER: %d", code)
+	}
+	if code := cl3.cmd(t, "PASS pass_b_456"); code != 530 {
+		t.Fatalf("cross-user login must fail: %d", code)
+	}
+	_ = cl3.c.Close()
+	cl5 := ftpDial(t, sB.FTPPort)
+	if code := cl5.cmd(t, "USER user_a"); code != 331 {
+		t.Fatalf("USER: %d", code)
+	}
+	if code := cl5.cmd(t, "PASS brand_new_789"); code != 530 {
+		t.Fatalf("reverse cross-user login must fail: %d", code)
+	}
+	_ = cl5.c.Close()
+
+	// 5. Reconnect after an FTP service restart.
+	m.mu.Lock()
+	if fs, ok := m.ftp["ftp-a"]; ok {
+		fs.Close()
+		delete(m.ftp, "ftp-a")
+	}
+	m.mu.Unlock()
+	m.startFTP(sA)
+	cl4 := ftpDial(t, sA.FTPPort)
+	if code := cl4.cmd(t, "USER user_a"); code != 331 {
+		t.Fatalf("USER after restart: %d", code)
+	}
+	if code := cl4.cmd(t, "PASS brand_new_789"); code != 230 {
+		t.Fatalf("login after restart: %d", code)
+	}
+	_ = cl4.c.Close()
+	_ = cl.c.Close()
+}
+
+// ---------------------------------------------------------------------------
+// CPU sampling bookkeeping + server clock in the API payloads.
+// ---------------------------------------------------------------------------
+
+func TestCPUSamplingAndServerTimePayloads(t *testing.T) {
+	hh := setupTest(t)
+	resetHostMgr(t)
+	m := hostMgr()
+	sess := "test-sess-metrics"
+	sessionFor(t, hh, "metrics_owner")
+	var uid int64
+	accMu.Lock()
+	for i := range acc.Users {
+		if strings.EqualFold(acc.Users[i].Username, "metrics_owner") {
+			uid = acc.Users[i].ID
+		}
+	}
+	acc.Sessions[sess] = Session{UserID: uid, Expires: time.Now().Add(time.Hour).Unix()}
+	accMu.Unlock()
+
+	srv := &HostedServer{ID: "hmetrics1", Owner: uid, OwnerName: "metrics_owner", Name: "metrics", CreatedAt: time.Now().Unix(), Status: hostOffline}
+	m.mu.Lock()
+	m.st.Servers = append(m.st.Servers, srv)
+	m.mu.Unlock()
+
+	// 1. Stats carries the authoritative server clock for the dashboard.
+	w := requestAuth(hh, "GET", "/api/host/hmetrics1/stats", "", map[string]string{"X-NSM-Session": sess})
+	if w.Code != 200 {
+		t.Fatalf("stats: %d", w.Code)
+	}
+	var payload struct {
+		ServerTime int64  `json:"serverTime"`
+		ServerTz   string `json:"serverTz"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UnixMilli()
+	if payload.ServerTime < now-5000 || payload.ServerTime > now+5000 {
+		t.Fatalf("serverTime must be the host clock, got %d (now %d)", payload.ServerTime, now)
+	}
+	if payload.ServerTz == "" {
+		t.Fatal("serverTz must name the host timezone")
+	}
+
+	// 2. CPU sampling keeps its raw-tick baseline across calls (regression:
+	// the percentage used to overwrite the baseline and read 0% afterwards).
+	if runtime.GOOS == "linux" {
+		cmd := exec.Command("sh", "-c", "while :; do :; done")
+		if err := cmd.Start(); err != nil {
+			t.Skip("no sh:", err)
+		}
+		defer cmd.Process.Kill()
+		p := &hostedProc{cmd: cmd, lastTime: time.Now(), lastCPU: 0}
+		time.Sleep(700 * time.Millisecond)
+		c1, _ := procUsage(cmd.Process.Pid, p)
+		base1 := p.lastCPU
+		time.Sleep(700 * time.Millisecond)
+		c2, _ := procUsage(cmd.Process.Pid, p)
+		if base1 <= 0 {
+			t.Fatalf("baseline must hold raw ticks, got %v", base1)
+		}
+		if p.lastCPU <= base1 {
+			t.Fatalf("ticks must advance: %v -> %v", base1, p.lastCPU)
+		}
+		if c1 < 0 || c2 < 0 || c2 > 200 {
+			t.Fatalf("busy-loop cpu must be plausible: %v %v", c1, c2)
+		}
+	}
+}

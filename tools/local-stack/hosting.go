@@ -1,0 +1,2054 @@
+// hosting.go — NSM Hosting: the game-server hosting department of the NSM
+// website. One standard package, one server per NSM account, fully automatic
+// provisioning on this machine (the VPS):
+//
+//	official nsm-server files -> isolated city directory -> unique TCP/UDP
+//	ports from the 500-port pool -> generated server.cfg -> registered in the
+//	store -> managed from /dashboard/<id> (console, overview, files, ports).
+//
+// Every status, metric and file operation reflects the real machine: the
+// process is really spawned, console lines are its real output, CPU/RAM come
+// from the OS, disk usage is walked from the city directory, and ports are
+// tracked in hosting.json (the store) so they can never collide.
+package main
+
+import (
+	"bufio"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"context"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+// ---------------------------------------------------------------------------
+// package + model
+// ---------------------------------------------------------------------------
+
+const (
+	hostingPortFirst = 30100
+	hostingPortLast  = 30599 // inclusive — exactly 500 ports
+	hostingDirEnv    = "NSM_HOSTING_DIR"
+	serverExeEnv     = "NSM_SERVER_EXE"
+)
+
+// HostingPackage is the single standard NSM Hosting package. Every customer
+// receives exactly this; there are no tiers.
+type HostingPackage struct {
+	Name     string
+	Slots    int
+	CPUCores int
+	RAMGB    int
+	DiskGB   int
+	Ports    int
+	Blurb    string
+}
+
+var hostingPackage = HostingPackage{
+	Name:   "NSM Standard",
+	Slots:    2048,
+	CPUCores: 64,
+	RAMGB:    32,
+	DiskGB:   120,
+	Ports:  5,
+	Blurb:  "The one and only NSM hosting package — full-power cities for everyone.",
+}
+
+// Hosting status values (provisioning lifecycle).
+const (
+	hostPending    = "pending"
+	hostInstalling = "installing"
+	hostStarting   = "starting"
+	hostOnline     = "online"
+	hostStopping   = "stopping"
+	hostOffline    = "offline"
+	hostError      = "error"
+)
+
+// HostedServer is one customer city.
+type HostedServer struct {
+	KeyID  string `json:"keyId,omitempty"`  // keymaster server key id (auto-issued)
+	KeyRaw string `json:"keyRaw,omitempty"` // raw key written into server.cfg (owner-only)
+	ID          string   `json:"id"`
+	Owner       int64    `json:"owner"`
+	OwnerName   string   `json:"ownerName"`
+	Name        string   `json:"name"`
+	Region      string   `json:"region"`
+	GameTCPPort int      `json:"gameTcpPort"`
+	GameUDPPort int      `json:"gameUdpPort"`
+	FTPPort     int      `json:"ftpPort"`
+	PassivePort int      `json:"passivePort"`
+	ExtraPorts  []int    `json:"extraPorts"`
+	Endpoint    string   `json:"endpoint"`
+	JoinCode    string   `json:"joinCode"`
+	FTPUser     string   `json:"ftpUser"`
+	FTPPass     string   `json:"ftpPass"`
+	Status      string   `json:"status"`
+	Note        string   `json:"note,omitempty"`
+	ExeRel      string   `json:"exeRel,omitempty"`
+	CreatedAt   int64    `json:"createdAt"`
+	Limits      hostLimits `json:"limits"`
+	LastStarted int64    `json:"lastStarted,omitempty"`
+	Console     []string `json:"console,omitempty"`
+	ConsoleSeq  int64    `json:"consoleSeq"`
+	Sched       []hostSchedule `json:"sched,omitempty"`
+	Favorite    bool           `json:"favorite,omitempty"`
+	PlanTier    string         `json:"planTier,omitempty"`
+	PlanUpvotes int            `json:"planUpvotes,omitempty"`
+	DBs         []hostedDatabase `json:"dbs,omitempty"`
+}
+
+type hostingState struct {
+	Servers []*HostedServer `json:"servers"`
+}
+
+var errAlreadyOwns = errors.New("each NSM account can run up to 5 servers")
+
+// hostLimits are the CONFIGURED MAXIMUMS every NSM hosted server runs under.
+// They are caps, not reservations — the physical VPS may have less capacity
+// (hostVPSUsage reports that separately and the panel labels both clearly).
+type hostLimits struct {
+	CPUCores int   `json:"cpuCores"` // configured maximum CPU cores
+	RAMMB    int64 `json:"ramMB"`    // configured maximum memory, MB
+	DiskMB   int64 `json:"diskMB"`   // configured maximum storage, MB
+}
+
+func defaultHostLimits() hostLimits {
+	return hostLimits{CPUCores: 64, RAMMB: 32 * 1024, DiskMB: 120 * 1024}
+}
+
+type hostedProc struct {
+	cmd      *exec.Cmd
+	in       io.WriteCloser
+	done     chan struct{}
+	lastCPU  float64
+	lastTime time.Time
+}
+
+type hostingManager struct {
+	mu       sync.Mutex
+	st       hostingState
+	path     string
+	root     string
+	procs    map[string]*hostedProc
+	ftp      map[string]*ftpServer
+	firewall      bool
+	firewallNote  string
+	diskMemo map[string]diskMemo
+	usageMemo map[string]usageMemoT
+}
+
+type diskMemo struct {
+	mb  int64
+	at  time.Time
+}
+
+type usageMemoT struct {
+	u  hostUsage
+	at time.Time
+}
+
+var (
+	hostOnce sync.Once
+	hostMgrV *hostingManager
+)
+
+func hostMgr() *hostingManager {
+	hostOnce.Do(func() {
+		root := os.Getenv(hostingDirEnv)
+		if root == "" {
+			root = filepath.Join(".", "hosted")
+		}
+		m := &hostingManager{
+			path:     "hosting.json",
+			root:     root,
+			procs:    map[string]*hostedProc{},
+			ftp:      map[string]*ftpServer{},
+			diskMemo: map[string]diskMemo{},
+			usageMemo: map[string]usageMemoT{},
+		}
+		hostMgrV = m
+		if b, err := os.ReadFile(m.path); err == nil {
+			_ = json.Unmarshal(b, &m.st)
+		}
+		m.normalizeLocked()
+		_ = os.MkdirAll(m.root, 0o755)
+		for _, s := range m.st.Servers {
+			if s.FTPPort > 0 {
+				m.startFTP(s)
+			}
+			if s.Status == hostOnline || s.Status == hostStarting {
+				s.Status = hostOffline
+				m.logNL(s, "[system] panel restarted — server is offline, press Start")
+			}
+		}
+		m.saveLocked()
+	})
+	return hostMgrV
+}
+
+// normalizeLocked enforces the store-level invariants: one server per
+// account (keep the oldest) and well-formed records.
+func (m *hostingManager) normalizeLocked() {
+	// The game endpoint is ONE port serving TCP and UDP - older records
+	// allocated two, which broke joins ("Failed to get info from server").
+	for _, srv := range m.st.Servers {
+		if srv.GameUDPPort > 0 && srv.GameTCPPort != srv.GameUDPPort {
+			srv.GameTCPPort = srv.GameUDPPort
+		}
+	}
+	seen := map[int64]int{}
+	kept := m.st.Servers[:0]
+	for _, s := range m.st.Servers {
+		if s.Owner == 0 || seen[s.Owner] >= hostingMaxPerOwner {
+			continue
+		}
+		seen[s.Owner]++
+		if s.Status == "" {
+			s.Status = hostOffline
+		}
+		if s.Limits.CPUCores == 0 && s.Limits.RAMMB == 0 && s.Limits.DiskMB == 0 {
+			s.Limits = defaultHostLimits()
+		}
+		kept = append(kept, s)
+	}
+	m.st.Servers = kept
+	// never allow two cities to share a game port
+	portSeen := map[int]bool{}
+	for i := range m.st.Servers {
+		s := m.st.Servers[i]
+		if !portSeen[s.GameTCPPort] {
+			portSeen[s.GameTCPPort] = true
+			continue
+		}
+		if np, err := m.allocPortLocked(); err == nil && np != 0 {
+			old := s.GameTCPPort
+			s.GameTCPPort = np
+			s.GameUDPPort = np
+			portSeen[np] = true
+			log.Printf("[hosting] city %s shared port %d with another city — moved to %d", s.ID, old, np)
+		}
+	}
+}
+
+func (m *hostingManager) saveLocked() {
+	b, _ := json.MarshalIndent(&m.st, "", "  ")
+	tmp := m.path + ".tmp"
+	if os.WriteFile(tmp, b, 0o600) == nil {
+		_ = os.Rename(tmp, m.path)
+	}
+}
+
+// stripANSI removes terminal color codes so the web console stays readable
+// (the text itself is preserved exactly).
+func stripANSI(line string) string {
+	var b strings.Builder
+	i := 0
+	for i < len(line) {
+		if line[i] == 0x1b && i+1 < len(line) && line[i+1] == '[' {
+			j := i + 2
+			for j < len(line) {
+				c := line[j]
+				j++
+				if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+					break
+				}
+			}
+			i = j
+			continue
+		}
+		b.WriteByte(line[i])
+		i++
+	}
+	return strings.TrimRight(b.String(), "\r")
+}
+
+// logNL appends a console line. Caller must hold m.mu.
+func (m *hostingManager) logNL(s *HostedServer, line string) {
+	line = stripANSI(line)
+	s.ConsoleSeq++
+	s.Console = append(s.Console, fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), line))
+	if len(s.Console) > 500 {
+		s.Console = s.Console[len(s.Console)-500:]
+	}
+}
+
+// appendLog is the locking variant of logNL.
+func (m *hostingManager) appendLog(s *HostedServer, line string) {
+	m.mu.Lock()
+	if cur := m.find(s.ID); cur != nil {
+		m.logNL(cur, line)
+		m.saveLocked()
+	}
+	m.mu.Unlock()
+}
+
+func (m *hostingManager) setStatus(s *HostedServer, status string) {
+	m.mu.Lock()
+	if cur := m.find(s.ID); cur != nil {
+		cur.Status = status
+		m.saveLocked()
+	}
+	m.mu.Unlock()
+}
+
+// cleanServerID normalizes a server id arriving from a URL, query parameter
+// or request body. Cached or hand-built clients have wrapped ids in extra
+// quotation marks (JSON-style), which made lookups fail with "does not exist
+// on this host" even though the server was registered. Real ids never contain
+// quote characters, so removing them is lossless.
+func cleanServerID(id string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '"', '\'', '\\':
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(id))
+}
+
+func (m *hostingManager) find(id string) *HostedServer {
+	id = cleanServerID(id)
+	for _, s := range m.st.Servers {
+		if cleanServerID(s.ID) == id {
+			return s
+		}
+	}
+	return nil
+}
+
+// findOwned returns the entry with this id owned by owner — robust against
+// duplicate ids from old data (a foreign copy earlier in the list must not
+// shadow the caller's own server).
+func (m *hostingManager) findOwned(id string, owner int64) *HostedServer {
+	id = cleanServerID(id)
+	var first *HostedServer
+	for _, s := range m.st.Servers {
+		if cleanServerID(s.ID) != id {
+			continue
+		}
+		if s.Owner == owner {
+			return s
+		}
+		if first == nil {
+			first = s
+		}
+	}
+	return first
+}
+
+// missingServerText names the exact lookup failure so a live report pinpoints
+// the cause: empty id, unknown id, or a different owner. It also states how
+// many servers this process loaded and its pid — that instantly exposes a
+// second instance or wrong data directory serving the API.
+func (m *hostingManager) missingServerText(id string, u *User) string {
+	id = cleanServerID(id)
+	if id == "" {
+		return "missing server id in request (panel bug — please report)"
+	}
+	for _, s := range m.st.Servers {
+		if cleanServerID(s.ID) == id {
+			return fmt.Sprintf("server %s belongs to a different account", id)
+		}
+	}
+	return fmt.Sprintf("server %s does not exist on this host", id)
+}
+
+// log404 keeps the full diagnostics in the server log: the id exactly as it
+// arrived (so quoting bugs stay visible), the normalized id, the account and
+// the process — enough to spot a second instance or a stale registry at a
+// glance. Internal host details never reach the client.
+func log404(kind, rawID string, uid int64, msg string) {
+	log.Printf("[panel] 404 %sid=%q clean=%q uid=%d pid=%d: %s", kind, rawID, cleanServerID(rawID), uid, os.Getpid(), msg)
+}
+
+func (m *hostingManager) findOwnerLocked(owner int64) *HostedServer {
+	for _, s := range m.st.Servers {
+		if s.Owner == owner {
+			return s
+		}
+	}
+	return nil
+}
+
+// findOwnerAllLocked returns every server the account owns (up to the limit).
+func (m *hostingManager) findOwnerAllLocked(owner int64) []*HostedServer {
+	out := []*HostedServer{}
+	for _, s := range m.st.Servers {
+		if s.Owner == owner {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// ports — the 500-port pool, reserved in the store
+// ---------------------------------------------------------------------------
+
+func (m *hostingManager) portsInUseLocked() map[int]string {
+	used := map[int]string{}
+	for _, s := range m.st.Servers {
+		if s.GameTCPPort > 0 {
+			used[s.GameTCPPort] = s.Name + " (game TCP)"
+		}
+		if s.GameUDPPort > 0 {
+			used[s.GameUDPPort] = s.Name + " (game UDP)"
+		}
+		if s.FTPPort > 0 {
+			used[s.FTPPort] = s.Name + " (files)"
+		}
+		if s.PassivePort > 0 {
+			used[s.PassivePort] = s.Name + " (files data)"
+		}
+		for _, p := range s.ExtraPorts {
+			used[p] = s.Name + " (extra)"
+		}
+	}
+	return used
+}
+
+// allocPortLocked reserves the lowest port that is free in the store AND
+// actually bindable on this machine (other services on the VPS may hold
+// ports inside the range). Ports are released only when a server is
+// permanently deleted — never when it is stopped.
+func (m *hostingManager) allocPortLocked() (int, error) {
+	used := m.portsInUseLocked()
+	for p := hostingPortFirst; p <= hostingPortLast; p++ {
+		if _, busy := used[p]; busy {
+			continue
+		}
+		if !portBindable(p) {
+			log.Printf("[hosting] port %d is held by another process on this machine — skipping it", p)
+			continue
+		}
+		return p, nil
+	}
+	return 0, fmt.Errorf("the hosting port pool (%d-%d) is fully allocated", hostingPortFirst, hostingPortLast)
+}
+
+// portBindable reports whether TCP and UDP on p are free right now.
+func portBindable(p int) bool {
+	addr := fmt.Sprintf(":%d", p)
+	tl, err := net.Listen("tcp", addr)
+	if err != nil {
+		return false
+	}
+	_ = tl.Close()
+	ul, err := net.ListenPacket("udp", addr)
+	if err != nil {
+		return false
+	}
+	_ = ul.Close()
+	return true
+}
+
+// killInstanceProcs terminates leftover processes that were started from this
+// city's directory (orphans from a previous panel run). Only processes whose
+// command line contains the city's own path are touched.
+func killInstanceProcs(instDir string) int {
+	abs, err := filepath.Abs(instDir)
+	if err != nil {
+		return 0
+	}
+	killed := 0
+	if runtime.GOOS == "linux" {
+		procs, _ := os.ReadDir("/proc")
+		for _, pe := range procs {
+			pid, err := strconv.Atoi(pe.Name())
+			if err != nil {
+				continue
+			}
+			b, err := os.ReadFile("/proc/" + pe.Name() + "/cmdline")
+			if err != nil {
+				continue
+			}
+			if strings.Contains(string(b), abs) {
+				if p, err := os.FindProcess(pid); err == nil {
+					_ = p.Kill()
+					killed++
+				}
+			}
+		}
+		return killed
+	}
+	out, err := exec.Command("wmic", "process", "get", "ProcessId,CommandLine", "/format:csv").Output()
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if !strings.Contains(line, abs) {
+			continue
+		}
+		parts := strings.SplitN(strings.TrimSpace(line), ",", 3)
+		if len(parts) < 2 {
+			continue
+		}
+		pid, err := strconv.Atoi(parts[1])
+		if err != nil {
+			continue
+		}
+		if p, err := os.FindProcess(pid); err == nil {
+			_ = p.Kill()
+			killed++
+		}
+	}
+	return killed
+}
+
+var errPortsBusy = errors.New("assigned ports are held by another process on this machine")
+
+// hostingFirewallOnce opens the hosting port range (TCP and UDP) in the VPS
+// firewall so players can reach hosted cities. Failure is logged, never
+// hidden — the operator can open the range manually.
+func (m *hostingManager) hostingFirewallOnce() {
+	if m.firewall {
+		return
+	}
+	m.firewall = true
+	rangeSpec := fmt.Sprintf("%d-%d", hostingPortFirst, hostingPortLast)
+	manual := "allow TCP and UDP " + rangeSpec + " through the Windows firewall AND your provider's firewall (VPS control panel), otherwise players see \"Failed to get info from server\" / connection timeouts"
+	if netsh := findWindowsTool("netsh.exe"); netsh != "" {
+		ok := true
+		for _, proto := range []string{"TCP", "UDP"} {
+			args := []string{"advfirewall", "firewall", "add", "rule",
+				"name=NSM Hosting " + proto + " " + rangeSpec,
+				"dir=in", "action=allow", "protocol=" + proto, "localport=" + rangeSpec}
+			out, err := exec.Command(netsh, args...).CombinedOutput()
+			if err != nil {
+				ok = false
+				log.Printf("[hosting] firewall %s rule failed (%v): %s", proto, err, strings.TrimSpace(string(out)))
+			}
+		}
+		if ok {
+			m.firewallNote = "this machine's firewall allows TCP and UDP " + rangeSpec + " for hosted cities. If players still cannot connect, also allow the range in your provider's firewall (VPS control panel)."
+			log.Printf("[hosting] firewall: allowed TCP and UDP %s (%d ports) for hosted cities", rangeSpec, hostingPortLast-hostingPortFirst+1)
+			return
+		}
+	}
+	if ps := findWindowsTool("powershell.exe"); ps != "" {
+		ok := true
+		for _, proto := range []string{"TCP", "UDP"} {
+			rule := fmt.Sprintf("New-NetFirewallRule -DisplayName 'NSM Hosting %s %s' -Direction Inbound -Action Allow -Protocol %s -LocalPort %s", proto, rangeSpec, proto, rangeSpec)
+			out, err := exec.Command(ps, "-NoProfile", "-NonInteractive", "-Command", rule).CombinedOutput()
+			if err != nil {
+				ok = false
+				log.Printf("[hosting] firewall %s rule via PowerShell failed (%v): %s", proto, err, strings.TrimSpace(string(out)))
+			}
+		}
+		if ok {
+			m.firewallNote = "this machine's firewall allows TCP and UDP " + rangeSpec + " for hosted cities (PowerShell rule). If players still cannot connect, also allow the range in your provider's firewall (VPS control panel)."
+			log.Printf("[hosting] firewall: allowed TCP and UDP %s via PowerShell", rangeSpec)
+			return
+		}
+	}
+	m.firewallNote = "could not open the firewall automatically - " + manual
+	log.Printf("[hosting] firewall: %s", m.firewallNote)
+}
+
+// findWindowsTool locates a system tool even when the service PATH is minimal.
+func findWindowsTool(name string) string {
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+	for _, base := range []string{os.Getenv("SystemRoot"), `C:\Windows`} {
+		if base == "" {
+			continue
+		}
+		p := filepath.Join(base, "System32", name)
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
+	}
+	return ""
+}
+
+// ---------------------------------------------------------------------------
+// provisioning
+// ---------------------------------------------------------------------------
+
+var errBinaryMissing = errors.New("server binary missing")
+
+func (m *hostingManager) dirOf(s *HostedServer) string {
+	return filepath.Join(m.root, s.ID)
+}
+
+// serverRoot is the folder holding the game server itself (server.cfg,
+// resources/, the server exe). It is the root users see over FTP and in the
+// Files tab - panel-internal files (ftppass.txt and the config mirror) live
+// one level up, outside it.
+func (m *hostingManager) serverRoot(s *HostedServer) string {
+	if s.ExeRel == "" {
+		return m.dirOf(s)
+	}
+	return filepath.Dir(filepath.Join(m.dirOf(s), s.ExeRel))
+}
+
+// deploy provisions a new city for the signed-in user. It is safe against
+// double-clicks and simultaneous requests: the one-server-per-account check
+// and the record creation happen atomically under the manager lock.
+func (m *hostingManager) deploy(u *User, name, region, reqHost string) (*HostedServer, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = u.Username + "-city"
+	}
+	if region == "" {
+		region = "us-east"
+	}
+
+	// ---- Phase A: atomic claim (up to 5 servers per account) ----
+	m.mu.Lock()
+	if owned := m.findOwnerAllLocked(u.ID); len(owned) >= hostingMaxPerOwner {
+		m.mu.Unlock()
+		return owned[0], errAlreadyOwns
+	}
+	m.hostingFirewallOnce()
+	s := &HostedServer{
+		ID:        fmt.Sprintf("h%d", time.Now().UnixNano()%1e9),
+		Owner:     u.ID,
+		OwnerName: u.Username,
+		Name:      name,
+		Region:    region,
+		CreatedAt: time.Now().Unix(),
+		Limits:    defaultHostLimits(),
+		Status:    hostPending,
+		FTPUser:   sanitizeFTPUser(u.Username),
+		FTPPass:   hostRandToken(14),
+	}
+	// register first so each allocation below sees the previous ones
+	m.st.Servers = append(m.st.Servers, s)
+	// the city's directory exists from this moment (files + FTP usable even
+	// while the server software is still installing)
+	_ = os.MkdirAll(m.dirOf(s), 0o755)
+	var err error
+	// The game endpoint serves TCP (info + handshake) and UDP (game traffic)
+	// on the SAME port - clients dial one address for both.
+	if s.GameUDPPort, err = m.allocPortLocked(); err != nil {
+		m.mu.Unlock()
+		return nil, err
+	}
+	s.GameTCPPort = s.GameUDPPort
+	if s.FTPPort, err = m.allocPortLocked(); err != nil {
+		m.mu.Unlock()
+		return nil, err
+	}
+	if s.PassivePort, err = m.allocPortLocked(); err != nil {
+		m.mu.Unlock()
+		return nil, err
+	}
+	// the 5th package port goes to the city itself as an extra service port
+	if p, err := m.allocPortLocked(); err == nil {
+		s.ExtraPorts = append(s.ExtraPorts, p)
+	}
+	// The game endpoint serves TCP (info + handshake) and UDP (game traffic)
+	// on the SAME port - clients dial one address for both. The address is
+	// the real server IP (serverHostIP) — never the website hostname the
+	// deploy request happened to arrive on.
+	host := serverHostIP()
+	s.Endpoint = fmt.Sprintf("%s:%d", host, s.GameUDPPort)
+	s.JoinCode = joinCodeForEndpoint(s.Endpoint)
+	m.logNL(s, "[system] provisioning city '"+name+"' ("+hostingPackage.Name+")")
+	m.logNL(s, "[system] network: "+m.firewallNote)
+	m.logNL(s, fmt.Sprintf("[system] ports reserved: game %d (TCP+UDP), files %d-%d, extra %v", s.GameUDPPort, s.FTPPort, s.PassivePort, s.ExtraPorts))
+	m.logNL(s, "[system] status: pending")
+	m.saveLocked()
+	m.startFTP(s)
+	m.mu.Unlock()
+
+	// ---- Phase B: install the official server files (slow, no lock held) ----
+	if err := m.install(s); err != nil {
+		m.mu.Lock()
+		if cur := m.find(s.ID); cur != nil {
+			cur.Status = hostError
+			cur.Note = "install failed: " + err.Error()
+			m.logNL(cur, "[error] "+cur.Note)
+			m.logNL(cur, "[system] press Start to retry the installation")
+			m.saveLocked()
+			s = cur
+		}
+		m.mu.Unlock()
+		return s, err
+	}
+
+	// ---- Phase C: start it for real ----
+	m.mu.Lock()
+	if cur := m.find(s.ID); cur != nil {
+		s = cur
+	}
+	m.mu.Unlock()
+	if err := m.start(s); err != nil {
+		return s, err
+	}
+	return s, nil
+}
+
+// ensureServerKey issues this hosted server's keymaster key on first install
+// so the game server can authenticate its heartbeat. One active key per
+// account: issuing revokes prior keys (see issueServerKey).
+func (m *hostingManager) ensureServerKey(s *HostedServer) {
+	if s.KeyRaw != "" {
+		return
+	}
+	own := userByID(s.Owner)
+	if own == nil {
+		return
+	}
+	raw, rec, err := issueServerKey(own, "Hosted: "+s.Name, "", 0)
+	if err != nil {
+		return
+	}
+	s.KeyID, s.KeyRaw = rec.ID, raw
+	m.mu.Lock()
+	m.saveLocked()
+	m.mu.Unlock()
+}
+
+// healCfg upgrades configs written by older panel versions in place: sv_lan 1
+// (stock auth tickets off - players were rejected with "No authentication
+// ticket was specified") and the server's own keymaster key for heartbeats.
+// Never rewrites user content, only appends what is missing.
+func (m *hostingManager) healCfg(s *HostedServer) {
+	p := filepath.Join(m.serverRoot(s), "server.cfg")
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return
+	}
+	text := string(b)
+	// Old configs split TCP and UDP across two ports - collapse every
+	// endpoint line onto the game port (clients dial one address for both).
+	if s.GameUDPPort > 0 {
+		re := regexp.MustCompile(`(?m)^endpoint_add_(tcp|udp) "0\.0\.0\.0:\d+"`)
+		fixed := re.ReplaceAllStringFunc(text, func(line string) string {
+			if strings.HasPrefix(line, "endpoint_add_udp") {
+				return fmt.Sprintf("endpoint_add_udp \"0.0.0.0:%d\"", s.GameUDPPort)
+			}
+			return fmt.Sprintf("endpoint_add_tcp \"0.0.0.0:%d\"", s.GameUDPPort)
+		})
+		if fixed != text {
+			text = fixed
+			m.appendLog(s, "[system] server.cfg updated: game port now serves TCP and UDP on "+itoa(s.GameUDPPort))
+		}
+	}
+	add := ""
+	if !strings.Contains(text, "sv_lan") {
+		add += "\n# added by the NSM Hosting panel: accept players without stock auth tickets\nsv_lan 1\n"
+	}
+	if s.KeyRaw != "" && !strings.Contains(text, "sv_nsmServerKey \""+s.KeyRaw+"\"") {
+		add += "sets sv_nsmServerKey \"" + s.KeyRaw + "\"\n"
+	}
+	if add == "" && text == string(b) {
+		return
+	}
+	if err := os.WriteFile(p, []byte(text+add), 0o600); err == nil {
+		m.appendLog(s, "[system] server.cfg updated with connection settings (sv_lan / server key)")
+	}
+}
+
+// hostingPublicHostForPort maps a game port to the public host recorded for
+// the hosted server that owns it, so heartbeats arriving over loopback still
+// publish a reachable endpoint.
+func hostingPublicHostForPort(port int) string {
+	m := hostMgrV
+	if m == nil {
+		return ""
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, srv := range m.st.Servers {
+		if srv.GameUDPPort == port || srv.GameTCPPort == port {
+			return publicHostOf(srv)
+		}
+	}
+	return ""
+}
+
+// joinBaseURL is the site origin a shareable join link should carry.
+func joinBaseURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if xp := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))); xp == "https" {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
+// install downloads/locates the official server files and copies them into
+// the city's isolated directory, verifying the result.
+func (m *hostingManager) install(s *HostedServer) error {
+	m.setStatus(s, hostInstalling)
+	// issue this server's keymaster key first so the generated config can
+	// carry it even when file installation fails and is retried later
+	m.ensureServerKey(s)
+	m.appendLog(s, "[system] status: installing")
+	m.appendLog(s, "[system] installing official NSM server files")
+
+	templateDir, err := ensureServerFiles(func(line string) { m.appendLog(s, line) })
+	if err != nil {
+		return err
+	}
+	count, relExe, err := installInstance(templateDir, m.dirOf(s))
+	if err != nil {
+		return err
+	}
+	s.ExeRel = relExe
+	m.mu.Lock()
+	if cur := m.find(s.ID); cur != nil {
+		cur.ExeRel = relExe
+		m.logNL(cur, fmt.Sprintf("[system] installed %d files into this server's directory", count))
+		m.logNL(cur, "[system] install verified: "+relExe)
+		m.saveLocked()
+	}
+	m.mu.Unlock()
+
+	// server.cfg with the REAL allocated ports, written into the server's own
+	// directory (where the binary looks for it) and mirrored at instance root
+	serverRoot := m.serverRoot(s)
+	cfg := m.generateCfg(s, serverRoot)
+	if err := os.WriteFile(filepath.Join(serverRoot, "server.cfg"), []byte(cfg), 0o600); err != nil {
+		return err
+	}
+	if serverRoot != m.dirOf(s) {
+		_ = os.WriteFile(filepath.Join(m.dirOf(s), "server.cfg"), []byte(cfg), 0o600)
+	}
+	m.appendLog(s, "[system] server.cfg generated with this server's game port (TCP+UDP "+itoa(s.GameUDPPort)+")")
+	m.appendLog(s, "[system] config installed at server.cfg (your server folder root over FTP)")
+	return nil
+}
+
+func itoa(n int) string { return strconv.Itoa(n) }
+
+// discoverResources lists the resource names actually shipped in the city's
+// resources/ directory (resources/<name> and resources/[cat]/<name>).
+func discoverResources(instDir string) []string {
+	names := map[string]bool{}
+	base := filepath.Join(instDir, "resources")
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return nil
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(e.Name(), "[") {
+			sub, err := os.ReadDir(filepath.Join(base, e.Name()))
+			if err != nil {
+				continue
+			}
+			for _, se := range sub {
+				if se.IsDir() {
+					names[se.Name()] = true
+				}
+			}
+			continue
+		}
+		names[e.Name()] = true
+	}
+	out := []string{}
+	for n := range names {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (m *hostingManager) generateCfg(s *HostedServer, instDir string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s — generated by the NSM Hosting panel\n", s.Name)
+	fmt.Fprintf(&b, "# package: %s (%d slots, %d GB RAM allocation)\n", hostingPackage.Name, hostingPackage.Slots, hostingPackage.RAMGB)
+	fmt.Fprintf(&b, "endpoint_add_tcp \"0.0.0.0:%d\"\n", s.GameUDPPort)
+	fmt.Fprintf(&b, "endpoint_add_udp \"0.0.0.0:%d\"\n", s.GameUDPPort)
+	fmt.Fprintf(&b, "sv_hostname \"%s\"\n", strings.ReplaceAll(s.Name, `"`, ""))
+	fmt.Fprintf(&b, "sv_maxclients %d\n", hostingPackage.Slots)
+	fmt.Fprintf(&b, "sets sv_region \"%s\"\n", s.Region)
+	b.WriteString("sets sv_nsmHosted \"1\"\n")
+	// sv_lan 1 turns off the stock auth-ticket requirement - our stack runs
+	// ticketless and the server impl keeps internet play working in lan mode.
+	// Without it players are rejected with "No authentication ticket was specified".
+	b.WriteString("sv_lan 1\n")
+	if s.KeyRaw != "" {
+		fmt.Fprintf(&b, "sets sv_nsmServerKey %q\n", s.KeyRaw)
+	} else {
+		b.WriteString("# paste the server key from AFX Portal (shown only when you create it):\n")
+		b.WriteString("# sets sv_nsmServerKey \"nsm_srv_...\"\n")
+	}
+	// only ensure resources that really exist in this server package
+	res := discoverResources(instDir)
+	if len(res) == 0 {
+		b.WriteString("# no resources found in resources/ yet — add yours and list them below\n")
+	}
+	// sessionmanager first when present (the server impl looks for it)
+	for _, name := range res {
+		if name == "sessionmanager" {
+			fmt.Fprintf(&b, "ensure %s\n", name)
+		}
+	}
+	for _, name := range res {
+		if name != "sessionmanager" {
+			fmt.Fprintf(&b, "ensure %s\n", name)
+		}
+	}
+	b.WriteString("# add your resources under resources/ and start them here\n")
+	// A framework install owns a managed block in server.cfg. Server-file
+	// (re)installs must never wipe it — carry it over verbatim.
+	if old, err := os.ReadFile(filepath.Join(instDir, "server.cfg")); err == nil {
+		if i := strings.Index(string(old), "# >>> nsm-framework:"); i >= 0 {
+			if j := strings.Index(string(old)[i:], "# <<< nsm-framework <<<"); j >= 0 {
+				b.WriteString("\n")
+				b.WriteString(string(old)[i : i+j+len("# <<< nsm-framework <<<")])
+				b.WriteString("\n")
+			}
+		}
+	}
+	return b.String()
+}
+
+func sanitizeFTPUser(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	var b strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		}
+	}
+	if b.Len() == 0 {
+		return "nsmuser"
+	}
+	return b.String()
+}
+
+func hostRandToken(n int) string {
+	const abc = "abcdefghjkmnpqrstuvwxyz23456789"
+	rb := make([]byte, n)
+	_, _ = rand.Read(rb)
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = abc[int(rb[i])%len(abc)]
+	}
+	return string(b)
+}
+
+// ---------------------------------------------------------------------------
+// process control — real NSM-Server processes, real output
+// ---------------------------------------------------------------------------
+
+func serverExePath(dir, rel string) string {
+	if rel != "" {
+		p := filepath.Join(dir, rel)
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
+	}
+	if exe := findServerExe(dir); exe != "" {
+		return exe
+	}
+	return ""
+}
+
+func (m *hostingManager) start(s *HostedServer) error {
+	m.mu.Lock()
+	if p, ok := m.procs[s.ID]; ok {
+		select {
+		case <-p.done:
+		default:
+			m.logNL(s, "[system] already running")
+			m.saveLocked()
+			m.mu.Unlock()
+			return nil
+		}
+	}
+	dir := m.dirOf(s)
+	s.Status = hostStarting
+	s.Note = ""
+	m.logNL(s, "[system] status: starting")
+	m.saveLocked()
+	m.mu.Unlock()
+
+	// ensure the server files are really installed (also the retry path)
+	exe := serverExePath(dir, s.ExeRel)
+	if exe == "" {
+		if err := m.install(s); err != nil {
+			m.setStatus(s, hostError)
+			m.appendLog(s, "[error] server files unavailable: "+err.Error())
+			return errBinaryMissing
+		}
+		exe = serverExePath(dir, "")
+	}
+	if exe == "" {
+		m.setStatus(s, hostError)
+		m.appendLog(s, "[error] "+errBinaryMissing.Error())
+		return errBinaryMissing
+	}
+
+	if abs, err := filepath.Abs(exe); err == nil {
+		exe = abs
+	}
+	// preflight: the assigned ports must be free before we boot, otherwise the
+	// server reports EADDRINUSE. If a leftover process from a previous panel
+	// run is holding them, reap it (only processes from THIS city's directory).
+	if !portBindable(s.GameTCPPort) || !portBindable(s.GameUDPPort) {
+		reaped := killInstanceProcs(dir)
+		if reaped > 0 {
+			m.appendLog(s, fmt.Sprintf("[system] stopped %d leftover server process(es) from an earlier run", reaped))
+		}
+		if !portBindable(s.GameTCPPort) || !portBindable(s.GameUDPPort) {
+			// A process outside this city holds the ports (often another city
+			// stuck on the same port from an older build). Move this city to a
+			// free port pair instead of refusing to boot.
+			m.mu.Lock()
+			oldPort := s.GameTCPPort
+			np, aerr := m.allocPortLocked()
+			if aerr == nil && np != 0 {
+				s.GameTCPPort = np
+				s.GameUDPPort = np
+				if len(s.ExtraPorts) > 0 {
+					if ep, eerr := m.allocPortLocked(); eerr == nil {
+						s.ExtraPorts[0] = ep
+					}
+				}
+				m.saveLocked()
+				m.mu.Unlock()
+				m.healCfg(s)
+				m.appendLog(s, fmt.Sprintf("[system] port %d was held by another process — moved this city to port %d", oldPort, np))
+			} else {
+				m.mu.Unlock()
+				m.setStatus(s, hostError)
+				m.appendLog(s, fmt.Sprintf("[error] ports %d/%d are held by another process on this machine and the port pool is full — free ports or delete unused servers", s.GameTCPPort, s.GameUDPPort))
+				return errPortsBusy
+			}
+		}
+	}
+	if abs, err := filepath.Abs(exe); err == nil {
+		exe = abs
+	}
+	m.healCfg(s)
+	cmd := exec.Command(exe, "+exec", "server.cfg")
+	cmd.Dir = filepath.Dir(exe)
+	stdout, _ := cmd.StdoutPipe()
+	stderr, _ := cmd.StderrPipe()
+	stdin, _ := cmd.StdinPipe()
+	if err := cmd.Start(); err != nil {
+		m.setStatus(s, hostError)
+		m.appendLog(s, "[error] failed to start server process: "+err.Error())
+		return err
+	}
+	if applied := applyChildLimits(cmd.Process.Pid, s.Limits); applied != "" {
+		m.appendLog(s, "[system] resource limits applied: "+applied)
+	}
+	m.mu.Lock()
+	p := &hostedProc{cmd: cmd, in: stdin, done: make(chan struct{}), lastTime: time.Now()}
+	m.procs[s.ID] = p
+	if cur := m.find(s.ID); cur != nil {
+		cur.Status = hostOnline
+		cur.LastStarted = time.Now().Unix()
+		m.logNL(cur, "[system] status: online (pid "+strconv.Itoa(cmd.Process.Pid)+")")
+		m.saveLocked()
+	}
+	m.mu.Unlock()
+	go m.pump(s.ID, stdout)
+	go m.pump(s.ID, stderr)
+	go func() {
+		_ = cmd.Wait()
+		close(p.done)
+		m.mu.Lock()
+		if cur, ok := m.procs[s.ID]; ok && cur == p {
+			delete(m.procs, s.ID)
+			if s2 := m.find(s.ID); s2 != nil && (s2.Status == hostOnline || s2.Status == hostStarting) {
+				s2.Status = hostOffline
+				m.logNL(s2, "[system] status: offline (server process exited)")
+				m.saveLocked()
+			}
+		}
+		m.mu.Unlock()
+	}()
+	return nil
+}
+
+func (m *hostingManager) pump(id string, r io.Reader) {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 64<<10), 256<<10)
+	for sc.Scan() {
+		line := sc.Text()
+		m.mu.Lock()
+		if s := m.find(id); s != nil {
+			m.logNL(s, line)
+			m.saveLocked()
+		}
+		m.mu.Unlock()
+	}
+}
+
+func (m *hostingManager) stop(s *HostedServer) {
+	m.mu.Lock()
+	s2 := m.find(s.ID)
+	if s2 == nil {
+		m.mu.Unlock()
+		return
+	}
+	s2.Status = hostStopping
+	p, ok := m.procs[s.ID]
+	m.saveLocked()
+	m.mu.Unlock()
+
+	if !ok {
+		m.setStatus(s, hostOffline)
+		m.appendLog(s, "[system] status: offline")
+		return
+	}
+	_, _ = io.WriteString(p.in, "quit\n")
+	select {
+	case <-p.done:
+	case <-time.After(4 * time.Second):
+		_ = p.cmd.Process.Kill()
+	}
+	m.setStatus(s, hostOffline)
+	m.appendLog(s, "[system] status: offline (stopped)")
+}
+
+func (m *hostingManager) command(s *HostedServer, cmdText string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	p, ok := m.procs[s.ID]
+	if !ok {
+		m.logNL(s, "[error] command ignored — server is not running")
+		m.saveLocked()
+		return fmt.Errorf("server is not running")
+	}
+	_, err := io.WriteString(p.in, cmdText+"\n")
+	m.logNL(s, "> "+cmdText)
+	m.saveLocked()
+	return err
+}
+
+// delete removes the city permanently: process, files, FTP endpoint and all
+// of its reserved ports.
+func (m *hostingManager) delete(s *HostedServer) {
+	m.stop(s)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if fs, ok := m.ftp[s.ID]; ok {
+		fs.Close()
+		delete(m.ftp, s.ID)
+	}
+	_ = os.RemoveAll(m.dirOf(s))
+	kept := m.st.Servers[:0]
+	for _, cur := range m.st.Servers {
+		if cur.ID != s.ID {
+			kept = append(kept, cur)
+		}
+	}
+	m.st.Servers = kept
+	m.saveLocked()
+	log.Printf("[hosting] city %s (%s) deleted — its ports were released", s.Name, s.ID)
+}
+
+// ---------------------------------------------------------------------------
+// real metrics (CPU/RAM from the OS, disk walked from the city directory)
+// ---------------------------------------------------------------------------
+
+type hostUsage struct {
+	Online    bool  `json:"online"`
+	CPUPct    float64 `json:"cpu"` // -1 when the OS will not report it
+	RAMMB     int64 `json:"ramMB"` // -1 when the OS will not report it
+	DiskMB    int64 `json:"diskMB"`
+	UptimeSec int64 `json:"uptimeSec"`
+}
+
+func (m *hostingManager) usage(s *HostedServer) hostUsage {
+	m.mu.Lock()
+	if memo, ok := m.usageMemo[s.ID]; ok && time.Since(memo.at) < 4*time.Second {
+		m.mu.Unlock()
+		return memo.u
+	}
+	m.mu.Unlock()
+	u := hostUsage{CPUPct: -1, RAMMB: -1}
+	m.mu.Lock()
+	p, running := m.procs[s.ID]
+	status := s.Status
+	last := s.LastStarted
+	m.mu.Unlock()
+	u.Online = running && status == hostOnline
+	if u.Online && last > 0 {
+		u.UptimeSec = time.Now().Unix() - last
+	}
+	u.DiskMB = m.diskUsage(s)
+	if running && p.cmd.Process != nil {
+		cpu, ram := procUsage(p.cmd.Process.Pid, p)
+		u.CPUPct, u.RAMMB = cpu, ram
+		m.mu.Lock()
+		if cur, ok := m.procs[s.ID]; ok && cur == p {
+			// NOTE: procUsage owns cur.lastCPU (raw scheduler ticks / 100ns
+			// units) — overwriting it here with the computed percentage used
+			// to corrupt the baseline and made CPU read 0% or nonsense from
+			// the second poll on. Only the sample timestamp is ours.
+			cur.lastTime = time.Now()
+		}
+		m.mu.Unlock()
+	}
+	m.mu.Lock()
+	m.usageMemo[s.ID] = usageMemoT{u: u, at: time.Now()}
+	m.mu.Unlock()
+	return u
+}
+
+// checkDiskAllowance enforces the configured storage maximum: any host write
+// path (file save, upload, backup, app install) refuses once the city is at
+// its configured cap instead of silently filling the VPS.
+func (m *hostingManager) checkDiskAllowance(s *HostedServer, incomingMB int64) error {
+	limit := s.Limits.DiskMB
+	if limit <= 0 {
+		limit = defaultHostLimits().DiskMB
+	}
+	used := m.diskUsage(s)
+	if used+incomingMB > limit {
+		return fmt.Errorf("storage limit reached: %d MB of %d MB configured maximum used — delete files or backups before writing more", used, limit)
+	}
+	return nil
+}
+
+func (m *hostingManager) diskUsage(s *HostedServer) int64 {
+	m.mu.Lock()
+	if memo, ok := m.diskMemo[s.ID]; ok && time.Since(memo.at) < 120*time.Second {
+		m.mu.Unlock()
+		return memo.mb
+	}
+	m.mu.Unlock()
+	var total int64
+	_ = filepath.Walk(m.dirOf(s), func(_ string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			total += info.Size()
+		}
+		return nil
+	})
+	mb := total / (1 << 20)
+	m.mu.Lock()
+	m.diskMemo[s.ID] = diskMemo{mb: mb, at: time.Now()}
+	m.mu.Unlock()
+	return mb
+}
+
+// procUsage returns CPU percent and RSS in MB for a pid. Linux reads /proc;
+// Windows reads tasklist/wmic. Anything the OS refuses to report comes back
+// as -1 ("n/a") — never invented.
+func procUsage(pid int, p *hostedProc) (float64, int64) {
+	if runtime.GOOS == "linux" {
+		cpu := -1.0
+		if b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid)); err == nil {
+			fields := strings.Fields(string(b))
+			if len(fields) > 15 {
+				ut, _ := strconv.ParseFloat(fields[13], 64)
+				stt, _ := strconv.ParseFloat(fields[14], 64)
+				ticks := ut + stt
+				hz := float64(100)
+				elapsed := time.Since(p.lastTime).Seconds()
+				if p.lastCPU >= 0 && elapsed > 0.5 {
+					cpu = ((ticks - p.lastCPU) / hz) / elapsed * 100
+					if cpu < 0 {
+						cpu = 0
+					}
+				}
+				p.lastCPU = ticks
+			}
+		}
+		ram := int64(-1)
+		if b, err := os.ReadFile(fmt.Sprintf("/proc/%d/statm", pid)); err == nil {
+			fields := strings.Fields(string(b))
+			if len(fields) > 1 {
+				pages, _ := strconv.ParseInt(fields[1], 10, 64)
+				ram = pages * int64(os.Getpagesize()) / (1 << 20)
+			}
+		}
+		return cpu, ram
+	}
+	// Windows: real numbers from the Win32 API (no shell tools — WMIC is
+	// gone on current Windows Server builds).
+	return winProcUsage(pid, p)
+}
+
+// hostFacts reports the real hardware of this machine (the VPS). Used to
+// present the infrastructure honestly instead of inventing specifications.
+func hostFacts() map[string]interface{} {
+	facts := map[string]interface{}{
+		"cpuCores": runtime.NumCPU(),
+		"ramMB":    int64(-1),
+		"goos":     runtime.GOOS,
+	}
+	if runtime.GOOS == "linux" {
+		if b, err := os.ReadFile("/proc/meminfo"); err == nil {
+			for _, line := range strings.Split(string(b), "\n") {
+				if strings.HasPrefix(line, "MemTotal:") {
+					fields := strings.Fields(line)
+					if len(fields) >= 2 {
+						kb, _ := strconv.ParseInt(fields[1], 10, 64)
+						facts["ramMB"] = kb / 1024
+					}
+				}
+			}
+		}
+		if b, err := os.ReadFile("/proc/cpuinfo"); err == nil {
+			for _, line := range strings.Split(string(b), "\n") {
+				if strings.HasPrefix(line, "model name") {
+					if i := strings.Index(line, ":"); i > 0 {
+						facts["cpuModel"] = strings.TrimSpace(line[i+1:])
+					}
+					break
+				}
+			}
+		}
+	} else if out, err := func() ([]byte, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		return exec.CommandContext(ctx, "wmic", "computersystem", "get", "TotalPhysicalMemory", "/format:csv").Output()
+	}(); err == nil {
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		if len(lines) >= 2 {
+			parts := strings.Split(strings.TrimSpace(lines[len(lines)-1]), ",")
+			if len(parts) >= 2 {
+				if b, _ := strconv.ParseInt(parts[1], 10, 64); b > 0 {
+					facts["ramMB"] = b / (1 << 20)
+				}
+			}
+		}
+	}
+	return facts
+}
+
+// ---------------------------------------------------------------------------
+// pages
+// ---------------------------------------------------------------------------
+
+func hostingPage(w http.ResponseWriter, r *http.Request) {
+	facts := hostFacts()
+	cores, _ := facts["cpuCores"].(int)
+	ramText := ""
+	if mb, ok := facts["ramMB"].(int64); ok && mb > 0 {
+		ramText = fmt.Sprintf("%d GB", mb/1024)
+	}
+	cpuModel, _ := facts["cpuModel"].(string)
+	renderPage(w, r, "hosting.tmpl", map[string]interface{}{
+		"Title":    "NSM Hosting - Free Game Servers",
+		"PKG":      hostingPackage,
+		"Cores":    cores,
+		"RAMText":  ramText,
+		"CPUModel": cpuModel,
+		"First":    hostingPortFirst,
+		"Last":     hostingPortLast,
+	})
+}
+
+func hostingCreatePage(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		http.Redirect(w, r, "/login?next="+url.QueryEscape("/hosting/create"), http.StatusFound)
+		return
+	}
+	m := hostMgr()
+	m.mu.Lock()
+	owned := m.findOwnerAllLocked(u.ID)
+	m.mu.Unlock()
+	if len(owned) >= hostingMaxPerOwner {
+		http.Redirect(w, r, "/hosting/dashboard", http.StatusSeeOther)
+		return
+	}
+	renderPage(w, r, "hosting_create.tmpl", map[string]interface{}{
+		"Title":  "Create a Server - NSM Hosting",
+		"PKG":    hostingPackage,
+		"Error":  r.URL.Query().Get("error"),
+		"First":  hostingPortFirst,
+		"Last":   hostingPortLast,
+	})
+}
+
+func hostingCreateSubmit(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		http.Redirect(w, r, "/login?next="+url.QueryEscape("/hosting/create"), http.StatusFound)
+		return
+	}
+	_ = r.ParseForm()
+	s, err := hostMgr().deploy(u, r.FormValue("name"), r.FormValue("region"), r.Host)
+	if s != nil && s.Owner == u.ID {
+		// one-per-account double-click protection: always land on their city
+		http.Redirect(w, r, "/dashboard/"+s.ID, http.StatusSeeOther)
+		return
+	}
+	if err != nil {
+		if err == errAlreadyOwns {
+			http.Redirect(w, r, "/hosting/dashboard", http.StatusSeeOther)
+			return
+		}
+		http.Redirect(w, r, "/hosting/create?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/hosting/dashboard", http.StatusSeeOther)
+}
+
+// hostingManagePage keeps old /hosting/manage bookmarks working by sending
+// them straight to the canonical /dashboard hub — there is no separate
+// manage interface anymore.
+func hostingManagePage(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/dashboard", http.StatusMovedPermanently)
+}
+
+// ---------------------------------------------------------------------------
+// dashboard (panel pages + API)
+// ---------------------------------------------------------------------------
+
+// panelTab defaults to the overview — the manage view opens on it.
+func panelTab(t string) string {
+	switch t {
+	case "overview", "files", "console", "config", "plan", "access", "ai", "apps",
+		"dns", "traffic", "quota", "network", "firewall", "monitoring", "backups",
+		"schedules", "activity", "settings", "rescue", "tools":
+		return t
+	}
+	return "overview"
+}
+
+func dashboardServerPage(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
+		return
+	}
+	id := r.PathValue("id")
+	m := hostMgr()
+	m.mu.Lock()
+	s := m.findOwned(id, u.ID)
+	var snap *HostedServer
+	if s != nil && s.Owner == u.ID {
+		cp := *s
+		snap = &cp
+	}
+	m.mu.Unlock()
+	if snap == nil {
+		http.NotFound(w, r)
+		return
+	}
+	players := int64(0)
+	if d := reg.get(snap.Endpoint); d != nil {
+		players = d.Clients
+	}
+	planTier, planUp := "spark", 10
+	if snap.PlanTier != "" {
+		planTier = snap.PlanTier
+		planUp = snap.PlanUpvotes
+	}
+	renderPage(w, r, "panel-manage", map[string]interface{}{
+		"Title": snap.Name + " - NSM Hosting", "S": snap, "PKG": hostingPackage,
+		"Tab": panelTab(r.URL.Query().Get("tab")), "Players": players,
+		"First": hostingPortFirst, "Last": hostingPortLast,
+		"Host": publicHostOf(snap), "FTPHost": ftpHostOf(snap), "JoinBase": joinBaseURL(r),
+		"Firewall": m.firewallNote, "PkgWarn": serverFilesWarning(),
+		"Net": hostNetInfo(), "PlanTier": planTier, "PlanUpvotes": planUp,
+		"Apps": oneClickApps, "Tiers": planTiers,
+	})
+}
+
+func apiHostConsole(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		sendJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in required"})
+		return
+	}
+	m := hostMgr()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	id := r.PathValue("id")
+	s := m.findOwned(id, u.ID)
+	if s == nil || s.Owner != u.ID {
+		msg := m.missingServerText(id, u)
+		log404("console ", id, u.ID, msg)
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": msg})
+		return
+	}
+	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+	lines := []map[string]interface{}{}
+	for i, l := range s.Console {
+		seq := s.ConsoleSeq - int64(len(s.Console)) + int64(i) + 1
+		if seq > since {
+			lines = append(lines, map[string]interface{}{"seq": seq, "line": l})
+		}
+	}
+	sendJSON(w, http.StatusOK, map[string]interface{}{"seq": s.ConsoleSeq, "lines": lines, "status": s.Status})
+}
+
+func apiHostCommand(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		sendJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in required"})
+		return
+	}
+	var body struct {
+		Cmd string `json:"cmd"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body)
+	m := hostMgr()
+	id := r.PathValue("id")
+	m.mu.Lock()
+	s := m.findOwned(id, u.ID)
+	m.mu.Unlock()
+	if s == nil || s.Owner != u.ID {
+		log404("", id, u.ID, m.missingServerText(id, u))
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
+		return
+	}
+	if err := m.command(s, strings.TrimSpace(body.Cmd)); err != nil {
+		sendJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func apiHostPower(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		sendJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in required"})
+		return
+	}
+	m := hostMgr()
+	id := r.PathValue("id")
+	m.mu.Lock()
+	s := m.findOwned(id, u.ID)
+	m.mu.Unlock()
+	if s == nil || s.Owner != u.ID {
+		log404("", id, u.ID, m.missingServerText(id, u))
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
+		return
+	}
+	switch r.PathValue("action") {
+	case "start":
+		if err := m.start(s); err != nil {
+			sendJSON(w, http.StatusConflict, map[string]string{"error": err.Error(), "status": hostError})
+			return
+		}
+	case "stop":
+		m.stop(s)
+	case "restart":
+		m.stop(s)
+		_ = m.start(s)
+	default:
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": "unknown action"})
+		return
+	}
+	m.mu.Lock()
+	status := s.Status
+	m.mu.Unlock()
+	sendJSON(w, http.StatusOK, map[string]string{"ok": "true", "status": status})
+}
+
+func apiHostUsage(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		sendJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in required"})
+		return
+	}
+	m := hostMgr()
+	id := r.PathValue("id")
+	m.mu.Lock()
+	s := m.findOwned(id, u.ID)
+	m.mu.Unlock()
+	if s == nil || s.Owner != u.ID {
+		log404("", id, u.ID, m.missingServerText(id, u))
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
+		return
+	}
+	// ITEM 13/14/15 — per-server usage, its configured maximums, and the
+	// whole-VPS readings in one payload (vps values are host-wide, not this
+	// server's; -1 means the OS would not report it).
+	su := m.usage(s)
+	sendJSON(w, http.StatusOK, map[string]interface{}{
+		"online": su.Online, "cpu": su.CPUPct, "ramMB": su.RAMMB,
+		"diskMB": su.DiskMB, "uptimeSec": su.UptimeSec,
+		"limits": s.Limits, "vps": hostVPSUsage(),
+		"serverTime": time.Now().UnixMilli(), "serverTz": serverTZLabel(),
+	})
+}
+
+// serverTZLabel is the timezone the host clock actually runs in — the panel
+// renders every timestamp in this zone so users see the same time the server
+// reports, not their own PC's clock.
+func serverTZLabel() string {
+	name, off := time.Now().Zone()
+	if name == "" || name == "Local" {
+		sign := "+"
+		if off < 0 {
+			sign = "-"
+			off = -off
+		}
+		return fmt.Sprintf("UTC%s%02d:%02d", sign, off/3600, (off%3600)/60)
+	}
+	return name
+}
+
+func apiHostDelete(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		sendJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in required"})
+		return
+	}
+	m := hostMgr()
+	id := r.PathValue("id")
+	m.mu.Lock()
+	s := m.findOwned(id, u.ID)
+	m.mu.Unlock()
+	if s == nil || s.Owner != u.ID {
+		log404("", id, u.ID, m.missingServerText(id, u))
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
+		return
+	}
+	revokeServerKeyAndEvict(s.KeyID)
+	m.delete(s)
+	sendJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// ---------------------------------------------------------------------------
+// file manager API (the real city directory on this machine)
+// ---------------------------------------------------------------------------
+
+// hostSafePath resolves rel inside root and rejects escapes.
+func hostSafePath(root, rel string) (string, bool) {
+	clean := filepath.Clean(root)
+	full := filepath.Join(clean, filepath.FromSlash(strings.Trim(rel, "/")))
+	if full != clean && !strings.HasPrefix(full, clean+string(os.PathSeparator)) {
+		return "", false
+	}
+	return full, true
+}
+
+func (m *hostingManager) owned(id string, u *User) (*HostedServer, string, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.find(id)
+	if s == nil || s.Owner != u.ID {
+		return nil, "", false
+	}
+	return s, m.serverRoot(s), true
+}
+
+func apiHostFiles(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		sendJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in required"})
+		return
+	}
+	_, root, ok := hostMgr().owned(r.PathValue("id"), u)
+	if !ok {
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	rel := strings.Trim(filepath.Clean("/"+r.URL.Query().Get("path")), "/")
+	full := filepath.Join(root, filepath.FromSlash(rel))
+	if !strings.HasPrefix(full, filepath.Clean(root)) {
+		sendJSON(w, http.StatusForbidden, map[string]string{"error": "path outside instance"})
+		return
+	}
+	entries, err := os.ReadDir(full)
+	if err != nil {
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": "cannot list: " + err.Error()})
+		return
+	}
+	type fe struct {
+		Name  string `json:"name"`
+		Path  string `json:"path"`
+		Dir   bool   `json:"dir"`
+		Size  int64  `json:"size"`
+		MTime int64  `json:"mtime"`
+	}
+	out := []fe{}
+	for _, e := range entries {
+		info, _ := e.Info()
+		var sz, mt int64
+		if info != nil {
+			sz = info.Size()
+			mt = info.ModTime().Unix()
+		}
+		p := strings.TrimPrefix(filepath.ToSlash(filepath.Join(rel, e.Name())), "/")
+		out = append(out, fe{e.Name(), p, e.IsDir(), sz, mt})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Dir != out[j].Dir {
+			return out[i].Dir
+		}
+		return out[i].Name < out[j].Name
+	})
+	sendJSON(w, http.StatusOK, map[string]interface{}{"path": rel, "entries": out})
+}
+
+func apiHostFileRead(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		sendJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in required"})
+		return
+	}
+	_, root, ok := hostMgr().owned(r.PathValue("id"), u)
+	if !ok {
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	full, ok := hostSafePath(root, r.URL.Query().Get("path"))
+	if !ok {
+		sendJSON(w, http.StatusForbidden, map[string]string{"error": "path outside instance"})
+		return
+	}
+	b, err := os.ReadFile(full)
+	if err != nil {
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]string{"content": string(b)})
+}
+
+func apiHostFileDownload(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		http.Error(w, "sign in required", http.StatusUnauthorized)
+		return
+	}
+	_, root, ok := hostMgr().owned(r.PathValue("id"), u)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	full, ok := hostSafePath(root, r.URL.Query().Get("path"))
+	if !ok {
+		http.Error(w, "path outside instance", http.StatusForbidden)
+		return
+	}
+	f, err := os.Open(full)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+	st, _ := f.Stat()
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filepath.Base(full)+`"`)
+	if st != nil {
+		w.Header().Set("Content-Length", strconv.FormatInt(st.Size(), 10))
+	}
+	_, _ = io.Copy(w, f)
+}
+
+func apiHostFileWrite(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		sendJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in required"})
+		return
+	}
+	var body struct {
+		Path    string `json:"path"`
+		Content string `json:"content"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&body)
+	s, root, ok := hostMgr().owned(r.PathValue("id"), u)
+	if !ok {
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	// ITEM 14 — configured storage maximum is enforced on every write
+	if err := hostMgr().checkDiskAllowance(s, int64(len(body.Content)/(1<<20))+1); err != nil {
+		sendJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	full, ok := hostSafePath(root, body.Path)
+	if !ok {
+		sendJSON(w, http.StatusForbidden, map[string]string{"error": "path outside instance"})
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(full), 0o755)
+	if err := os.WriteFile(full, []byte(body.Content), 0o600); err != nil {
+		sendJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	hostMgr().diskMemo[s.ID] = diskMemo{} // invalidate
+	sendJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func apiHostFileOp(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		sendJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in required"})
+		return
+	}
+	var body struct {
+		Op   string `json:"op"` // delete | mkdir | rename
+		Path string `json:"path"`
+		To   string `json:"to"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body)
+	s, root, ok := hostMgr().owned(r.PathValue("id"), u)
+	if !ok {
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	full, ok := hostSafePath(root, body.Path)
+	if !ok {
+		sendJSON(w, http.StatusForbidden, map[string]string{"error": "path outside instance"})
+		return
+	}
+	var err error
+	switch body.Op {
+	case "delete":
+		err = os.RemoveAll(full)
+	case "mkdir":
+		err = os.MkdirAll(full, 0o755)
+	case "rename":
+		var dst string
+		if dst, ok = hostSafePath(root, body.To); !ok {
+			sendJSON(w, http.StatusForbidden, map[string]string{"error": "path outside instance"})
+			return
+		}
+		err = os.Rename(full, dst)
+	default:
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": "unknown op"})
+		return
+	}
+	if err != nil {
+		sendJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	hostMgr().diskMemo[s.ID] = diskMemo{}
+	sendJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func apiHostUpload(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		http.Error(w, "sign in required", http.StatusUnauthorized)
+		return
+	}
+	s, root, ok := hostMgr().owned(r.PathValue("id"), u)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	// ITEM 14 — configured storage maximum is enforced on uploads too
+	if err := hostMgr().checkDiskAllowance(s, r.ContentLength/(1<<20)+1); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if err := r.ParseMultipartForm(64 << 20); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	dirRel := r.FormValue("path")
+	f, hdr, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "missing file", http.StatusBadRequest)
+		return
+	}
+	defer f.Close()
+	full, ok := hostSafePath(root, filepath.ToSlash(filepath.Join(dirRel, filepath.Base(hdr.Filename))))
+	if !ok {
+		http.Error(w, "path outside instance", http.StatusForbidden)
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(full), 0o755)
+	dst, err := os.Create(full)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	defer dst.Close()
+	if _, err = io.Copy(dst, f); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	hostMgr().diskMemo[s.ID] = diskMemo{}
+	http.Redirect(w, r, "/dashboard/"+s.ID+"?tab=files", http.StatusSeeOther)
+}
+
+func apiHostFilezilla(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		http.Error(w, "sign in required", http.StatusUnauthorized)
+		return
+	}
+	m := hostMgr()
+	m.mu.Lock()
+	s := m.findOwned(r.PathValue("id"), u.ID)
+	var snap *HostedServer
+	if s != nil && s.Owner == u.ID {
+		cp := *s
+		snap = &cp
+	}
+	m.mu.Unlock()
+	if snap == nil {
+		http.NotFound(w, r)
+		return
+	}
+	host := ftpHostOf(snap)
+	xml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<FileZilla3 version="3.65.0" platform="windows">
+  <Servers>
+    <Server>
+      <Host>%s</Host>
+      <Port>%d</Port>
+      <Protocol>0</Protocol>
+      <Type>0</Type>
+      <User>%s</User>
+      <Pass encoding="base64">%s</Pass>
+      <Logontype>1</Logontype>
+      <Name>%s</Name>
+    </Server>
+  </Servers>
+</FileZilla3>
+`, host, snap.FTPPort, snap.FTPUser, b64(snap.FTPPass), snap.Name)
+	w.Header().Set("Content-Type", "application/xml")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+strings.ReplaceAll(snap.Name, `"`, "")+`-filezilla.xml"`)
+	_, _ = io.WriteString(w, xml)
+}
+
+// b64 encodes the FileZilla profile password.
+func b64(s string) string {
+	return base64.StdEncoding.EncodeToString([]byte(s))
+}
+
+func apiHostPorts(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil {
+		sendJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in required"})
+		return
+	}
+	m := hostMgr()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	id := r.PathValue("id")
+	s := m.findOwned(id, u.ID)
+	if s == nil || s.Owner != u.ID {
+		log404("", id, u.ID, m.missingServerText(id, u))
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
+		return
+	}
+	p, err := m.allocPortLocked()
+	if err != nil {
+		sendJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	s.ExtraPorts = append(s.ExtraPorts, p)
+	m.logNL(s, fmt.Sprintf("[system] extra port allocated: %d", p))
+	m.saveLocked()
+	sendJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "port": p, "extra": s.ExtraPorts})
+}
+
+// defaultServerHostIP is the real address every hosted server (game port,
+// FTP, database) is reached at. The panel must never invent or fall back to
+// request hosts / internal interface IPs when showing connection details.
+const defaultServerHostIP = "147.189.174.173"
+
+// serverHostIP is the single source of truth for the address shown (and
+// dialed) for hosted services. NSM_SERVER_IP overrides it for deployments
+// on different hardware; a numeric NSM_PUBLIC_IP is honored for backwards
+// compatibility. A hostname never wins here: proxies forward web traffic
+// but raw game/FTP/DB ports are not proxied, so the hostname would be a
+// fictional address for those services.
+func serverHostIP() string {
+	if h := strings.TrimSpace(os.Getenv("NSM_SERVER_IP")); h != "" {
+		return h
+	}
+	if h := strings.TrimSpace(os.Getenv("NSM_PUBLIC_IP")); h != "" && net.ParseIP(h) != nil {
+		return h
+	}
+	return defaultServerHostIP
+}
+
+// publicHostOf returns the host this server is reachable at.
+func publicHostOf(s *HostedServer) string {
+	return serverHostIP()
+}
+
+// ftpHostOf returns the address FTP clients should dial. The website
+// hostname is never used — hosted DNS may proxy web traffic while raw FTP
+// ports are not proxied at all, which made "ftp://nsmultiplayer:port" fail
+// to connect.
+func ftpHostOf(s *HostedServer) string {
+	return serverHostIP()
+}
+
+// startFTP brings up the FileZilla endpoint for an instance. Callers hold
+// m.mu (same convention as logNL).
+func (m *hostingManager) startFTP(s *HostedServer) {
+	if _, ok := m.ftp[s.ID]; ok || s.FTPPort <= 0 {
+		return
+	}
+	sid := s.ID
+	fs, err := startFTPServer(s.FTPPort, s.PassivePort, func() (string, string) {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if cur := m.find(sid); cur != nil {
+			return cur.FTPUser, cur.FTPPass
+		}
+		return "", ""
+	}, ftpHostOf(s), func() string {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.serverRoot(s)
+	}, func(msg string) {
+		m.appendLog(s, msg)
+	})
+	if err != nil {
+		m.logNL(s, "[warn] files endpoint failed to start: "+err.Error())
+		return
+	}
+	m.ftp[s.ID] = fs
+	m.logNL(s, fmt.Sprintf("FileZilla: ftp://%s:%d (user %s) — full address on the Files tab", ftpHostOf(s), s.FTPPort, s.FTPUser))
+}
+
+// ---------------------------------------------------------------------------
+// routes
+// ---------------------------------------------------------------------------
+
+func registerHostingRoutes(mux *http.ServeMux) {
+	// bring up hosted-city state + FileZilla endpoints at boot
+	hostMgr()
+	mux.HandleFunc("GET /hosting", hostingPage)
+	mux.HandleFunc("GET /download/server", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, serverZipURL(), http.StatusFound)
+	})
+	mux.HandleFunc("GET /hosting/create", hostingCreatePage)
+	mux.HandleFunc("POST /hosting/create", hostingCreateSubmit)
+	mux.HandleFunc("GET /hosting/manage", hostingManagePage)
+	// legacy URLs from earlier builds keep working
+	mux.HandleFunc("GET /deploy", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/hosting/create", http.StatusFound)
+	})
+	mux.HandleFunc("POST /hosting/deploy", hostingCreateSubmit)
+	mux.HandleFunc("GET /dashboard", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/hosting/dashboard", http.StatusFound)
+	})
+	registerHostingPanel(mux)
+	registerHostingDBs(mux)
+	mux.HandleFunc("GET /dashboard/{id}", dashboardServerPage)
+	mux.HandleFunc("GET /api/host/{id}/console", apiHostConsole)
+	mux.HandleFunc("POST /api/host/{id}/command", apiHostCommand)
+	mux.HandleFunc("POST /api/host/{id}/power/{action}", apiHostPower)
+	mux.HandleFunc("GET /api/host/{id}/usage", apiHostUsage)
+	mux.HandleFunc("POST /api/host/{id}/delete", apiHostDelete)
+	mux.HandleFunc("GET /api/host/{id}/files", apiHostFiles)
+	mux.HandleFunc("GET /api/host/{id}/file", apiHostFileRead)
+	mux.HandleFunc("GET /api/host/{id}/file/download", apiHostFileDownload)
+	mux.HandleFunc("POST /api/host/{id}/file/write", apiHostFileWrite)
+	mux.HandleFunc("POST /api/host/{id}/file/op", apiHostFileOp)
+	mux.HandleFunc("POST /api/host/{id}/upload", apiHostUpload)
+	mux.HandleFunc("GET /api/host/{id}/filezilla.xml", apiHostFilezilla)
+	mux.HandleFunc("POST /api/host/{id}/ports", apiHostPorts)
+}
