@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"context"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -175,24 +176,21 @@ func hostNetTotals() (rx, tx int64) {
 
 func hostNetInfo() map[string]interface{} {
 	rx, tx := hostNetTotals()
-	iface, ip := "", ""
-	if b, err := os.ReadFile("/proc/net/fib_trie"); err == nil {
-		_ = b // fib_trie is bulky; the public IP is what the panel needs
-	}
-	if h, err := os.Hostname(); err == nil {
-		iface = h
-	}
-	for _, s := range hostFacts() {
-		_ = s
-	}
-	if pub, ok := hostFacts()["publicIP"].(string); ok {
-		ip = pub
-	}
+	hostFactsOnce.Do(func() {
+		if pub, ok := hostFacts()["publicIP"].(string); ok {
+			hostFactsPubIP = pub
+		}
+	})
+	ip := hostFactsPubIP
 	if ip == "" {
 		ip = os.Getenv("NSM_PUBLIC_IP")
 	}
+	hostname := ""
+	if h, err := os.Hostname(); err == nil {
+		hostname = h
+	}
 	return map[string]interface{}{
-		"hostname":     iface,
+		"hostname":     hostname,
 		"rxBytes":      rx,
 		"txBytes":      tx,
 		"primaryIPv4":  ip,
@@ -202,6 +200,9 @@ func hostNetInfo() map[string]interface{} {
 		"interface":    "eth0",
 	}
 }
+
+var hostFactsOnce   sync.Once
+var hostFactsPubIP  string
 
 func gatewayGuess(ip string) string {
 	parts := strings.Split(ip, ".")
@@ -254,10 +255,8 @@ func panelUser(r *http.Request, w http.ResponseWriter) *User {
 }
 
 func panelNav(active string) map[string]interface{} {
-	tickets, open, newC, closed := int64(0), int64(0), int64(0), int64(0)
-	_ = tickets
 	return map[string]interface{}{
-		"Active": active, "SupportOpen": open, "SupportNew": newC, "SupportClosed": closed,
+		"Active": active, "SupportOpen": int64(0), "SupportNew": int64(0), "SupportClosed": int64(0),
 	}
 }
 
@@ -936,56 +935,54 @@ func apiHostScheduleOp(w http.ResponseWriter, r *http.Request) {
 func scheduleLoop() {
 	go func() {
 		for range time.Tick(time.Minute) {
-			m := hostMgr()
-			m.mu.Lock()
-			type due struct {
-				s *HostedServer
-				k string
-				l string
-			}
-			var fire []due
-			now := time.Now().Unix()
-			for _, s := range m.st.Servers {
-				for _, sc := range s.Sched {
-					if !sc.Enabled || sc.EveryMin <= 0 {
-						continue
-					}
-					if sc.LastRun == 0 {
-						sc.LastRun = now
-					}
-					if now-sc.LastRun >= int64(sc.EveryMin)*60 {
-						fire = append(fire, due{s: s, k: sc.Kind, l: sc.Label})
+			func() {
+				defer func() { _ = recover() }()
+				m := hostMgr()
+				type due struct {
+					s *HostedServer
+					k string
+					l string
+				}
+				var fire []due
+				now := time.Now().Unix()
+				m.mu.Lock()
+				for idx := range m.st.Servers {
+					s := m.st.Servers[idx]
+					for j := range s.Sched {
+						sc := &s.Sched[j]
+						if !sc.Enabled || sc.EveryMin <= 0 {
+							continue
+						}
+						if sc.LastRun == 0 {
+							sc.LastRun = now
+							continue
+						}
+						if now-sc.LastRun >= int64(sc.EveryMin)*60 {
+							sc.LastRun = now
+							fire = append(fire, due{s: s, k: sc.Kind, l: sc.Label})
+						}
 					}
 				}
-			}
-			for i := range m.st.Servers {
-				for j := range m.st.Servers[i].Sched {
-					m.st.Servers[i].Sched[j].LastRun = now
+				if len(fire) > 0 {
+					m.saveLocked()
 				}
-			}
-			m.saveLocked()
-			m.mu.Unlock()
-			for _, f := range fire {
-				m.appendLog(f.s, "[schedule] firing "+f.l)
-				switch f.k {
-				case "restart":
-					m.stop(f.s)
-					_ = m.start(f.s)
-				case "stop":
-					m.stop(f.s)
-				case "start":
-					_ = m.start(f.s)
+				m.mu.Unlock()
+				for _, f := range fire {
+					m.appendLog(f.s, "[schedule] firing "+f.l)
+					switch f.k {
+					case "restart":
+						m.stop(f.s)
+						_ = m.start(f.s)
+					case "stop":
+						m.stop(f.s)
+					case "start":
+						_ = m.start(f.s)
+					}
 				}
-			}
-			m.mu.Lock()
+			}()
 		}
 	}()
 }
-
-// ---------------------------------------------------------------------------
-// one-click apps API (real installs)
-// ---------------------------------------------------------------------------
-
 func installedApps(m *hostingManager, s *HostedServer) map[string]bool {
 	out := map[string]bool{}
 	res := filepath.Join(m.serverRoot(s), "resources")
@@ -1039,7 +1036,9 @@ func apiHostAppInstall(w http.ResponseWriter, r *http.Request) {
 	_ = os.MkdirAll(res, 0o755)
 	m.appendLog(snap, "[apps] downloading "+app.Name+"…")
 	tmp := filepath.Join(m.dirOf(snap), "app-"+app.ID+".zip")
-	cmd := exec.Command("curl", "-fsSL", "-o", tmp, app.URL)
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "curl", "-fsSL", "--max-time", "110", "-o", tmp, app.URL)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		m.appendLog(snap, "[apps] download failed: "+strings.TrimSpace(string(out)))
 		sendJSON(w, http.StatusBadGateway, map[string]string{"error": "download failed: " + err.Error()})
@@ -1163,7 +1162,7 @@ func agentUpstream(ep, msg string) (string, error) {
 	if k := os.Getenv("NSM_AI_KEY"); k != "" {
 		req.Header.Set("Authorization", "Bearer "+k)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
 	if err != nil {
 		return "", err
 	}

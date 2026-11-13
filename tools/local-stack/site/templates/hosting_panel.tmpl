@@ -29,60 +29,66 @@
   <div class="pnl-main">
     <div class="pnl-top"><h1>Dashboard</h1><div class="sp"></div>
       <a class="pnl-icon-btn" href="/hosting/support" title="Support">&#9993;{{if .SupportOpen}}<span class="dot">{{.SupportOpen}}</span>{{end}}</a>
-      <a class="pnl-icon-btn" href="/status" title="Status">&#9888;</a>
-      <a class="pnl-icon-btn" href="/hosting/incidents" title="Incidents">&#9673;</a>
+      <a class="pnl-icon-btn" href="/hosting/incidents" title="Incidents">&#9888;</a>
     </div>
     <div class="pnl-body">
-      <div class="pnl-hero">
-        <div style="flex:1">
-          <h2><span id="pnl-greet">{{.Greeting}}</span>, <span class="pnl-grad">{{.User.Username}}</span></h2>
-          <div class="pnl-sub"><span class="pnl-live-dot"></span> {{.Online}} online &middot; {{.Total}} service{{if ne .Total 1}}s{{end}} total &middot; up to {{.MaxServers}} per account</div>
-          <a class="pnl-btn-green" href="/hosting/create">&#128722; Deploy server</a>
+      <div class="pnl-hero-panel">
+        <div class="pnl-hero-top">
+          <div class="pnl-hero-left">
+            <h2><span id="pnl-greet">{{.Greeting}}</span>, <span class="pnl-grad">{{.User.Username}}</span></h2>
+            <div class="pnl-sub"><span class="pnl-live-dot"></span> {{.Online}} online &middot; {{.Total}} service{{if ne .Total 1}}s{{end}} total &middot; up to {{.MaxServers}} per account</div>
+            <a class="pnl-btn-green" href="/hosting/create">&#128722; Deploy server</a>
+          </div>
+          <div class="pnl-pass" id="pnl-pass">
+            <div class="av">{{slice1 .User.Username}}</div>
+            <div>
+              <div class="lbl">Pulse Pass</div>
+              <div class="nm">{{.User.Username}} &#8250;</div>
+              <div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">NSM Hosting</span></div>
+              <div class="foot">Free forever &middot; every feature included</div>
+            </div>
+            <a class="manage" href="/profile">Manage</a>
+            <div class="pnl-pass-colors" title="Card colour">
+              <button onclick="pnlPassColor('#4c2a86','#1b1030')" style="background:#4c2a86"></button>
+              <button onclick="pnlPassColor('#0e5c3a','#072418')" style="background:#0e5c3a"></button>
+              <button onclick="pnlPassColor('#1e3a8a','#0c1a3e')" style="background:#1e3a8a"></button>
+              <button onclick="pnlPassColor('#7c2d12','#2a1006')" style="background:#7c2d12"></button>
+              <button onclick="pnlPassColor('#334155','#111827')" style="background:#334155"></button>
+            </div>
+          </div>
         </div>
-        <div class="pnl-pass" id="pnl-pass">
-          <div class="av">{{slice1 .User.Username}}</div>
+
+        <div class="pnl-support-card" onclick="location.href='/hosting/support'">
           <div>
-            <div class="lbl">Pulse Pass</div>
-            <div class="nm">{{.User.Username}} &#8250;</div>
-            <div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">NSM Hosting</span></div>
-            <div class="foot">Free forever &middot; every feature included</div>
+            <div class="lbl">Support</div>
+            <div class="big">{{.SupportOpen}} open</div>
+            <div class="up">Hosting chat &middot; staff replies here &middot; <a href="/support" style="color:#18E888">NSM tickets &#8599;</a></div>
           </div>
-          <a class="manage" href="/profile">Manage</a>
-          <div class="pnl-pass-colors" title="Card colour">
-            <button onclick="pnlPassColor('#4c2a86','#1b1030')" style="background:#4c2a86"></button>
-            <button onclick="pnlPassColor('#0e5c3a','#072418')" style="background:#0e5c3a"></button>
-            <button onclick="pnlPassColor('#1e3a8a','#0c1a3e')" style="background:#1e3a8a"></button>
-            <button onclick="pnlPassColor('#7c2d12','#2a1006')" style="background:#7c2d12"></button>
-            <button onclick="pnlPassColor('#334155','#111827')" style="background:#334155"></button>
-          </div>
+          <div class="chev">&#8250;</div>
         </div>
-      </div>
 
-      <div class="pnl-support-card" onclick="location.href='/hosting/support'">
-        <div>
-          <div class="lbl">Support</div>
-          <div class="big">{{.SupportOpen}} open</div>
-          <div class="up">Hosting chat &middot; staff replies here &middot; <a href="/support" style="color:#18E888">NSM tickets &#8599;</a></div>
+        <div class="pnl-chips">
+          <div class="pnl-chip">&#9888; Incidents <b>No incidents</b></div>
+          <div class="pnl-chip">&#9711; DDoS <b>No attacks</b></div>
+          <div class="pnl-chip">&#9830; Billing <b>Free &mdash; no charges</b></div>
+          <div class="pnl-chip">&#9673; Discord <b><a href="/forum" style="color:#18E888">Community</a></b></div>
+          <div class="pnl-chip">&#9788; Birthday <b>Not provided</b></div>
         </div>
-        <div class="chev">&#8250;</div>
-      </div>
-
-      <div class="pnl-chips">
-        <div class="pnl-chip">&#9888; Incidents <b>No incidents</b></div>
-        <div class="pnl-chip">&#9711; Firewall <b>Protected</b></div>
-        <div class="pnl-chip">&#9830; Billing <b>Free &mdash; no charges</b></div>
-        <div class="pnl-chip">&#9673; Discord <b><a href="/forum" style="color:#18E888">Community</a></b></div>
-        <div class="pnl-chip">&#9788; Birthday <b>Not provided</b></div>
       </div>
 
       <div id="services">
-        <div class="pnl-eyebrow">Infrastructure</div>
-        <h2 class="pnl-h2">My services</h2>
-        <div class="pnl-grid">
+        <div class="pnl-infra-head">
+          <div>
+            <div class="pnl-eyebrow">Infrastructure</div>
+            <h2 class="pnl-h2">My services</h2>
+          </div>
+          <button class="pnl-customize" id="pnl-customize" onclick="pnlCustomize(this)">&#9881; Customize Dashboard <span class="cnt">1</span></button>
+        </div>
+        <div class="pnl-grid" id="pnl-grid">
           {{range .Servers}}
           <div class="pnl-card" id="svc-{{.ID}}">
             <div class="row1">
-              <span class="kind">NSM Server</span>
+              <span class="kind">NSM</span>
               <span class="pnl-pill {{if eq .Status "online"}}ok{{else}}off{{end}}" data-live-pill="{{.ID}}">{{.Status}}</span>
               <button class="pnl-fav {{if .Favorite}}on{{end}}" title="Favourite" onclick="pnlFav('{{.ID}}',this)">&#9733;</button>
             </div>
@@ -93,11 +99,11 @@
             </div>
             <span class="pnl-badge-imported">&#8599; Imported from NSM</span>
             <div class="pnl-meta">
-              <div class="r"><span class="k">&#9673; IP / Port</span><span class="v">{{$.HostPublic}} : {{.GameTCPPort}} <button class="pnl-copy" onclick="pnlCopy('{{$.HostPublic}}:{{.GameTCPPort}}')">&#128203;</button></span></div>
-              <div class="r"><span class="k">&#9635; Package</span><span class="v">{{$.PKG.Slots}} slots &middot; {{$.PKG.RAMGB}} GB RAM &middot; {{$.PKG.DiskGB}} GB</span></div>
-              <div class="r"><span class="k">&#8962; System</span><span class="v">{{$.SystemName}}</span></div>
-              <div class="r"><span class="k">&#9678; Location</span><span class="v">{{.Region}}</span></div>
-              <div class="r"><span class="k">&#8593; Uptime</span><span class="v" data-uptime="{{.ID}}">{{if .LastStarted}}since {{.LastStarted}}{{else}}offline{{end}}</span></div>
+              <div class="r"><span class="k">IP / Port</span><span class="v">{{$.HostPublic}} : {{.GameTCPPort}} <button class="pnl-copy" onclick="pnlCopy('{{$.HostPublic}}:{{.GameTCPPort}}')">&#128203;</button></span></div>
+              <div class="r"><span class="k">Package</span><span class="v">{{$.PKG.Slots}} slots &middot; {{$.PKG.RAMGB}} GB RAM &middot; {{$.PKG.DiskGB}} GB</span></div>
+              <div class="r"><span class="k">System</span><span class="v">{{$.SystemName}}</span></div>
+              <div class="r"><span class="k">Location</span><span class="v">{{.Region}}</span></div>
+              <div class="r"><span class="k">Uptime</span><span class="v" data-uptime="{{.ID}}">{{if .LastStarted}}since {{.LastStarted}}{{else}}offline{{end}}</span></div>
             </div>
             <div class="pnl-card-actions">
               <a class="pnl-mini-btn green" href="/dashboard/{{.ID}}">Manage</a>
@@ -107,10 +113,8 @@
           </div>
           {{end}}
           {{if lt .Total .MaxServers}}
-          <a class="pnl-plus-card" href="/hosting/create">
+          <a class="pnl-plus-card" href="/hosting/create" title="Deploy another NSM server">
             <span class="plus">+</span>
-            <span>New NSM server</span>
-            <span style="font-size:.75rem;opacity:.7">{{.MaxServers}} max per account</span>
           </a>
           {{end}}
         </div>
@@ -118,11 +122,19 @@
     </div>
   </div>
 </div>
+<a class="pnl-fab" href="/hosting/support" title="Hosting support chat">&#128172;</a>
 <script>
 function pnlCopy(t){navigator.clipboard&&navigator.clipboard.writeText(t);}
 function pnlPassColor(a,b){var p=document.getElementById('pnl-pass');p.style.setProperty('--pnl-pass-a',a);p.style.setProperty('--pnl-pass-b',b);try{localStorage.setItem('nsmPassColor',JSON.stringify([a,b]));}catch(e){}}
 (function(){try{var c=JSON.parse(localStorage.getItem('nsmPassColor')||'null');if(c)document.getElementById('pnl-pass').style.cssText+=';--pnl-pass-a:'+c[0]+';--pnl-pass-b:'+c[1];}catch(e){}
   var h=new Date().getHours();var g=h<12?'Good morning':h<18?'Good afternoon':'Good evening';document.getElementById('pnl-greet').textContent=g;})();
+function pnlCustomize(btn){
+  var grid=document.getElementById('pnl-grid');
+  var on=grid.classList.toggle('pnl-compact');
+  btn.classList.toggle('pnl-on',on);
+  try{localStorage.setItem('nsmCompact',on?'1':'0');}catch(e){}
+}
+(function(){try{if(localStorage.getItem('nsmCompact')==='1'){document.getElementById('pnl-grid').classList.add('pnl-compact');document.getElementById('pnl-customize').classList.add('pnl-on');}}catch(e){}})();
 function pnlPower(id,a){fetch('/api/host/'+id+'/power/'+a,{method:'POST'}).then(function(){setTimeout(function(){location.reload();},900);});}
 function pnlFav(id,btn){btn.classList.toggle('on');}
 setInterval(function(){
@@ -131,7 +143,7 @@ setInterval(function(){
       el.textContent=d.status;el.className='pnl-pill '+(d.status==='online'?'ok':d.status==='error'?'bad':'off');
     }).catch(function(){});
   });
-},5000);
+},10000);
 </script>
 {{template "foot" .}}
 {{end}}

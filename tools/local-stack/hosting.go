@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"context"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -133,11 +134,17 @@ type hostingManager struct {
 	firewall      bool
 	firewallNote  string
 	diskMemo map[string]diskMemo
+	usageMemo map[string]usageMemoT
 }
 
 type diskMemo struct {
 	mb  int64
 	at  time.Time
+}
+
+type usageMemoT struct {
+	u  hostUsage
+	at time.Time
 }
 
 var (
@@ -157,6 +164,7 @@ func hostMgr() *hostingManager {
 			procs:    map[string]*hostedProc{},
 			ftp:      map[string]*ftpServer{},
 			diskMemo: map[string]diskMemo{},
+			usageMemo: map[string]usageMemoT{},
 		}
 		hostMgrV = m
 		if b, err := os.ReadFile(m.path); err == nil {
@@ -1037,6 +1045,12 @@ type hostUsage struct {
 }
 
 func (m *hostingManager) usage(s *HostedServer) hostUsage {
+	m.mu.Lock()
+	if memo, ok := m.usageMemo[s.ID]; ok && time.Since(memo.at) < 4*time.Second {
+		m.mu.Unlock()
+		return memo.u
+	}
+	m.mu.Unlock()
 	u := hostUsage{CPUPct: -1, RAMMB: -1}
 	m.mu.Lock()
 	p, running := m.procs[s.ID]
@@ -1060,12 +1074,15 @@ func (m *hostingManager) usage(s *HostedServer) hostUsage {
 		}
 		m.mu.Unlock()
 	}
+	m.mu.Lock()
+	m.usageMemo[s.ID] = usageMemoT{u: u, at: time.Now()}
+	m.mu.Unlock()
 	return u
 }
 
 func (m *hostingManager) diskUsage(s *HostedServer) int64 {
 	m.mu.Lock()
-	if memo, ok := m.diskMemo[s.ID]; ok && time.Since(memo.at) < 15*time.Second {
+	if memo, ok := m.diskMemo[s.ID]; ok && time.Since(memo.at) < 120*time.Second {
 		m.mu.Unlock()
 		return memo.mb
 	}
@@ -1119,7 +1136,9 @@ func procUsage(pid int, p *hostedProc) (float64, int64) {
 	}
 	// Windows: real numbers from tasklist / wmic, best effort
 	ram := int64(-1)
-	if out, err := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV", "/NH").Output(); err == nil {
+	tctx, tcancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer tcancel()
+	if out, err := exec.CommandContext(tctx, "tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV", "/NH").Output(); err == nil {
 		line := strings.TrimSpace(string(out))
 		if i := strings.LastIndex(line, `","`); i > 0 {
 			mem := strings.Trim(line[i+3:], `"\r`)
@@ -1131,7 +1150,9 @@ func procUsage(pid int, p *hostedProc) (float64, int64) {
 		}
 	}
 	cpu := -1.0
-	if out, err := exec.Command("wmic", "process", "where", fmt.Sprintf("processid=%d", pid), "get", "UserModeTime,KernelModeTime", "/format:csv").Output(); err == nil {
+	wctx, wcancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer wcancel()
+	if out, err := exec.CommandContext(wctx, "wmic", "process", "where", fmt.Sprintf("processid=%d", pid), "get", "UserModeTime,KernelModeTime", "/format:csv").Output(); err == nil {
 		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 		if len(lines) >= 2 {
 			parts := strings.Split(strings.TrimSpace(lines[len(lines)-1]), ",")
@@ -1183,7 +1204,11 @@ func hostFacts() map[string]interface{} {
 				}
 			}
 		}
-	} else if out, err := exec.Command("wmic", "computersystem", "get", "TotalPhysicalMemory", "/format:csv").Output(); err == nil {
+	} else if out, err := func() ([]byte, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		return exec.CommandContext(ctx, "wmic", "computersystem", "get", "TotalPhysicalMemory", "/format:csv").Output()
+	}(); err == nil {
 		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 		if len(lines) >= 2 {
 			parts := strings.Split(strings.TrimSpace(lines[len(lines)-1]), ",")

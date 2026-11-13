@@ -889,12 +889,20 @@
   }
 
   function nsmNavigate(url, pushState) {
-    if (spaInFlight) return;
+    if (spaInFlight) {
+      // A previous in-app navigation never finished (server hung?) — never
+      // swallow clicks: go there the normal way instead.
+      window.location.href = url;
+      return;
+    }
     spaInFlight = true;
+    var aborter = ('AbortController' in window) ? new AbortController() : null;
+    setTimeout(function () { if (aborter) aborter.abort(); }, 7000);
     fetch(url, {
       method: 'GET',
       credentials: 'same-origin',
-      headers: { 'X-NSM-SPA': '1' }
+      headers: { 'X-NSM-SPA': '1' },
+      signal: aborter ? aborter.signal : undefined
     })
       .then(function (res) {
         var ct = (res.headers.get('content-type') || '').toLowerCase();
@@ -948,11 +956,14 @@
         }
         var enc = (form.getAttribute('enctype') || '').toLowerCase();
         var isMultipart = enc.indexOf('multipart/form-data') !== -1 || !!form.querySelector('input[type="file"]');
+        var aborter2 = ('AbortController' in window) ? new AbortController() : null;
+        setTimeout(function () { if (aborter2) aborter2.abort(); }, 7000);
         var fetchOpts = {
           method: method,
           credentials: 'same-origin',
           headers: { 'X-NSM-SPA': '1' },
-          body: isMultipart ? fd : new URLSearchParams(fd).toString()
+          body: isMultipart ? fd : new URLSearchParams(fd).toString(),
+          signal: aborter2 ? aborter2.signal : undefined
         };
         if (!isMultipart) {
           fetchOpts.headers['Content-Type'] = 'application/x-www-form-urlencoded;charset=UTF-8';
