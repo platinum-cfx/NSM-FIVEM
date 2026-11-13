@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&family=JetBrains+Mono:wght@400;500;700&family=Material+Icons+Outlined&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=090a">
-  <link rel="stylesheet" href="/css/zapx.css?v=9">
-  <link rel="stylesheet" href="/css/panel.css?v=2">
+  <link rel="stylesheet" href="/css/style.css?v=090b">
+  <link rel="stylesheet" href="/css/zapx.css?v=10">
+  <link rel="stylesheet" href="/css/panel.css?v=3">
 </head>
 <body class="pnl-page">
 {{end}}
@@ -60,6 +60,8 @@
             <a class="pnl-btn-green" href="/hosting/create">&#128722; Deploy server</a>
           </div>
           <div class="pnl-pass" id="pnl-pass">
+            <div class="pnl-pass-banner"></div>
+            <div class="pnl-pass-glow"></div>
             <img class="av pav" src="/avatars/u/{{.User.Username}}/128.png?v=1" alt="" onerror="this.style.display='none'">
             <div>
               <div class="lbl">Pulse Pass</div>
@@ -67,13 +69,14 @@
               <div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">NSM Hosting</span></div>
               <div class="foot">Free forever &middot; every feature included</div>
             </div>
-            <a class="manage" href="/u/{{.User.Username}}">Manage</a>
-            <div class="pnl-pass-colors" title="Card colour">
-              <button onclick="pnlPassColor('#4c2a86','#1b1030')" style="background:#4c2a86"></button>
-              <button onclick="pnlPassColor('#0e5c3a','#072418')" style="background:#0e5c3a"></button>
-              <button onclick="pnlPassColor('#1e3a8a','#0c1a3e')" style="background:#1e3a8a"></button>
-              <button onclick="pnlPassColor('#7c2d12','#2a1006')" style="background:#7c2d12"></button>
-              <button onclick="pnlPassColor('#334155','#111827')" style="background:#334155"></button>
+            <a class="manage manage-ring" href="/u/{{.User.Username}}">&#9998; Manage</a>
+            <div class="pnl-pass-colors" title="Banner colour">
+              <span class="pc-lbl">banner</span>
+              <button onclick="pnlPassColor('#4c2a86','#1b1030')" style="background:linear-gradient(135deg,#4c2a86,#1b1030)"></button>
+              <button onclick="pnlPassColor('#0e5c3a','#072418')" style="background:linear-gradient(135deg,#0e5c3a,#072418)"></button>
+              <button onclick="pnlPassColor('#1e3a8a','#0c1a3e')" style="background:linear-gradient(135deg,#1e3a8a,#0c1a3e)"></button>
+              <button onclick="pnlPassColor('#7c2d12','#2a1006')" style="background:linear-gradient(135deg,#7c2d12,#2a1006)"></button>
+              <button onclick="pnlPassColor('#334155','#111827')" style="background:linear-gradient(135deg,#334155,#111827)"></button>
             </div>
           </div>
         </div>
@@ -598,7 +601,10 @@ function pnlGet(url,tries){tries=tries||0;var ab=('AbortController' in window)?n
     if(!r.ok)return r.text().then(function(b){throw new Error('HTTP '+r.status+(b?': '+String(b).slice(0,120):''));});
     return r.json();
   }).catch(function(e){
-    if(tries<2)return new Promise(function(res){setTimeout(res,2000);}).then(function(){return pnlGet(url,tries+1);});
+    var m=String(e&&e.message||e);
+    // fail fast on definitive answers (404/401/403/sessions) — only transient
+    // conditions (timeouts, network, 5xx) deserve retries
+    if(tries<2 && m.indexOf('HTTP 4')!==0 && m!=='SESSION')return new Promise(function(res){setTimeout(res,2000);}).then(function(){return pnlGet(url,tries+1);});
     throw e;
   });
 }
@@ -904,7 +910,7 @@ if(document.getElementById('act-list')){window.__nsmTimers.push(setInterval(pnlA
           {{end}}
         </div>
         <div class="pnl-chat-input">
-          <textarea id="tmsg" placeholder="Write a message…"></textarea>
+          <textarea id="tmsg" placeholder="Write a message… (Enter to send)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();pnlSendTicketMsg('{{.T.ID}}')}"></textarea>
           <button class="pnl-btn-green" onclick="pnlSendTicketMsg('{{.T.ID}}')">Send</button>
         </div>
       </div>
@@ -1047,7 +1053,21 @@ function pnlCloseTicket(id){fetch('/api/hosting/support/'+id+'/close',{method:'P
       <div class="pnl-pass"><img class="av pav" src="/avatars/u/{{.User.Username}}/128.png?v=1" alt="" onerror="this.style.display='none'"><div><div class="lbl">Pulse Pass</div><div class="nm">{{.User.Username}} &#8250;</div><div class="badges"><span class="badge">{{.PassTier}}</span><span class="badge">Free forever</span></div></div></div>
     </div>
     <div class="pnl-panel"><h3>What's included</h3><p class="hint">Up to 5 servers, 2048 slots each, backups, schedules, one-click apps, the Plus scripting agent and hosting support chat.</p></div>
+    <div class="pnl-panel">
+      <h3>Pulse plans</h3>
+      <p class="hint">Your plan lights up and stays selected — pick another any time from a server's Manage plan.</p>
+      <div class="pnl-tiers pnl-tiers-pass" id="pass-tiers">
+        {{range .Tiers}}<button class="pnl-tier pnl-plan-card{{if eq $.PlanTier .Name}} pnl-on pnl-plan-lit{{end}}" data-up="{{.Upvotes}}" onclick="pnlPassPlan(this)"><span class="tname">{{.Name}}</span><span class="tup">{{.Upvotes}} upvotes</span><span class="tprice" data-price></span></button>{{end}}
+      </div>
+    </div>
   </div>
+  <script>
+  (function(){document.querySelectorAll('.pnl-tier [data-price]').forEach(function(sp){
+    var t=sp.closest('.pnl-tier'),up=parseInt(t.getAttribute('data-up')||'0',10);
+    sp.textContent=up<=10?'Free':'€'+Math.max(2.99,Math.round(up*0.0002*100)/100).toFixed(2)+'/mo';
+  });})();
+  function pnlPassPlan(btn){document.querySelectorAll('#pass-tiers .pnl-tier').forEach(function(t){t.classList.remove('pnl-on','pnl-plan-lit');});btn.classList.add('pnl-on','pnl-plan-lit');}
+  </script>
 </div></div>
 {{template "panel-foot" .}}
 {{end}}
@@ -1057,8 +1077,17 @@ function pnlCloseTicket(id){fetch('/api/hosting/support/'+id+'/close',{method:'P
 <div class="pnl">{{template "panel-rail" .}}<div class="pnl-main">
   <div class="pnl-top"><a class="pnl-back" href="/hosting/dashboard" title="Back to dashboard">&#8592;</a><h1>News</h1></div>
   <div class="pnl-body">
-    <div class="pnl-panel"><h3>The new NSM Hosting panel is live</h3><p class="hint">Live updates, backups, schedules, one-click apps and the Plus scripting agent — all free. Questions? Open a <a href="/hosting/support" style="color:#18E888">hosting chat</a>.</p></div>
-    <div class="pnl-panel"><h3>Five servers per account</h3><p class="hint">You can now run up to five cities at once from one NSM account — deploy extras from the <a href="/hosting/dashboard" style="color:#18E888">dashboard</a>.</p></div>
+    <div class="pnl-panel"><h3>Platform news</h3><p class="hint">Live from the NSM forum announcements — updated automatically.</p>
+      {{range .Announcements}}
+      <div class="pnl-news-item{{if .Pinned}} pnl-news-pin{{end}}">
+        <div class="nn">{{.Title}}{{if .Pinned}} <span class="pnl-pill ok">pinned</span>{{end}}</div>
+        <div class="nm2">by {{.Author}} &middot; {{unixfmt .UpdatedAt}}</div>
+        <p>{{.Body}}</p>
+      </div>
+      {{else}}
+      <div class="pnl-news-item"><p>No announcements yet — check back soon.</p></div>
+      {{end}}
+    </div>
   </div>
 </div></div>
 {{template "panel-foot" .}}

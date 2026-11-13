@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&family=JetBrains+Mono:wght@400;500;700&family=Material+Icons+Outlined&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=090a">
-  <link rel="stylesheet" href="/css/zapx.css?v=9">
+  <link rel="stylesheet" href="/css/style.css?v=090b">
+  <link rel="stylesheet" href="/css/zapx.css?v=10">
   <link rel="stylesheet" href="/css/panel.css?v=2">
 </head>
 <body>
@@ -34,7 +34,7 @@
 </div>
 {{end}}
 
-<div class="bg-holder{{if eq .Page "/"}} with-bg{{end}}">
+<div class="bg-holder{{if or (eq .Page "/") (eq .Page "/hosting")}} with-bg{{end}}">
 <header class="nsm-top-header">
   <div class="hbar">
     <a href="/" class="logo unstyled">
@@ -43,15 +43,7 @@
     </a>
     <ul class="links nav-main hidden-xs hidden-sm">
       <li><a href="/servers" class="{{if eq .Page "/servers"}}active{{end}}">Server List</a></li>
-      <li class="has-drop">
-        <button type="button" class="drop-trigger{{if or (eq .Page "/hosting") (eq .Page "/hosting/create") (eq .Page "/hosting/manage") (eq .Page "/hosting/dashboard")}} active{{end}}">Hosting<span class="material-icons-outlined drop-caret">expand_more</span></button>
-        <ul class="drop-menu">
-          <li><a href="/hosting/dashboard">Dashboard</a></li>
-          <li><a href="/hosting/dashboard#services">My services</a></li>
-          <li><a href="/hosting/create">Deploy a server</a></li>
-          <li><a href="/hosting/support">Hosting support</a></li>
-        </ul>
-      </li>
+      <li><a href="/hosting" class="{{if or (eq .Page "/hosting") (eq .Page "/hosting/create") (eq .Page "/hosting/manage") (eq .Page "/hosting/dashboard")}}active{{end}}">Hosting</a></li>
       <li><a href="/keymaster" class="{{if eq .Page "/keymaster"}}active{{end}}">Portal</a></li>
       <li><a href="/support" class="{{if eq .Page "/support"}}active{{end}}">Support</a></li>
       <li class="has-drop">
@@ -78,6 +70,7 @@
       {{else}}
       <li><a href="/login" class="{{if eq .Page "/login"}}active{{end}}">Log in</a></li>
       {{end}}
+      <li><a class="zx-nav-cta" href="/hosting/dashboard">Dashboard</a></li>
       <li class="nav-cta"><a href="/download" data-no-spa="1" class="btn primary nav-dl">Download</a></li>
     </ul>
     <button class="burger-toggle" id="burger-open" type="button" aria-label="Open menu" aria-expanded="false"><span class="material-icons-outlined">menu</span></button>
@@ -92,7 +85,7 @@
   <ul>
     <li><a href="/servers">Server List</a></li>
     <li><a href="/hosting">Hosting</a></li>
-    <li><a href="/hosting/dashboard">Hosting Dashboard</a></li>
+    <li><a href="/hosting/dashboard">Dashboard</a></li>
     <li><a href="/hosting/create">Deploy a server</a></li>
     <li><a href="/hosting/support">Hosting support</a></li>
     <li><a href="/keymaster">Portal</a></li>

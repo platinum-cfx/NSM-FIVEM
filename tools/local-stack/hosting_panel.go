@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -441,7 +442,17 @@ func hostingPassPage(w http.ResponseWriter, r *http.Request) {
 	if u == nil {
 		return
 	}
-	data := map[string]interface{}{"Title": "Pulse - NSM Hosting", "PassTier": pulseTierName(u)}
+	curTier, curUp := "spark", 10
+	m2 := hostMgr()
+	m2.mu.Lock()
+	for _, sv := range m2.st.Servers {
+		if sv.Owner == u.ID && sv.PlanTier != "" {
+			curTier, curUp = sv.PlanTier, sv.PlanUpvotes
+		}
+	}
+	m2.mu.Unlock()
+	data := map[string]interface{}{"Title": "Pulse - NSM Hosting", "PassTier": pulseTierName(u),
+		"Tiers": planTiers, "PlanTier": curTier, "PlanUpvotes": curUp}
 	for k, v := range panelNav("pass", u) {
 		if _, ok := data[k]; !ok {
 			data[k] = v
@@ -455,7 +466,35 @@ func hostingNewsPage(w http.ResponseWriter, r *http.Request) {
 	if u == nil {
 		return
 	}
-	data := map[string]interface{}{"Title": "News - NSM Hosting"}
+	anns := []map[string]interface{}{}
+	forumMu.Lock()
+	if forum != nil {
+		for _, t := range forum.Topics {
+			if t.CategorySlug != "announcements" {
+				continue
+			}
+			body := ""
+			if len(t.Posts) > 0 {
+				body = t.Posts[0].Content
+			}
+			if len(body) > 600 {
+				body = body[:600] + "\u2026"
+			}
+			anns = append(anns, map[string]interface{}{
+				"Title": t.Title, "Author": t.AuthorUsername,
+				"CreatedAt": t.CreatedAt, "UpdatedAt": t.UpdatedAt,
+				"Body": body, "Pinned": t.Pinned,
+			})
+		}
+	}
+	forumMu.Unlock()
+	sort.Slice(anns, func(i, j int) bool {
+		if anns[i]["Pinned"] != anns[j]["Pinned"] {
+			return anns[i]["Pinned"].(bool)
+		}
+		return anns[i]["UpdatedAt"].(int64) > anns[j]["UpdatedAt"].(int64)
+	})
+	data := map[string]interface{}{"Title": "News - NSM Hosting", "Announcements": anns}
 	for k, v := range panelNav("news", u) {
 		if _, ok := data[k]; !ok {
 			data[k] = v
@@ -646,8 +685,9 @@ func panelOwned(w http.ResponseWriter, r *http.Request) (*hostingManager, *Hoste
 		return nil, nil, nil, false
 	}
 	m := hostMgr()
+	id := r.PathValue("id")
 	m.mu.Lock()
-	s := m.find(r.PathValue("id"))
+	s := m.findOwned(id, u.ID)
 	var snap *HostedServer
 	if s != nil && s.Owner == u.ID {
 		cp := *s
@@ -655,7 +695,9 @@ func panelOwned(w http.ResponseWriter, r *http.Request) (*hostingManager, *Hoste
 	}
 	m.mu.Unlock()
 	if snap == nil {
-		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		msg := m.missingServerText(id, u)
+		log.Printf("[panel] 404 id=%q uid=%d: %s", id, u.ID, msg)
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": msg})
 		return nil, nil, nil, false
 	}
 	return m, snap, u, true

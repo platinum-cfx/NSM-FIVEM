@@ -297,6 +297,41 @@ func (m *hostingManager) find(id string) *HostedServer {
 	return nil
 }
 
+// findOwned returns the entry with this id owned by owner — robust against
+// duplicate ids from old data (a foreign copy earlier in the list must not
+// shadow the caller's own server).
+func (m *hostingManager) findOwned(id string, owner int64) *HostedServer {
+	var first *HostedServer
+	for _, s := range m.st.Servers {
+		if s.ID != id {
+			continue
+		}
+		if s.Owner == owner {
+			return s
+		}
+		if first == nil {
+			first = s
+		}
+	}
+	return first
+}
+
+// missingServerText names the exact lookup failure so a live report pinpoints
+// the cause: empty id, unknown id, or a different owner. It also states how
+// many servers this process loaded and its pid — that instantly exposes a
+// second instance or wrong data directory serving the API.
+func (m *hostingManager) missingServerText(id string, u *User) string {
+	if strings.TrimSpace(id) == "" {
+		return "missing server id in request (panel bug — please report)"
+	}
+	for _, s := range m.st.Servers {
+		if s.ID == id {
+			return fmt.Sprintf("server %s belongs to a different account (pid %d, %d servers loaded)", id, os.Getpid(), len(m.st.Servers))
+		}
+	}
+	return fmt.Sprintf("server %s does not exist on this host (pid %d, %d servers loaded)", id, os.Getpid(), len(m.st.Servers))
+}
+
 func (m *hostingManager) findOwnerLocked(owner int64) *HostedServer {
 	for _, s := range m.st.Servers {
 		if s.Owner == owner {
@@ -1380,7 +1415,7 @@ func dashboardServerPage(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	m := hostMgr()
 	m.mu.Lock()
-	s := m.find(id)
+	s := m.findOwned(id, u.ID)
 	var snap *HostedServer
 	if s != nil && s.Owner == u.ID {
 		cp := *s
@@ -1420,9 +1455,12 @@ func apiHostConsole(w http.ResponseWriter, r *http.Request) {
 	m := hostMgr()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.find(r.PathValue("id"))
+	id := r.PathValue("id")
+	s := m.findOwned(id, u.ID)
 	if s == nil || s.Owner != u.ID {
-		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		msg := m.missingServerText(id, u)
+		log.Printf("[panel] 404 console id=%q uid=%d: %s", id, u.ID, msg)
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": msg})
 		return
 	}
 	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
@@ -1447,11 +1485,13 @@ func apiHostCommand(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body)
 	m := hostMgr()
+	id := r.PathValue("id")
 	m.mu.Lock()
-	s := m.find(r.PathValue("id"))
+	s := m.findOwned(id, u.ID)
 	m.mu.Unlock()
 	if s == nil || s.Owner != u.ID {
-		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		log.Printf("[panel] 404 id=%q uid=%d: %s", id, u.ID, m.missingServerText(id, u))
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
 		return
 	}
 	if err := m.command(s, strings.TrimSpace(body.Cmd)); err != nil {
@@ -1468,11 +1508,13 @@ func apiHostPower(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := hostMgr()
+	id := r.PathValue("id")
 	m.mu.Lock()
-	s := m.find(r.PathValue("id"))
+	s := m.findOwned(id, u.ID)
 	m.mu.Unlock()
 	if s == nil || s.Owner != u.ID {
-		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		log.Printf("[panel] 404 id=%q uid=%d: %s", id, u.ID, m.missingServerText(id, u))
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
 		return
 	}
 	switch r.PathValue("action") {
@@ -1503,11 +1545,13 @@ func apiHostUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := hostMgr()
+	id := r.PathValue("id")
 	m.mu.Lock()
-	s := m.find(r.PathValue("id"))
+	s := m.findOwned(id, u.ID)
 	m.mu.Unlock()
 	if s == nil || s.Owner != u.ID {
-		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		log.Printf("[panel] 404 id=%q uid=%d: %s", id, u.ID, m.missingServerText(id, u))
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
 		return
 	}
 	sendJSON(w, http.StatusOK, m.usage(s))
@@ -1520,11 +1564,13 @@ func apiHostDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := hostMgr()
+	id := r.PathValue("id")
 	m.mu.Lock()
-	s := m.find(r.PathValue("id"))
+	s := m.findOwned(id, u.ID)
 	m.mu.Unlock()
 	if s == nil || s.Owner != u.ID {
-		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		log.Printf("[panel] 404 id=%q uid=%d: %s", id, u.ID, m.missingServerText(id, u))
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
 		return
 	}
 	revokeServerKeyAndEvict(s.KeyID)
@@ -1787,7 +1833,7 @@ func apiHostFilezilla(w http.ResponseWriter, r *http.Request) {
 	}
 	m := hostMgr()
 	m.mu.Lock()
-	s := m.find(r.PathValue("id"))
+	s := m.findOwned(r.PathValue("id"), u.ID)
 	var snap *HostedServer
 	if s != nil && s.Owner == u.ID {
 		cp := *s
@@ -1834,9 +1880,11 @@ func apiHostPorts(w http.ResponseWriter, r *http.Request) {
 	m := hostMgr()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.find(r.PathValue("id"))
+	id := r.PathValue("id")
+	s := m.findOwned(id, u.ID)
 	if s == nil || s.Owner != u.ID {
-		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		log.Printf("[panel] 404 id=%q uid=%d: %s", id, u.ID, m.missingServerText(id, u))
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": m.missingServerText(id, u)})
 		return
 	}
 	p, err := m.allocPortLocked()
