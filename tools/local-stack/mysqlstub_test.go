@@ -132,12 +132,18 @@ func (s *mysqlStub) handle(c net.Conn) {
 	pos += authLen // auth response
 	_ = user
 
+	// verify the mysql_native_password scramble exactly like a real server:
+	// wrong username or password must be rejected.
+	authResp := []byte{}
+	if authLen > 0 {
+		authResp = resp[pos-authLen : pos]
+	}
+	want := mysqlNativePassword(s.expectP, append([]byte("12345678"), []byte("abcdefghijkl")...))
+	okAuth := user == s.expectU && (len(authResp) == len(want)) &&
+		(len(authResp) == 0 || string(authResp) == string(want))
 	s.mu.Lock()
 	s.user = user
-	s.passOK = user == s.expectU // stub accepts the expected user; rejects others
-	if s.expectU == "" {
-		s.passOK = true
-	}
+	s.passOK = okAuth
 	s.mu.Unlock()
 	if !s.passOK {
 		// ERR packet: ER_ACCESS_DENIED_ERROR
@@ -227,5 +233,31 @@ func TestMySQLProvisionerRejectsBadIdents(t *testing.T) {
 	}
 	if err := svc.EnsureDatabase("ok_db", "bad user", "p"); err == nil {
 		t.Fatal("ident validation must reject hostile users")
+	}
+}
+
+// TestMySQLNativePasswordKnownAnswer pins the scramble against an
+// independent (Python hashlib) implementation of the mysql_native_password
+// formula, so client and server cannot share a silent bug.
+func TestMySQLNativePasswordKnownAnswer(t *testing.T) {
+	salt := []byte("12345678abcdefghijkl")
+	got := mysqlNativePassword("admin-secret", salt)
+	want := []byte{108, 83, 53, 96, 237, 185, 180, 68, 78, 190, 16, 157, 126, 77, 178, 139, 242, 213, 202, 65}
+	if string(got) != string(want) {
+		t.Fatalf("scramble mismatch: got %v want %v", got, want)
+	}
+	if len(mysqlNativePassword("", salt)) != 0 {
+		t.Fatal("empty password must produce an empty scramble")
+	}
+}
+
+// TestMySQLClientAuthRejectsWrongPassword proves the client really
+// authenticates: a wrong password is refused at the wire level.
+func TestMySQLClientAuthRejectsWrongPassword(t *testing.T) {
+	stub := startMySQLStub(t, "root", "right-pass")
+	c, err := mysqlDial("root:wrong-pass@tcp(" + stub.addr() + ")/?timeout=5s")
+	if err == nil {
+		c.close()
+		t.Fatal("wrong password must be rejected")
 	}
 }

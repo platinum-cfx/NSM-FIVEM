@@ -10,7 +10,6 @@ package main
 
 import (
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -25,8 +24,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	_ "github.com/go-sql-driver/mysql"
 )
 
 // hostedDatabase is one database provisioned for a hosted server.
@@ -52,116 +49,97 @@ type dbProvisioner interface {
 	ImportSQL(dbName, sqlText string) error
 }
 
-// mysqlProvisioner drives a real MySQL/MariaDB server through its admin DSN.
+// mysqlProvisioner drives a real MySQL/MariaDB server through its admin DSN
+// using the stdlib text-protocol client in mysqlwire.go (go.mod is a
+// v0.7.7-locked path — no driver dependency may be added).
 type mysqlProvisioner struct{ adminDSN string }
 
-func (p *mysqlProvisioner) open() (*sql.DB, error) {
-	db, err := sql.Open("mysql", p.adminDSN)
-	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(2)
-	return db, nil
-}
-
-func (p *mysqlProvisioner) Ping() error {
-	db, err := p.open()
+func (p *mysqlProvisioner) with(fn func(c *mysqlClient) error) error {
+	c, err := mysqlDial(p.adminDSN)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
-	return db.Ping()
+	defer c.close()
+	return fn(c)
+}
+
+func (p *mysqlProvisioner) Ping() error {
+	return p.with(func(c *mysqlClient) error { return c.ping() })
 }
 
 func (p *mysqlProvisioner) EnsureDatabase(dbName, dbUser, dbPass string) error {
 	if err := validateDBIdent(dbName, dbUser); err != nil {
 		return err
 	}
-	db, err := p.open()
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	if _, err := db.Exec("CREATE DATABASE IF NOT EXISTS `" + dbName + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"); err != nil {
-		return fmt.Errorf("create database: %w", err)
-	}
-	// Dedicated user with grants on exactly one schema. IDENTIFIED BY keeps
-	// the password out of the general log; the value is escaped by quoteDB.
-	if _, err := db.Exec("CREATE USER IF NOT EXISTS " + quoteDB(dbUser) + "@'%' IDENTIFIED BY " + quoteDB(dbPass)); err != nil {
-		return fmt.Errorf("create user: %w", err)
-	}
-	if _, err := db.Exec("ALTER USER " + quoteDB(dbUser) + "@'%' IDENTIFIED BY " + quoteDB(dbPass)); err != nil {
-		return fmt.Errorf("set password: %w", err)
-	}
-	if _, err := db.Exec("GRANT ALL PRIVILEGES ON `" + dbName + "`.* TO " + quoteDB(dbUser) + "@'%'"); err != nil {
-		return fmt.Errorf("grant: %w", err)
-	}
-	if _, err := db.Exec("FLUSH PRIVILEGES"); err != nil {
-		return fmt.Errorf("flush: %w", err)
-	}
-	return nil
+	return p.with(func(c *mysqlClient) error {
+		for _, stmt := range []string{
+			"CREATE DATABASE IF NOT EXISTS `" + dbName + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+			"CREATE USER IF NOT EXISTS " + quoteDB(dbUser) + "@'%' IDENTIFIED BY " + quoteDB(dbPass),
+			"ALTER USER " + quoteDB(dbUser) + "@'%' IDENTIFIED BY " + quoteDB(dbPass),
+			"GRANT ALL PRIVILEGES ON `" + dbName + "`.* TO " + quoteDB(dbUser) + "@'%'",
+			"FLUSH PRIVILEGES",
+		} {
+			if err := c.exec(stmt); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (p *mysqlProvisioner) DropDatabase(dbName, dbUser string) error {
 	if err := validateDBIdent(dbName, dbUser); err != nil {
 		return err
 	}
-	db, err := p.open()
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	if _, err := db.Exec("DROP DATABASE IF EXISTS `" + dbName + "`"); err != nil {
-		return fmt.Errorf("drop database: %w", err)
-	}
-	if _, err := db.Exec("DROP USER IF EXISTS " + quoteDB(dbUser) + "@'%'"); err != nil {
-		return fmt.Errorf("drop user: %w", err)
-	}
-	if _, err := db.Exec("FLUSH PRIVILEGES"); err != nil {
-		return fmt.Errorf("flush: %w", err)
-	}
-	return nil
+	return p.with(func(c *mysqlClient) error {
+		for _, stmt := range []string{
+			"DROP DATABASE IF EXISTS `" + dbName + "`",
+			"DROP USER IF EXISTS " + quoteDB(dbUser) + "@'%'",
+			"FLUSH PRIVILEGES",
+		} {
+			if err := c.exec(stmt); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (p *mysqlProvisioner) SetPassword(dbUser, dbPass string) error {
 	if err := validateDBIdent("nsm_x", dbUser); err != nil {
 		return err
 	}
-	db, err := p.open()
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	if _, err := db.Exec("ALTER USER " + quoteDB(dbUser) + "@'%' IDENTIFIED BY " + quoteDB(dbPass)); err != nil {
-		return fmt.Errorf("set password: %w", err)
-	}
-	if _, err := db.Exec("FLUSH PRIVILEGES"); err != nil {
-		return fmt.Errorf("flush: %w", err)
-	}
-	return nil
+	return p.with(func(c *mysqlClient) error {
+		for _, stmt := range []string{
+			"ALTER USER " + quoteDB(dbUser) + "@'%' IDENTIFIED BY " + quoteDB(dbPass),
+			"FLUSH PRIVILEGES",
+		} {
+			if err := c.exec(stmt); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (p *mysqlProvisioner) ImportSQL(dbName, sqlText string) error {
 	if err := validateDBIdent(dbName, "nsm_x"); err != nil {
 		return err
 	}
-	db, err := p.open()
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	if _, err := db.Exec("USE `" + dbName + "`"); err != nil {
-		return fmt.Errorf("use database: %w", err)
-	}
-	// Split on semicolons at statement boundaries. Framework schema files
-	// are plain DDL — no stored procedures — so this is safe and keeps the
-	// driver happy (it does not accept multi-statements without multiQueries).
-	for _, stmt := range splitSQLStatements(sqlText) {
-		if _, err := db.Exec(stmt); err != nil {
-			return fmt.Errorf("import: %w", err)
+	return p.with(func(c *mysqlClient) error {
+		if err := c.exec("USE `" + dbName + "`"); err != nil {
+			return err
 		}
-	}
-	return nil
+		// Split on semicolons at statement boundaries. Framework schema
+		// files are plain DDL — no stored procedures — and the text
+		// protocol accepts one statement per packet.
+		for _, stmt := range splitSQLStatements(sqlText) {
+			if err := c.exec(stmt); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // splitSQLStatements splits a schema file into single statements. It honors
